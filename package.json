@@ -1,7 +1,7 @@
 {
   "name": "clovers-api",
   "version": "0.0.1",
-  "description": "Starter project for an ES6 RESTful Express API",
+  "description": "Clovers API",
   "main": "dist",
   "scripts": {
     "dev": "nodemon -w src --exec \"babel-node src --presets es2015,stage-0\"",
@@ -27,9 +27,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/developit/express-es6-rest-api.git"
+    "url": "git+https://github.com/clovers-network/clovers-api.git"
   },
-  "author": "Jason Miller <jason@developit.ca>",
+  "author": "Billy Rennekamp <billy.rennekamp@gmail.com>",
   "license": "MIT",
   "dependencies": {
     "body-parser": "^1.13.3",
@@ -56,9 +56,9 @@
     "nodemon": "^1.9.2"
   },
   "bugs": {
-    "url": "https://github.com/developit/express-es6-rest-api/issues"
+    "url": "https://github.com/clovers-network/clovers-api/issues"
   },
-  "homepage": "https://github.com/developit/express-es6-rest-api#readme",
+  "homepage": "https://github.com/clovers-network/clovers-api#readme",
   "keywords": [
     "clovers.network",
     "ethereum",
