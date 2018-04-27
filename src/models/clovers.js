@@ -7,25 +7,27 @@ export let cloversTransfer  = function({log, io, db}) {
   return Promise.all([
     new Promise(async (resolve, reject) => {
       if (log.data._from === '0x0000000000000000000000000000000000000000') {
-
-        let cloverMoves = await events.Clovers.instance.getCloverMoves(log.data._tokenId)
-        let cloverReward = await events.Clovers.instance.getReward(log.data._tokenId)
-        let cloverSymmetries = await events.Clovers.instance.getSymmetries(log.data._tokenId)
-        let cloverBlock = await events.Clovers.instance.getBlockMinted(log.data._tokenId)
-        let cloverURI = await events.Clovers.instance.tokenURI(log.data._tokenId)
-
+        try {
+          var cloverMoves = await events.Clovers.instance.getCloverMoves(log.data._tokenId)
+          var cloverReward = await events.Clovers.instance.getReward(log.data._tokenId)
+          var cloverSymmetries = await events.Clovers.instance.getSymmetries(log.data._tokenId)
+          var cloverBlock = await events.Clovers.instance.getBlockMinted(log.data._tokenId)
+          // var cloverURI = await events.Clovers.instance.tokenURI(log.data._tokenId)
+        } catch (error) {
+          reject(error)
+        }
         let clover = {
           name: log.data._tokenId,
           board: log.data._tokenId,
-          owner: log.data._to
+          owner: log.data._to,
           moves: cloverMoves,
           reward: cloverReward,
           symmetries: cloverSymmetries,
           created: cloverBlock,
           modified: cloverBlock,
-          URI: cloverURI
+          // URI: cloverURI
         }
-        console.log(clover)
+
         r.db('clovers_v2').table('clovers').insert(clover).run(db, (err, result) => {
           if (err) return reject(err)
           io && io.emit('addClover', clover);

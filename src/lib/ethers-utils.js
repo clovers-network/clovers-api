@@ -12,12 +12,15 @@ export let web3mode = false
 // var infuraProvider = new ethers.providers.InfuraProvider({name: config.networkName, chainId: config.networkId});
 // var etherscanProvider = new ethers.providers.EtherscanProvider({name: config.networkName, chainId: config.networkId});
 
-export var jsonRpcProvider = new ethers.providers.JsonRpcProvider('http://localhost:7545', {name: config.networkName, chainId: config.networkId});
-export let provider = new ethers.providers.FallbackProvider([
+var network = ethers.providers.networks.unspecified
+export var jsonRpcProvider = new ethers.providers.JsonRpcProvider('http://localhost:7545', network);
+
+var fallbackProvider = new ethers.providers.FallbackProvider([
     // infuraProvider,
     // etherscanProvider,
     jsonRpcProvider
 ]);
+export let provider = jsonRpcProvider //ethers.providers.getDefaultProvider(network)
 
 var web3Provider = ZeroClientProvider({
   getAccounts: function(){},

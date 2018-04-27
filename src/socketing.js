@@ -76,68 +76,72 @@ export var handleEvent = function({io, db, log}) {
   let foo = log.name.split('_')
   let contract = foo[0]
   let name = foo[1]
-  switch (contract) {
-    case('Clovers'):
-      switch (name) {
-        case('Transfer'):
-          return clovers.cloversTransfer({log, io, db})
-          break
-        case('Approval'):
-          return clovers.cloversApproval({log, io, db})
-          break
-        case('ApprovalForAll'):
-          return clovers.cloversApprovalForAll({log, io, db})
-          break
-        case('OwnershipTransferred'):
-          return clovers.cloversOwnershipTransferred({log, io, db})
-          break
-        default:
-         return Promise.reject(new Error('Event ' + name + ' not found'))
-      }
-      break
-    case('ClubToken'):
-      switch (name) {
-        case('Burn'):
-          return clubToken.clubTokenBurn({log, io, db})
-          break
-        case('Mint'):
-          return clubToken.clubTokenMint({log, io, db})
-          break
-        case('Approval'):
-          return clubToken.clubTokenApproval({log, io, db})
-          break
-        case('Transfer'):
-          return clubToken.clubTokenTransfer({log, io, db})
-          break
-        case('OwnershipTransferred'):
-          return clubToken.clubTokenOwnershipTransferred({log, io, db})
-          break
-        default:
-         return Promise.reject(new Error('Event ' + name + ' not found'))
-      }
-      break
-    case('CloversController'):
-      switch (name) {
-        case('cloverCommitted'):
-          return cloversController.cloversControllerCloverCommitted({log, io, db})
-          break
-        case('cloverClaimed'):
-          return cloversController.cloversControllerCloverClaimed({log, io, db})
-          break
-        case('stakeAndRewardRetrieved'):
-          return cloversController.cloversControllerStakeAndRewardRetrieved({log, io, db})
-          break
-        case('cloverChallenged'):
-          return cloversController.cloversControllerCloverChallenged({log, io, db})
-          break
-        case('OwnershipTransferred'):
-          return cloversController.cloversControllerOwnershipTransferred({log, io, db})
-          break
-        default:
-         return Promise.reject(new Error('Event ' + name + ' not found'))
-      }
-      break
-    default:
-     return Promise.reject(new Error('Contract ' + contract + ' not found'))
+  try {
+    switch (contract) {
+      case('Clovers'):
+        switch (name) {
+          case('Transfer'):
+            return clovers.cloversTransfer({log, io, db})
+            break
+          case('Approval'):
+            return clovers.cloversApproval({log, io, db})
+            break
+          case('ApprovalForAll'):
+            return clovers.cloversApprovalForAll({log, io, db})
+            break
+          case('OwnershipTransferred'):
+            return clovers.cloversOwnershipTransferred({log, io, db})
+            break
+          default:
+           return Promise.reject(new Error('Event ' + name + ' not found'))
+        }
+        break
+      case('ClubToken'):
+        switch (name) {
+          case('Burn'):
+            return clubToken.clubTokenBurn({log, io, db})
+            break
+          case('Mint'):
+            return clubToken.clubTokenMint({log, io, db})
+            break
+          case('Approval'):
+            return clubToken.clubTokenApproval({log, io, db})
+            break
+          case('Transfer'):
+            return clubToken.clubTokenTransfer({log, io, db})
+            break
+          case('OwnershipTransferred'):
+            return clubToken.clubTokenOwnershipTransferred({log, io, db})
+            break
+          default:
+           return Promise.reject(new Error('Event ' + name + ' not found'))
+        }
+        break
+      case('CloversController'):
+        switch (name) {
+          case('cloverCommitted'):
+            return cloversController.cloversControllerCloverCommitted({log, io, db})
+            break
+          case('cloverClaimed'):
+            return cloversController.cloversControllerCloverClaimed({log, io, db})
+            break
+          case('stakeAndRewardRetrieved'):
+            return cloversController.cloversControllerStakeAndRewardRetrieved({log, io, db})
+            break
+          case('cloverChallenged'):
+            return cloversController.cloversControllerCloverChallenged({log, io, db})
+            break
+          case('OwnershipTransferred'):
+            return cloversController.cloversControllerOwnershipTransferred({log, io, db})
+            break
+          default:
+           return Promise.reject(new Error('Event ' + name + ' not found'))
+        }
+        break
+      default:
+       return Promise.reject(new Error('Contract ' + contract + ' not found'))
+    }
+  } catch (error) {
+    console.log(error)
   }
 }
