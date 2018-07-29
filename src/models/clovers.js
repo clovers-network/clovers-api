@@ -2,8 +2,8 @@ import r from 'rethinkdb'
 import {
   events
 } from '../lib/ethers-utils'
-
-export let cloversTransfer  = function({log, io, db}) {
+import { sym } from '../lib/util'
+export let cloversTransfer = function({log, io, db}) {
   return Promise.all([
     new Promise(async (resolve, reject) => {
       if (log.data._from === '0x0000000000000000000000000000000000000000') {
@@ -21,10 +21,10 @@ export let cloversTransfer  = function({log, io, db}) {
           board: log.data._tokenId,
           owner: log.data._to,
           moves: cloverMoves,
-          reward: cloverReward,
-          symmetries: cloverSymmetries,
-          created: cloverBlock,
-          modified: cloverBlock,
+          reward: Number(cloverReward),
+          symmetries: sym(cloverSymmetries),
+          created: Number(cloverBlock),
+          modified: Number(cloverBlock),
           // URI: cloverURI
         }
 

@@ -8,7 +8,7 @@ import middleware from './middleware';
 import api from './api';
 import config from './config.json';
 import {socketing} from './socketing'
-import {build} from './lib/build'
+import {build, mine} from './lib/build'
 
 let app = express();
 
@@ -40,12 +40,15 @@ initializeDb( db => {
     app.use(middleware({ config, db }));
 
     // api router
-    app.use('/api', api({ config, db, io }));
+    app.use('/', api({ config, db, io }));
 
     app.server.listen(process.env.PORT || config.port, () => {
       console.log(`Started on port ${app.server.address().port}`);
     });
     socketing({_db: db, _io: io})
+    if (process.argv.findIndex((c) => c === 'mine') > -1) {
+      mine(db, io)
+    }
   }
 });
 

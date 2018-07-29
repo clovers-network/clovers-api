@@ -4,12 +4,13 @@
   "description": "Clovers API",
   "main": "dist",
   "scripts": {
+    "db": "rethinkdb",
     "dev": "nodemon -w src --exec \"babel-node src --presets es2015,stage-0\"",
     "build": "babel src -s -D -d dist --presets es2015,stage-0",
     "start": "node dist",
     "prestart": "npm run -s build",
     "test": "eslint src",
-    "update": "npm i clovers-network/clovers-contracts --force"
+    "contracts": "npm i clovers-network/clovers-contracts --force"
   },
   "eslintConfig": {
     "extends": "eslint:recommended",
@@ -34,15 +35,18 @@
   "dependencies": {
     "body-parser": "^1.13.3",
     "clovers-contracts": "github:clovers-network/clovers-contracts",
+    "clovers-reversi": "^1.0.3",
     "compression": "^1.5.2",
     "cors": "^2.7.1",
     "ethers": "^3.0.9",
     "ethers-contracts": "^2.2.1",
     "express": "^4.13.3",
+    "fs-extra": "^6.0.0",
     "morgan": "^1.8.0",
     "resource-router-middleware": "^0.6.0",
     "rethinkdb": "^2.3.3",
     "socket.io": "^2.1.0",
+    "svg-to-png": "^3.1.2",
     "web3": "^0.20.1",
     "web3-provider-engine": "^13.8.0",
     "xss": "^0.3.7"

@@ -52,12 +52,6 @@ function beginListen (contract, key = 0) {
       let decoded = iface.decodeParams(names, types, log.data)
       log.data = decoded
       log.name = contract + '_' + eventType.name
-      // if (eventType.name === 'Registered') {
-      //   log.data.lastPaidAmount = log.data.lastPaidAmount.toString()
-      //   log.data.created = log.data.modified.toString()
-      //   log.data.modified = log.data.modified.toString()
-      //   log.data.findersFee = log.data.findersFee.toString()
-      // }
       console.log(log)
       r.db('clovers_v2').table('logs').insert(log).run(db, (err, results) => {
         if (err) throw new Error(err)

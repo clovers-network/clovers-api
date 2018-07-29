@@ -3,6 +3,7 @@ import xss from 'xss'
 import config from '../config.json';
 import {handleEvent} from '../socketing'
 import ethers from 'ethers'
+import reversi from 'clovers-reversi'
 
 import {
   iface,
@@ -29,11 +30,44 @@ const tables = [{
 
 let usernames = []
 let clovernames = []
-let db
+let db, io, running
 
 export function build(_db) {
   db = _db
   rebuildDatabases()
+}
+
+export function mine(_db, _io) {
+  if(!db) db = _db
+  io = _io
+  running = true
+  io.on('mine', (running) => {
+    running = data
+  })
+  if (running) {
+    running = true
+    run()
+    function run () {
+      reversi.mine()
+      if (reversi.symmetrical) {
+        self.postMessage(reversi)
+      }
+      if (running) {
+        setTimeout(() => {
+          mine()
+        }, 0)
+      }
+    }
+    setInterval(() => {
+      self.postMessage({ hashRate })
+      hashRate = 0
+    }, 1000)
+  } else if (data === 'stop') {
+    running = false
+    self.close()
+  } else {
+    self.close()
+  }
 }
 
 function rebuildDatabases() {
