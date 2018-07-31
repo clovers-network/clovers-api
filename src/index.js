@@ -7,8 +7,8 @@ import initializeDb from './db'
 import middleware from './middleware'
 import api from './api'
 import config from './config.json'
-import {socketing} from './socketing'
-import {build, mine} from './lib/build'
+import { socketing } from './socketing'
+import { build, mine } from './lib/build'
 
 let app = express()
 
@@ -30,11 +30,11 @@ app.use(bodyParser.json({
 }))
 
 // connect to db
-initializeDb( db => {
+initializeDb((db) => {
   if (process.argv.findIndex((c) => c === 'build') > -1) {
     build(db)
   } else {
-    var io = require('socket.io')(app.server)
+    const io = require('socket.io')(app.server)
 
     // internal middleware
     app.use(middleware({ config, db }))

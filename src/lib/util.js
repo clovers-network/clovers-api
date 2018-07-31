@@ -1,11 +1,11 @@
-/**	Creates a callback that proxies node callback style arguments to an Express Response object.
- *	@param {express.Response} res	Express HTTP Response
- *	@param {number} [status=200]	Status code to send on success
+/** Creates a callback that proxies node callback style arguments to an Express Response object.
+ *  @param {express.Response} res Express HTTP Response
+ *  @param {number} [status=200]  Status code to send on success
  *
- *	@example
- *		list(req, res) {
- *			collection.find({}, toRes(res));
- *		}
+ *  @example
+ *    list(req, res) {
+ *      collection.find({}, toRes(res))
+ *    }
  */
 
 import Reversi from 'clovers-reversi'
@@ -14,16 +14,16 @@ import fs from 'fs-extra'
 import path from 'path'
 
 export function toRes(res, status=200) {
-	return (err, thing) => {
-		if (err) return res.status(500).send(err);
+  return (err, thing) => {
+    if (err) return res.status(500).send(err)
 
-		if (thing && typeof thing.toObject==='function') {
-			thing = thing.toObject();
-		}
+    if (thing && typeof thing.toObject === 'function') {
+      thing = thing.toObject()
+    }
     thing.toArray().then((results) => {
-      res.status(status).json(results);
-    }).error(console.log);
-	};
+      res.status(status).json(results)
+    }).error(console.log)
+  }
 }
 
 export function toSVG (id, size = 400) {
@@ -86,7 +86,7 @@ export function toSVG (id, size = 400) {
       }
       let x = (row + 1) * (size / 12) + size / 8
       let y = (col + 1) * (size / 12) + size / 8
-      svg += '<circle shape-rendering="optimizeQuality" fill="' + fill + '" stroke="' + stroke + '" stroke-miterlimit="1" cx="' + x + '" cy="' + y + '" r="' + size / 24 + '"/>'  
+      svg += '<circle shape-rendering="optimizeQuality" fill="' + fill + '" stroke="' + stroke + '" stroke-miterlimit="1" cx="' + x + '" cy="' + y + '" r="' + size / 24 + '"/>'
     }
     svg += '</svg>'
 

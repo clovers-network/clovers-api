@@ -1,8 +1,7 @@
 import r from 'rethinkdb'
-import {
-  events
-} from '../lib/ethers-utils'
+import { events } from '../lib/ethers-utils'
 import { sym } from '../lib/util'
+
 export let cloversTransfer = function({log, io, db}) {
   return Promise.all([
     new Promise(async (resolve, reject) => {
@@ -30,7 +29,7 @@ export let cloversTransfer = function({log, io, db}) {
 
         r.db('clovers_v2').table('clovers').insert(clover).run(db, (err, result) => {
           if (err) return reject(err)
-          io && io.emit('addClover', clover);
+          io && io.emit('addClover', clover)
           resolve()
         })
       } else {

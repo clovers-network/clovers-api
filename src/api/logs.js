@@ -1,4 +1,4 @@
-import resource from 'resource-router-middleware';
+import resource from 'resource-router-middleware'
 
 import r from 'rethinkdb'
 import {toRes} from '../lib/util'
@@ -13,7 +13,7 @@ export default ({ config, db, io}) => resource({
    */
   load(req, id, callback) {
     r.db('clovers_v2').table('logs').get(id).run(db, (err, log) => {
-      callback(err, log);
+      callback(err, log)
     })
   },
 
@@ -27,27 +27,27 @@ export default ({ config, db, io}) => resource({
 
   /** POST / - Create a new entity */
   create({ body }, res) {
-    res.json(body);
+    res.json(body)
   },
 
   /** GET /:id - Return a given entity */
   read({ log }, res) {
-    res.json(log);
+    res.json(log)
   },
 
   /** PUT /:id - Update a given entity */
   update({ log, body }, res) {
     for (let key in body) {
       if (key!=='id') {
-        log[key] = body[key];
+        log[key] = body[key]
       }
     }
-    res.sendStatus(204);
+    res.sendStatus(204)
   },
 
   /** DELETE /:id - Delete a given entity */
   delete({ log }, res) {
-    // logs.splice(logs.indexOf(log), 1);
-    res.sendStatus(204);
+    // logs.splice(logs.indexOf(log), 1)
+    res.sendStatus(204)
   }
-});
+})

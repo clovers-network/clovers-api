@@ -9,7 +9,7 @@ export default callback => {
         if (err) throw new Error(err)
         callback(conn)
       }
-    );
+    )
   } catch (err) {
     throw new Error(err)
   }

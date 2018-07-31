@@ -6,14 +6,14 @@ import fs from 'fs'
 import path from 'path'
 
 export default ({ config, db, io}) => {
-  var load = (req, id, callback) => {
+  const load = (req, id, callback) => {
     r.db('clovers_v2').table('clovers').get(id).run(db, (err, clover) => {
       clover.image = {svg: 'https://metadata.clovers.network/svg/' + id + '.svg'}
       clover.image.png = 'https://metadata.clovers.network/png/' + id + '.png'
-      callback(err, clover);
+      callback(err, clover)
     })
   }
-  var router = resource({
+  let router = resource({
 
     /** Property name to store preloaded entity on `request`. */
     id : 'clover',
@@ -25,9 +25,9 @@ export default ({ config, db, io}) => {
 
     /** GET / - List all entities */
     index({ query }, res) {
-      var limit = parseInt(query.limit) || 100
-      limit = limit > 500 ? 500 : limit
-      var offset = parseInt(query.offset) || 0
+      let limit = parseInt(query.limit) || 100
+      let offset = parseInt(query.offset) || 0
+      limit = Math.min(limit, 500)
       r.db('clovers_v2').table('clovers').slice(offset, offset + limit).run(db, toRes(res))
     },
 
@@ -39,31 +39,31 @@ export default ({ config, db, io}) => {
       //    r.db('clovers_v2').table('clovers').get(id).update(clover).run(db, (err, result) => {
       //      io.emit('updateClover', clover)
       // emit updated clover for all connected to have
-      // body.id = clovers.length.toString(36);
-      // clovers.push(body);
-      res.json(body);
+      // body.id = clovers.length.toString(36)
+      // clovers.push(body)
+      res.json(body)
     },
 
     /** GET /:id - Return a given entity */
     read({ clover }, res) {
       console.log('???')
-      res.json(clover);
+      res.json(clover)
     },
 
     /** PUT /:id - Update a given entity */
     update({ clover, body }, res) {
       for (let key in body) {
         if (key!=='id') {
-          clover[key] = body[key];
+          clover[key] = body[key]
         }
       }
-      res.sendStatus(204);
+      res.sendStatus(204)
     },
 
     /** DELETE /:id - Delete a given entity */
     delete({ clover }, res) {
-      // clovers.splice(clovers.indexOf(clover), 1);
-      res.sendStatus(204);
+      // clovers.splice(clovers.indexOf(clover), 1)
+      res.sendStatus(204)
     }
   })
   router.get('/svg/:id/:size?', async (req, res) => {

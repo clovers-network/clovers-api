@@ -61,11 +61,11 @@ function beginListen (contract, key = 0) {
       console.log('didnt work')
       console.error(err)
     }
-  });
+  })
 }
 
 export var handleEvent = function({io, db, log}) {
-  io && io.emit('addEvent', log);
+  io && io.emit('addEvent', log)
   console.log(log.name)
   let foo = log.name.split('_')
   let contract = foo[0]
