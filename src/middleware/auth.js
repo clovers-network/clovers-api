@@ -4,7 +4,7 @@ import sigUtil from 'eth-sig-util'
 const msgParams = [{
   type: 'string',
   name: 'Message',
-  value: 'PLease sign me in to Clovers thnks'
+  value: 'To avoid bad things, sign below to authenticate with Clovers'
 }]
 
 function checkAddress (ctx, address) {

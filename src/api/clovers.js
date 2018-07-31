@@ -70,15 +70,26 @@ export default ({ config, db, io}) => {
     }
   })
 
+  // Basic authentication
+  // still need to check ownership
   router.use(basicAuth({
     authorizer: auth
   }))
 
+  function isOwner (wallet, record) {
+    if (record.owner !== wallet) throw new Error('Unauthorized')
+  }
+
   router.put('/:id', async (req, res) => {
     const { id } = req.params
+    const { user } = req.auth
     load(req, id, (err, clover) => {
-      res.json(clover)
-      // res.sendStatus(204)
+      try {
+        isOwner(user, clover)
+        res.json(clover)
+      } catch (err) {
+        res.sendStatus(401)
+      }
     })
   })
 
