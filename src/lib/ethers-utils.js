@@ -19,7 +19,7 @@ export var jsonRpcProvider = new ethers.providers.JsonRpcProvider(
 );
 
 var fallbackProvider = new ethers.providers.FallbackProvider([
-  // infuraProvider,
+  infuraProvider,
   etherscanProvider
   // jsonRpcProvider
 ]);

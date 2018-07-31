@@ -128,14 +128,14 @@ export let cloversTransfer = function({ log, io, db }) {
   ]);
 };
 export let cloversApproval = function({ log, io, db }) {
-  console.log(log);
+  console.log("NEED TO HANDLE: " + log.name);
   return Promise.resolve();
 };
 export let cloversApprovalForAll = function({ log, io, db }) {
-  console.log(log);
+  console.log("NEED TO HANDLE: " + log.name);
   return Promise.resolve();
 };
 export let cloversOwnershipTransferred = function({ log, io, db }) {
-  console.log(log);
+  console.log("NEED TO HANDLE: " + log.name);
   return Promise.resolve();
 };

@@ -61,9 +61,8 @@ function beginListen(contract, key = 0) {
 }
 
 export var handleEvent = function({ io, db, log }) {
-  console.log("in handleEvent");
   io && io.emit("addEvent", log);
-  console.log("log.name", log.name);
+  console.log(log.name);
   let foo = log.name.split("_");
   let contract = foo[0];
   let name = foo[1];

@@ -334,8 +334,6 @@ function processLog(logs, i = 0) {
       resolve();
     } else {
       let log = logs[i];
-      console.log("handleEvent");
-      console.log(handleEvent);
       handleEvent({ log, db })
         .then(() => {
           processLog(logs, i + 1)
