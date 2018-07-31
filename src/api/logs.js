@@ -19,9 +19,9 @@ export default ({ config, db, io}) => resource({
 
   /** GET / - List all entities */
   index({ query }, res) {
-    var limit = parseInt(query.limit) || 100
-    limit = limit > 500 ? 500 : limit
-    var offset = parseInt(query.offset) || 0
+    let limit = parseInt(query.limit) || 100
+    let offset = parseInt(query.offset) || 0
+    limit = Math.min(limit, 500)
     r.db('clovers_v2').table('logs').slice(offset, offset + limit).run(db, toRes(res))
   },
 

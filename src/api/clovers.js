@@ -1,7 +1,7 @@
-import resource from 'resource-router-middleware';
-// import clovers from '../models/clovers';
+import resource from 'resource-router-middleware'
+// import clovers from '../models/clovers'
 import r from 'rethinkdb'
-import {toRes, toSVG, toPNG} from '../lib/util'
+import { toRes, toSVG, toPNG } from '../lib/util'
 import fs from 'fs'
 import path from 'path'
 
