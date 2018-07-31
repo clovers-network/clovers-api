@@ -9,16 +9,16 @@ export default ({ config, db, io }) => {
   let api = Router()
 
   // mount the clovers resource
-  api.use("/clovers", clovers({ config, db, io }))
+  api.use('/clovers', clovers({ config, db, io }))
 
   // mount the users resource
-  api.use("/users", users({ config, db, io }))
+  api.use('/users', users({ config, db, io }))
 
   // mount the logs resource
-  api.use("/logs", logs({ config, db, io }))
+  api.use('/logs', logs({ config, db, io }))
 
   // perhaps expose some API metadata at the root
-  api.get("/", (req, res) => {
+  api.get('/', (req, res) => {
     res.json({ version })
   })
 

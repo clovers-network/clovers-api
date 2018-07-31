@@ -31,13 +31,14 @@ export var socketing = function({ _io, _db }) {
   beginListen("CloversController");
 };
 
-function beginListen(contract, key = 0) {
-  let eventTypes = events[contract].eventTypes;
-  if (key > eventTypes.length - 1) return;
-  beginListen(contract, key + 1);
-  let eventType = events[contract].instance.interface.events[eventTypes[key]];
-  provider.on(eventType.topic, log => {
-    console.log("got an event");
+function beginListen (contract, key = 0) {
+  let eventTypes = events[contract].eventTypes
+  if (key > eventTypes.length - 1) return
+  beginListen(contract, key + 1)
+  let eventType = events[contract].instance.interface.events[eventTypes[key]]
+  if (!eventType) return
+  provider.on(eventType.topic, (log) => {
+    console.log('got an event')
     try {
       let event = events[contract].abi.find(a => a.name === eventType().name);
       let names = event.inputs.map(o => o.name);

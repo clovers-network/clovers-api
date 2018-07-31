@@ -4,11 +4,14 @@ import r from 'rethinkdb'
 import { toRes, toSVG, toPNG } from '../lib/util'
 import fs from 'fs'
 import path from 'path'
+// import basicAuth from 'express-basic-auth'
+import { auth } from '../middleware/auth'
+const basicAuth = require('express-basic-auth')
 
 export default ({ config, db, io}) => {
   const load = (req, id, callback) => {
     r.db('clovers_v2').table('clovers').get(id).run(db, (err, clover) => {
-      clover.image = {svg: 'https://metadata.clovers.network/svg/' + id + '.svg'}
+      clover.image = { svg: 'https://metadata.clovers.network/svg/' + id + '.svg' }
       clover.image.png = 'https://metadata.clovers.network/png/' + id + '.png'
       callback(err, clover)
     })
@@ -24,7 +27,7 @@ export default ({ config, db, io}) => {
     load,
 
     /** GET / - List all entities */
-    index({ query }, res) {
+    index ({ query }, res) {
       let limit = parseInt(query.limit) || 100
       let offset = parseInt(query.offset) || 0
       limit = Math.min(limit, 500)
@@ -32,7 +35,7 @@ export default ({ config, db, io}) => {
     },
 
     /** POST / - Create a new entity */
-    create({ body }, res) {
+    create ({ body }, res) {
       // check token to see if id is legit
       // check if actually owns clover
       // update clover w new name
@@ -45,27 +48,40 @@ export default ({ config, db, io}) => {
     },
 
     /** GET /:id - Return a given entity */
-    read({ clover }, res) {
-      console.log('???')
+    read ({ clover }, res) {
       res.json(clover)
     },
 
     /** PUT /:id - Update a given entity */
-    update({ clover, body }, res) {
-      for (let key in body) {
-        if (key!=='id') {
-          clover[key] = body[key]
-        }
-      }
-      res.sendStatus(204)
-    },
+    // update ({ clover, body }, res) {
+    //   console.log(clover, body)
+    //   for (let key in body) {
+    //     if (key !== 'id') {
+    //       clover[key] = body[key]
+    //     }
+    //   }
+    //   res.sendStatus(204)
+    // },
 
     /** DELETE /:id - Delete a given entity */
-    delete({ clover }, res) {
+    delete ({ clover }, res) {
       // clovers.splice(clovers.indexOf(clover), 1)
       res.sendStatus(204)
     }
   })
+
+  router.use(basicAuth({
+    authorizer: auth
+  }))
+
+  router.put('/:id', async (req, res) => {
+    const { id } = req.params
+    load(req, id, (err, clover) => {
+      res.json(clover)
+      // res.sendStatus(204)
+    })
+  })
+
   router.get('/svg/:id/:size?', async (req, res) => {
     try {
       let id = req.params.id || res.sendStatus(404)
