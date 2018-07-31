@@ -6,28 +6,28 @@ const ZeroClientProvider = require("web3-provider-engine/zero.js");
 import Web3 from "web3";
 export let iface = ethers.Interface;
 export let web3mode = false;
-// ethers.apiToken = config.etherscanAPI;
-// ethers.apiAccessToken = config.infuraAPI;
+ethers.apiToken = config.etherscanAPI;
+ethers.apiAccessToken = config.infuraAPI;
+var network = ethers.providers.networks.rinkeby;
 
-// var infuraProvider = new ethers.providers.InfuraProvider({name: config.networkName, chainId: config.networkId});
-// var etherscanProvider = new ethers.providers.EtherscanProvider({name: config.networkName, chainId: config.networkId});
+var infuraProvider = new ethers.providers.InfuraProvider(network);
+var etherscanProvider = new ethers.providers.EtherscanProvider(network);
 
-var network = ethers.providers.networks.unspecified;
 export var jsonRpcProvider = new ethers.providers.JsonRpcProvider(
-  "https://rinkeby.infura.io/v3/",
+  "https://rinkeby.infura.io/v3/" + config.infuraKey,
   network
 );
 
 var fallbackProvider = new ethers.providers.FallbackProvider([
   // infuraProvider,
-  // etherscanProvider,
-  jsonRpcProvider
+  etherscanProvider
+  // jsonRpcProvider
 ]);
-export let provider = jsonRpcProvider; //ethers.providers.getDefaultProvider(network)
+export let provider = fallbackProvider;
 
 var web3Provider = ZeroClientProvider({
   getAccounts: function() {},
-  rpcUrl: "http://localhost:7545"
+  rpcUrl: "https://rinkeby.infura.io/v3/" + config.infuraKey
 });
 export var web3 = new Web3(web3Provider);
 
