@@ -4,9 +4,8 @@ import r from 'rethinkdb'
 import { toRes, toSVG, toPNG } from '../lib/util'
 import fs from 'fs'
 import path from 'path'
-// import basicAuth from 'express-basic-auth'
+import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
-const basicAuth = require('express-basic-auth')
 
 export default ({ config, db, io}) => {
   const load = (req, id, callback) => {
@@ -17,80 +16,27 @@ export default ({ config, db, io}) => {
     })
   }
   let router = resource({
-
-    /** Property name to store preloaded entity on `request`. */
     id : 'clover',
 
-    /** For requests with an `id`, you can auto-load the entity.
-     *  Errors terminate the request, success sets `req[id] = data`.
-     */
     load,
 
-    /** GET / - List all entities */
     index ({ query }, res) {
-      let limit = parseInt(query.limit) || 100
-      let offset = parseInt(query.offset) || 0
-      limit = Math.min(limit, 500)
-      r.db('clovers_v2').table('clovers').slice(offset, offset + limit).run(db, toRes(res))
+      const before = parseInt(query.before) || false
+      r.db('clovers_v2').table('clovers')
+        .orderBy(r.desc('modified'))
+        .filter((row) => {
+          return r.branch(
+            before,
+            row('modified').lt(before),
+            row
+          )
+        }).limit(12).run(db, toRes(res))
     },
 
-    /** POST / - Create a new entity */
-    create ({ body }, res) {
-      // check token to see if id is legit
-      // check if actually owns clover
-      // update clover w new name
-      //    r.db('clovers_v2').table('clovers').get(id).update(clover).run(db, (err, result) => {
-      //      io.emit('updateClover', clover)
-      // emit updated clover for all connected to have
-      // body.id = clovers.length.toString(36)
-      // clovers.push(body)
-      res.json(body)
-    },
 
-    /** GET /:id - Return a given entity */
     read ({ clover }, res) {
       res.json(clover)
-    },
-
-    /** PUT /:id - Update a given entity */
-    // update ({ clover, body }, res) {
-    //   console.log(clover, body)
-    //   for (let key in body) {
-    //     if (key !== 'id') {
-    //       clover[key] = body[key]
-    //     }
-    //   }
-    //   res.sendStatus(204)
-    // },
-
-    /** DELETE /:id - Delete a given entity */
-    delete ({ clover }, res) {
-      // clovers.splice(clovers.indexOf(clover), 1)
-      res.sendStatus(204)
     }
-  })
-
-  // Basic authentication
-  // still need to check ownership
-  router.use(basicAuth({
-    authorizer: auth
-  }))
-
-  function isOwner (wallet, record) {
-    if (record.owner !== wallet) throw new Error('Unauthorized')
-  }
-
-  router.put('/:id', async (req, res) => {
-    const { id } = req.params
-    const { user } = req.auth
-    load(req, id, (err, clover) => {
-      try {
-        isOwner(user, clover)
-        res.json(clover)
-      } catch (err) {
-        res.sendStatus(401)
-      }
-    })
   })
 
   router.get('/svg/:id/:size?', async (req, res) => {
@@ -119,5 +65,42 @@ export default ({ config, db, io}) => {
       res.sendStatus(404).json(error)
     }
   })
+
+  // Basic authentication
+  router.use(basicAuth({
+    authorizer: auth
+  }))
+
+  router.put('/:id', async (req, res) => {
+    const { id } = req.params
+    const { user } = req.auth
+    let name = req.body.name || ''
+    name = name.substring(0, 34)
+    load(req, id, (err, clover) => {
+      const owner = clover.owner.toLowerCase() === user.toLowerCase()
+      if (err || !owner) {
+        res.sendStatus(401).end()
+        return
+      }
+
+      // db update
+      r.db('clovers_v2').table('clovers').get(clover.board)
+        .update({ name }, { returnChanges: true }).run(db, (err, { changes }) => {
+          if (err) {
+            res.sendStatus(500).end()
+            return
+          }
+          if (changes[0]) {
+            clover = changes[0].new_val
+          }
+          res.json(clover)
+        })
+    })
+  })
+
   return router
+}
+
+function isOwner (wallet, record) {
+  return record.owner === wallet
 }

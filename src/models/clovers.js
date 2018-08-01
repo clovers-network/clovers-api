@@ -1,7 +1,8 @@
 import r from "rethinkdb";
 import { events } from "../lib/ethers-utils";
 import { sym } from "../lib/util";
-export let cloversTransfer = function({ log, io, db }) {
+
+export const cloversTransfer = ({ log, io, db }) => {
   return Promise.all([
     new Promise(async (resolve, reject) => {
       if (log.data._from === "0x0000000000000000000000000000000000000000") {
@@ -127,15 +128,15 @@ export let cloversTransfer = function({ log, io, db }) {
     })
   ]);
 };
-export let cloversApproval = function({ log, io, db }) {
+export const cloversApproval = function({ log, io, db }) {
   console.log("NEED TO HANDLE: " + log.name);
   return Promise.resolve();
 };
-export let cloversApprovalForAll = function({ log, io, db }) {
+export const cloversApprovalForAll = function({ log, io, db }) {
   console.log("NEED TO HANDLE: " + log.name);
   return Promise.resolve();
 };
-export let cloversOwnershipTransferred = function({ log, io, db }) {
+export const cloversOwnershipTransferred = function({ log, io, db }) {
   console.log("NEED TO HANDLE: " + log.name);
   return Promise.resolve();
 };
