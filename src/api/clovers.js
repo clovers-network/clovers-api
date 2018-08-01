@@ -1,7 +1,7 @@
 import resource from 'resource-router-middleware'
 // import clovers from '../models/clovers'
 import r from 'rethinkdb'
-import { toRes, toSVG, toPNG } from '../lib/util'
+import { toRes, toSVG } from '../lib/util'
 import fs from 'fs'
 import path from 'path'
 import basicAuth from 'express-basic-auth'
@@ -10,8 +10,8 @@ import { auth } from '../middleware/auth'
 export default ({ config, db, io}) => {
   const load = (req, id, callback) => {
     r.db('clovers_v2').table('clovers').get(id).run(db, (err, clover) => {
-      clover.image = { svg: 'https://metadata.clovers.network/svg/' + id + '.svg' }
-      clover.image.png = 'https://metadata.clovers.network/png/' + id + '.png'
+      clover.image = { svg: `https://metadata.clovers.network/svg/${id}.svg` }
+      clover.image.png = `https://metadata.clovers.network/png/${id}.png`
       callback(err, clover)
     })
   }
@@ -41,28 +41,15 @@ export default ({ config, db, io}) => {
 
   router.get('/svg/:id/:size?', async (req, res) => {
     try {
-      let id = req.params.id || res.sendStatus(404)
-      let size = req.params.size || 400
+      const id = req.params.id || res.sendStatus(404)
+      const size = req.params.size || 400
+      const svg = await toSVG(id, size)
 
-      let svg = path.resolve(__dirname + '/../../public/svg/' + size + '/' + id + '.svg')
-      // if (!fs.existsSync(svg)) {
-        await toSVG(id, size)
-      // }
-      res.sendFile(id + '.svg', {root: './public/svg/' + size})
+      res.setHeader('Content-Type', 'image/svg+xml')
+      res.send(svg)
     } catch (error) {
-      console.log('this error' + error)
+      console.log(error)
       res.sendStatus(404).send(error)
-    }
-  })
-  router.get('png/:id', async (req, res) => {
-    let png = path.resolve(__dirname + '/../../public/png/' + id + '.png')
-    try {
-      if (!fs.existsSync(png)) {
-        await toPNG(id)
-      }
-      res.sendFile(id + '.png', {root: './public/png'})
-    } catch (error) {
-      res.sendStatus(404).json(error)
     }
   })
 
@@ -92,8 +79,11 @@ export default ({ config, db, io}) => {
           }
           if (changes[0]) {
             clover = changes[0].new_val
+            clover.image = { svg: `https://metadata.clovers.network/svg/${id}.svg` }
+            clover.image.png = `https://metadata.clovers.network/png/${id}.png`
           }
-          res.json(clover)
+          io.emit('updateClover', clover)
+          res.sendStatus(200).end()
         })
     })
   })

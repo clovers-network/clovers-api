@@ -19,7 +19,7 @@ export function auth (wallet, signature) {
       data: msgParams,
       sig: signature
     })
-    return wallet === recovered
+    return wallet.toLowerCase() === recovered.toLowerCase()
   } catch (err) {
     console.log(err)
     return false

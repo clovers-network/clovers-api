@@ -1,7 +1,7 @@
 import resource from 'resource-router-middleware'
 
 import r from 'rethinkdb'
-import {toRes} from '../lib/util'
+import { toRes } from '../lib/util'
 
 export default ({ config, db, io}) => resource({
 
@@ -12,9 +12,9 @@ export default ({ config, db, io}) => resource({
    *  Errors terminate the request, success sets `req[id] = data`.
    */
   load(req, id, callback) {
-    r.db('clovers_v2').table('users').get(id).run(db, (err, user) => {
-      callback(err, user)
-    })
+    r.db('clovers_v2').table('users').get(id).merge({
+      clovers: r.db('clovers_v2').table('clovers').getAll(r.args(r.row('clovers'))).coerceTo('array')
+    }).run(db, callback)
   },
 
   /** GET / - List all entities */

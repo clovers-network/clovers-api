@@ -89,33 +89,34 @@ export function toSVG (id, size = 400) {
       svg += '<circle shape-rendering="optimizeQuality" fill="' + fill + '" stroke="' + stroke + '" stroke-miterlimit="1" cx="' + x + '" cy="' + y + '" r="' + size / 24 + '"/>'
     }
     svg += '</svg>'
+    resolve(svg)
 
-    fs.outputFile(svgPath, svg, (err) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve()
-      }
-    })
+    // fs.outputFile(svgPath, svg, (err) => {
+    //   if (err) {
+    //     reject(err)
+    //   } else {
+    //     resolve()
+    //   }
+    // })
   })
 }
 
-export function toPNG (id) {
-  return new Promise(async (resolve, reject) => {
-    try {
-      let svg = path.resolve(__dirname + '/../../public/svg/' + id + '.svg')
-      let png = path.resolve(__dirname + '/../../public/png/' + id + '.png')
+// export function toPNG (id) {
+//   return new Promise(async (resolve, reject) => {
+//     try {
+//       let svg = path.resolve(__dirname + '/../../public/svg/' + id + '.svg')
+//       let png = path.resolve(__dirname + '/../../public/png/' + id + '.png')
 
-      if (!fs.existsSync(svg)) {
-        await toSVG(id)
-      }
-      await svg_to_png.convert(svg, png) // async, returns promise
-      resolve()
-    } catch (error) {
-      reject (error)
-    }
-  })
-}
+//       if (!fs.existsSync(svg)) {
+//         await toSVG(id)
+//       }
+//       await svg_to_png.convert(svg, png) // async, returns promise
+//       resolve()
+//     } catch (error) {
+//       reject (error)
+//     }
+//   })
+// }
 
 export function sym(syms) {
   let RotSym = syms >> 4 & 1 == 1
