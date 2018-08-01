@@ -29,7 +29,6 @@ export function toRes(res, status=200) {
 export function toSVG (id, size = 400) {
   size = parseInt(size)
   return new Promise((resolve, reject) => {
-
     let green = '#008B39'
     let black = '#000000'
     let white = '#FFFFFF'
@@ -42,7 +41,7 @@ export function toSVG (id, size = 400) {
     r.calcWinners()
 
     if (r.error) {
-      reject(r.error)
+      throw new Error(r.error)
     }
 
     let fill, stroke, sequence

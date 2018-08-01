@@ -9,11 +9,7 @@ import { auth } from '../middleware/auth'
 
 export default ({ config, db, io}) => {
   const load = (req, id, callback) => {
-    r.db('clovers_v2').table('clovers').get(id).run(db, (err, clover) => {
-      clover.image = { svg: `https://metadata.clovers.network/svg/${id}.svg` }
-      clover.image.png = `https://metadata.clovers.network/png/${id}.png`
-      callback(err, clover)
-    })
+    r.db('clovers_v2').table('clovers').get(id).run(db, callback)
   }
   let router = resource({
     id : 'clover',
@@ -33,7 +29,6 @@ export default ({ config, db, io}) => {
         }).limit(12).run(db, toRes(res))
     },
 
-
     read ({ clover }, res) {
       res.json(clover)
     }
@@ -41,15 +36,14 @@ export default ({ config, db, io}) => {
 
   router.get('/svg/:id/:size?', async (req, res) => {
     try {
-      const id = req.params.id || res.sendStatus(404)
-      const size = req.params.size || 400
-      const svg = await toSVG(id, size)
+      let { id, size } = req.params
+      const svg = await toSVG(id, size || 400)
 
       res.setHeader('Content-Type', 'image/svg+xml')
       res.send(svg)
-    } catch (error) {
-      console.log(error)
-      res.sendStatus(404).send(error)
+    } catch (err) {
+      console.log('No ID, or invalid')
+      res.sendStatus(404)
     }
   })
 
@@ -79,8 +73,6 @@ export default ({ config, db, io}) => {
           }
           if (changes[0]) {
             clover = changes[0].new_val
-            clover.image = { svg: `https://metadata.clovers.network/svg/${id}.svg` }
-            clover.image.png = `https://metadata.clovers.network/png/${id}.png`
           }
           io.emit('updateClover', clover)
           res.sendStatus(200).end()
