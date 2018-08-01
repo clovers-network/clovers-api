@@ -40,10 +40,6 @@ export function toSVG (id, size = 400) {
     r.byteBoardPopulateBoard(id)
     r.calcWinners()
 
-    if (r.error) {
-      throw new Error(r.error)
-    }
-
     let fill, stroke, sequence
     let strokeWidth = 1
     let radius = size / 2
