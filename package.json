@@ -7,7 +7,7 @@
     "db": "rethinkdb",
     "dev": "nodemon -w src --exec \"babel-node src --presets es2015,stage-0\"",
     "build": "babel src -s -D -d dist --presets es2015,stage-0",
-    "start": "node dist",
+    "start": "pm2 start dist",
     "prestart": "npm run -s build",
     "test": "eslint src",
     "contracts": "npm i clovers-network/clovers-contracts --force"
@@ -48,6 +48,7 @@
     "fecha": "^2.3.3",
     "fs-extra": "^6.0.0",
     "morgan": "^1.8.0",
+    "pm2": "^3.0.3",
     "resource-router-middleware": "^0.6.0",
     "rethinkdb": "^2.3.3",
     "socket.io": "^2.1.0",
