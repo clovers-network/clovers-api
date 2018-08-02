@@ -1,17 +1,17 @@
-import r from 'rethinkdb'
+// import r from 'rethinkdb'
 
-export let cloversControllerCloverCommitted = function({log, io, db}) {
+export const cloversControllerCloverCommitted = function ({log, io, db}) {
   console.log(log)
 }
-export let cloversControllerCloverClaimed = function({log, io, db}) {
+export const cloversControllerCloverClaimed = function ({log, io, db}) {
   console.log(log)
 }
-export let cloversControllerStakeAndRewardRetrieved = function({log, io, db}) {
+export const cloversControllerStakeAndRewardRetrieved = function ({log, io, db}) {
   console.log(log)
 }
-export let cloversControllerCloverChallenged = function({log, io, db}) {
+export const cloversControllerCloverChallenged = function ({log, io, db}) {
   console.log(log)
 }
-export let cloversControllerOwnershipTransferred = function({log, io, db}) {
+export const cloversControllerOwnershipTransferred = function ({log, io, db}) {
   console.log(log)
 }

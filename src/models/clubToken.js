@@ -1,6 +1,6 @@
 import r from 'rethinkdb'
 
-export let clubTokenBurn = function({log, io, db}) {
+export const clubTokenBurn = function ({log, io, db}) {
   console.log(log)
   let user = log.data.burner
   let amount = log.data.value
@@ -11,7 +11,8 @@ export let clubTokenBurn = function({log, io, db}) {
     })
   })
 }
-export let clubTokenMint = function({log, io, db}) {
+
+export const clubTokenMint = function ({log, io, db}) {
   console.log(log)
   let user = log.data.to
   let amount = log.data.amount
@@ -22,12 +23,12 @@ export let clubTokenMint = function({log, io, db}) {
     })
   })
 }
-export let clubTokenApproval = function({log, io, db}) {
+export const clubTokenApproval = function ({log, io, db}) {
   console.log(log)
 }
-export let clubTokenTransfer = function({log, io, db}) {
+export const clubTokenTransfer = function ({log, io, db}) {
   console.log(log)
 }
-export let clubTokenOwnershipTransferred = function({log, io, db}) {
+export const clubTokenOwnershipTransferred = function ({log, io, db}) {
   console.log(log)
 }
