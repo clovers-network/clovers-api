@@ -4,8 +4,9 @@ import config from "../config.json";
 import { handleEvent } from "../socketing";
 import ethers from "ethers";
 import reversi from "clovers-reversi";
+import { parseLogForStorage } from "./util";
 
-import { iface, provider, events, web3, web3mode } from "../lib/ethers-utils";
+import { provider, events, web3, web3mode } from "../lib/ethers-utils";
 
 const tables = [
   {
@@ -86,54 +87,54 @@ function rebuildDatabases() {
       console.log(err);
     });
 }
-
-function testEvent() {
-  let tx = "0x634f90048c1cac22becfe5953a9e63f932a4eaf690d9156011ec85a7d1997de0";
-  let topics = [
-    "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-    "0x0000000000000000000000000000000000000000000000000000000000000000",
-    "0x00000000000000000000000035b701e4550f0fcc45d854040562e35a4600e4ee"
-  ];
-  let address = "0x345ca3e014aaf5dca488057592ee47305d9b3e10";
-  if (web3mode) {
-    // console.log(events['Clovers'].instance)
-    // events['Clovers'].instance['Transfer']({x: null}, {
-    //   startBlock: 0,
-    //   endBlock: 'latest'
-    // }).get((error, result) => {
-    //   console.log(result)
-    // })
-    var filter = web3.eth.filter({
-      fromBlock: 0,
-      address: address.toLowerCase()
-    });
-    filter.get((err, result) => {
-      console.log(result);
-    });
-  } else {
-    console.log("not web3");
-    provider.getTransactionReceipt(tx).then(resp => {
-      console.log(resp);
-      resp.logs.map(log => {
-        let logInfo = {
-          address: address.toLowerCase(),
-          fromBlock: 1,
-          toBlock: 120
-        };
-        console.log(logInfo);
-        provider.send("eth_getLogs", logInfo).then(result => {
-          console.log("provider - eth_getLogs", result.length);
-        });
-        provider.getLogs(logInfo).then(logs => {
-          console.log("provider - getLogs", logs.length);
-        });
-        provider.getLogs(logInfo).then(logs => {
-          console.log("provider - getLogs", logs.length);
-        });
-      });
-    });
-  }
-}
+//
+// function testEvent() {
+//   let tx = "0x634f90048c1cac22becfe5953a9e63f932a4eaf690d9156011ec85a7d1997de0";
+//   let topics = [
+//     "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+//     "0x0000000000000000000000000000000000000000000000000000000000000000",
+//     "0x00000000000000000000000035b701e4550f0fcc45d854040562e35a4600e4ee"
+//   ];
+//   let address = "0x345ca3e014aaf5dca488057592ee47305d9b3e10";
+//   if (web3mode) {
+//     // console.log(events['Clovers'].instance)
+//     // events['Clovers'].instance['Transfer']({x: null}, {
+//     //   startBlock: 0,
+//     //   endBlock: 'latest'
+//     // }).get((error, result) => {
+//     //   console.log(result)
+//     // })
+//     var filter = web3.eth.filter({
+//       fromBlock: 0,
+//       address: address.toLowerCase()
+//     });
+//     filter.get((err, result) => {
+//       console.log(result);
+//     });
+//   } else {
+//     console.log("not web3");
+//     provider.getTransactionReceipt(tx).then(resp => {
+//       console.log(resp);
+//       resp.logs.map(log => {
+//         let logInfo = {
+//           address: address.toLowerCase(),
+//           fromBlock: 1,
+//           toBlock: 120
+//         };
+//         console.log(logInfo);
+//         provider.send("eth_getLogs", logInfo).then(result => {
+//           console.log("provider - eth_getLogs", result.length);
+//         });
+//         provider.getLogs(logInfo).then(logs => {
+//           console.log("provider - getLogs", logs.length);
+//         });
+//         provider.getLogs(logInfo).then(logs => {
+//           console.log("provider - getLogs", logs.length);
+//         });
+//       });
+//     });
+//   }
+// }
 function createDB() {
   console.log("createDB");
   return new Promise((resolve, reject) => {
@@ -267,17 +268,8 @@ function populateLog(contract, key = 0) {
             logs = logs.map(l => {
               try {
                 l.name = contract + "_" + eventType().name;
-
                 l.data = transferCoder.parse(l.topics, l.data);
-                Object.keys(l.data).map((key, index) => {
-                  if (l.data[key]._bn) {
-                    if (key === "_tokenId") {
-                      l.data[key] = "0x" + l.data[key]._bn.toString(16);
-                    } else {
-                      l.data[key] = l.data[key]._bn.toString(10);
-                    }
-                  }
-                });
+                l.data = parseLogForStorage(l.data);
               } catch (err) {
                 reject(err);
               }
