@@ -16,7 +16,7 @@ export let clubTokenApproval = async function({ log, io, db }) {
   console.log(log.name + " does not affect the database");
 };
 // event Transfer(address indexed from, address indexed to, uint256 value);
-export let clubTokenTransfer = async function({ log, io, db }) {
+export let clubTokenTransfer = async ({ log, io, db }) => {
   console.log(log.name + " called");
   let from = log.data.from;
   let to = log.data.to;
@@ -24,7 +24,7 @@ export let clubTokenTransfer = async function({ log, io, db }) {
   await changeUserBalance(to, amount, "add", log);
   await changeUserBalance(from, amount, "sub", log);
 };
-export let clubTokenOwnershipTransferred = async function({ log, io, db }) {
+export let clubTokenOwnershipTransferred = async ({ log, io, db }) => {
   console.log(log.name + " does not affect the database");
 };
 
@@ -55,4 +55,4 @@ function changeUserBalance(user_id, amount, add, log) {
           });
       });
   });
-
+}
