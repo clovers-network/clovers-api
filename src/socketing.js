@@ -1,3 +1,4 @@
+
 import { provider, events } from "./lib/ethers-utils";
 import ethers from "ethers";
 import * as clovers from "./models/clovers";
@@ -6,24 +7,26 @@ import * as cloversController from "./models/cloversController";
 import { parseLogForStorage } from "./lib/util";
 import r from "rethinkdb";
 
-let io, db;
+
+let io, db
 
 export var socketing = function({ _io, _db }) {
-  io = _io;
-  db = _db;
-  var connections = 0;
+  io = _io
+  db = _db
+  var connections = 0
   io.on("connection", function(socket) {
-    connections += 1;
-    console.log("opened, now " + connections + " connections");
+    connections += 1
+    console.log("opened, now " + connections + " connections")
 
     socket.on("data", function(data) {
-      console.log(data);
-    });
+      console.log(data)
+    })
     socket.on("disconnect", function() {
-      connections -= 1;
-      console.log("closed, now " + connections + " connections");
-    });
+      connections -= 1
+      console.log("closed, now " + connections + " connections")
+    })
     socket.on("error", function(err) {
+
       console.log("error");
     });
   });
@@ -86,12 +89,14 @@ async function beginListen(contract, key = 0) {
         .table("logs")
         .insert(log)
         .run(db, (err, results) => {
+
           console.log((err ? "ERROR " : "SUCCESS ") + "saving " + log.name);
           if (err) throw new Error(err);
           handleEvent({ io, db, log });
         });
+
     }
-  });
+  })
 }
 
 export var handleEvent = function({ io, db, log }) {
@@ -100,46 +105,48 @@ export var handleEvent = function({ io, db, log }) {
   let foo = log.name.split("_");
   let contract = foo[0];
   let name = foo[1];
+
   try {
     switch (contract) {
       case "Clovers":
         switch (name) {
           case "Transfer":
-            return clovers.cloversTransfer({ log, io, db });
-            break;
+            return clovers.cloversTransfer({ log, io, db })
+            break
           case "Approval":
-            return clovers.cloversApproval({ log, io, db });
-            break;
+            return clovers.cloversApproval({ log, io, db })
+            break
           case "ApprovalForAll":
-            return clovers.cloversApprovalForAll({ log, io, db });
-            break;
+            return clovers.cloversApprovalForAll({ log, io, db })
+            break
           case "OwnershipTransferred":
-            return clovers.cloversOwnershipTransferred({ log, io, db });
-            break;
+            return clovers.cloversOwnershipTransferred({ log, io, db })
+            break
           default:
-            return new Error("Event " + name + " not found");
+            return new Error("Event " + name + " not found")
         }
-        break;
+        break
       case "ClubToken":
         switch (name) {
           case "Burn":
-            return clubToken.clubTokenBurn({ log, io, db });
-            break;
+            return clubToken.clubTokenBurn({ log, io, db })
+            break
           case "Mint":
-            return clubToken.clubTokenMint({ log, io, db });
-            break;
+            return clubToken.clubTokenMint({ log, io, db })
+            break
           case "Approval":
-            return clubToken.clubTokenApproval({ log, io, db });
-            break;
+            return clubToken.clubTokenApproval({ log, io, db })
+            break
           case "Transfer":
-            return clubToken.clubTokenTransfer({ log, io, db });
-            break;
+            return clubToken.clubTokenTransfer({ log, io, db })
+            break
           case "OwnershipTransferred":
-            return clubToken.clubTokenOwnershipTransferred({ log, io, db });
-            break;
+            return clubToken.clubTokenOwnershipTransferred({ log, io, db })
+            break
           default:
-            return new Error("Event " + name + " not found");
+            return new Error("Event " + name + " not found")
         }
+
         break;
       case "SimpleCloversMarket":
         switch (name) {
@@ -183,6 +190,7 @@ export var handleEvent = function({ io, db, log }) {
             return new Error("Event " + name + " not found");
         }
         break;
+
       case "CloversController":
         switch (name) {
           case "cloverCommitted":
@@ -190,45 +198,45 @@ export var handleEvent = function({ io, db, log }) {
               log,
               io,
               db
-            });
-            break;
+            })
+            break
           case "cloverClaimed":
             return cloversController.cloversControllerCloverClaimed({
               log,
               io,
               db
-            });
-            break;
+            })
+            break
           case "stakeAndRewardRetrieved":
             return cloversController.cloversControllerStakeAndRewardRetrieved({
               log,
               io,
               db
-            });
-            break;
+            })
+            break
           case "cloverChallenged":
             return cloversController.cloversControllerCloverChallenged({
               log,
               io,
               db
-            });
-            break;
+            })
+            break
           case "OwnershipTransferred":
             return cloversController.cloversControllerOwnershipTransferred({
               log,
               io,
               db
-            });
-            break;
+            })
+            break
           default:
-            return new Error("Event " + name + " not found");
+            return new Error("Event " + name + " not found")
         }
-        break;
+        break
       default:
-        return new Error("Contract " + contract + " not found");
+        return new Error("Contract " + contract + " not found")
     }
   } catch (error) {
-    console.log("error!!!");
-    console.log(error);
+    console.log("error!!!")
+    console.log(error)
   }
-};
+}

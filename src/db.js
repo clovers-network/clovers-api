@@ -1,6 +1,6 @@
 import r from "rethinkdb"
 
-export default callback => {
+export default (callback) => {
   // connect to a database if needed, then pass it to `callback`:
   try {
     r.connect(

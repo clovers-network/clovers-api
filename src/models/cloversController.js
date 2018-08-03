@@ -1,4 +1,5 @@
-import r from "rethinkdb";
+
+#import r from "rethinkdb";
 
 export let cloversControllerCloverCommitted = async function({ log, io, db }) {
   console.log(log.name + " does not affect the database");
@@ -23,3 +24,4 @@ export let cloversControllerOwnershipTransferred = async function({
 }) {
   console.log(log.name + " does not affect the database");
 };
+

@@ -55,4 +55,4 @@ function changeUserBalance(user_id, amount, add, log) {
           });
       });
   });
-}
+

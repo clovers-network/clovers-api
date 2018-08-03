@@ -11,6 +11,9 @@ export default ({ config, db, io}) => {
   const load = (req, id, callback) => {
     r.db('clovers_v2').table('clovers').get(id).run(db, callback)
   }
+
+  const pageSize = 12
+
   let router = resource({
     id : 'clover',
 
@@ -18,15 +21,20 @@ export default ({ config, db, io}) => {
 
     index ({ query }, res) {
       const before = parseInt(query.before) || false
-      r.db('clovers_v2').table('clovers')
-        .orderBy(r.desc('modified'))
-        .filter((row) => {
-          return r.branch(
-            before,
-            row('modified').lt(before),
-            row
-          )
-        }).limit(12).run(db, toRes(res))
+      const page = Math.min((parseInt(query.page) || 1), 1e6)
+      const all = query.all && query.all === 'true'
+      if (before) {
+        r.db('clovers_v2').table('clovers')
+          .orderBy(r.desc('modified'))
+          .filter(r.row('modified').lt(before))
+          .limit(pageSize).run(db, toRes(res))
+      } else {
+        const offset = all ? 0 : pageSize * (page - 1)
+        const newLimit = all ? (pageSize * page) : pageSize
+        r.db('clovers_v2').table('clovers')
+          .orderBy(r.desc('modified'))
+          .skip(offset).limit(newLimit).run(db, toRes(res))
+      }
     },
 
     read ({ clover }, res) {
