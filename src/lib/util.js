@@ -12,6 +12,48 @@ import Reversi from "clovers-reversi";
 import svg_to_png from "svg-to-png";
 import fs from "fs-extra";
 import path from "path";
+import BigNumber from "bignumber.js";
+import utils from "web3-utils";
+
+export const oneEthInWei = utils.toWei("1");
+
+export async function getLowestPrice(
+  contract,
+  targetAmount,
+  _tokenId = null,
+  currentPrice = new BigNumber("0"),
+  useLittle = false
+) {
+  if (typeof targetAmount !== "object") {
+    targetAmount = new BigNumber(targetAmount);
+  }
+  let littleIncrement = new BigNumber(utils.toWei("0.001"));
+  let bigIncrement = new BigNumber(utils.toWei("0.1"));
+  currentPrice = currentPrice.add(useLittle ? littleIncrement : bigIncrement);
+  if (_tokenId) {
+    let resultOfSpend = await contract.getBuy(_tokenId, currentPrice);
+  } else {
+    let resultOfSpend = await contract.getBuy(currentPrice);
+  }
+  if (resultOfSpend.gt(targetAmount)) {
+    return useLittle
+      ? currentPrice
+      : getLowestPrice(
+          contract,
+          targetAmount,
+          _tokenId,
+          currentPrice.sub(bigIncrement),
+          true
+        );
+  }
+  return getLowestPrice(
+    contract,
+    targetAmount,
+    _tokenId,
+    currentPrice,
+    useLittle
+  );
+}
 
 export function parseLogForStorage(l) {
   Object.keys(l).map((key, index) => {
