@@ -6,6 +6,7 @@ import fs from 'fs'
 import path from 'path'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
+import xss from 'xss'
 
 export default ({ config, db, io}) => {
   const load = (req, id, callback) => {
@@ -64,7 +65,7 @@ export default ({ config, db, io}) => {
     const { id } = req.params
     const { user } = req.auth
     let name = req.body.name || ''
-    name = name.substring(0, 34)
+    name = xss('name').substring(0, 34)
     load(req, id, (err, clover) => {
       const owner = clover.owner.toLowerCase() === user.toLowerCase()
       if (err || !owner) {
