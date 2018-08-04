@@ -21,21 +21,25 @@ export default ({ config, db, io}) => {
     load,
 
     index ({ query }, res) {
-      const before = parseInt(query.before) || false
-      const page = Math.min((parseInt(query.page) || 1), 1e6)
-      const all = query.all && query.all === 'true'
-      if (before) {
-        r.db('clovers_v2').table('clovers')
-          .orderBy(r.desc('modified'))
-          .filter(r.row('modified').lt(before))
-          .limit(pageSize).run(db, toRes(res))
-      } else {
-        const offset = all ? 0 : pageSize * (page - 1)
-        const newLimit = all ? (pageSize * page) : pageSize
-        r.db('clovers_v2').table('clovers')
-          .orderBy(r.desc('modified'))
-          .skip(offset).limit(newLimit).run(db, toRes(res))
-      }
+      r.db('clovers_v2').table('clovers')
+        .orderBy(r.desc('modified')).run(db, toRes(res))
+
+      /* -------- paginated version ---------------- */
+      // const before = parseInt(query.before) || false
+      // const page = Math.min((parseInt(query.page) || 1), 1e6)
+      // const all = query.all && query.all === 'true'
+      // if (before) {
+      //   r.db('clovers_v2').table('clovers')
+      //     .orderBy(r.desc('modified'))
+      //     .filter(r.row('modified').lt(before))
+      //     .limit(pageSize).run(db, toRes(res))
+      // } else {
+      //   const offset = all ? 0 : pageSize * (page - 1)
+      //   const newLimit = all ? (pageSize * page) : pageSize
+      //   r.db('clovers_v2').table('clovers')
+      //     .orderBy(r.desc('modified'))
+      //     .skip(offset).limit(newLimit).run(db, toRes(res))
+      // }
     },
 
     read ({ clover }, res) {
