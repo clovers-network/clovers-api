@@ -65,18 +65,18 @@ export default ({ config, db, io }) => {
 		const { id } = req.params
 		const { user } = req.auth
 		let name = req.body.name || ''
-		name = name.substring(0, 34)
+		name = xss(name).substring(0, 34)
 		load(req, id, (err, dbUser) => {
 			if (!dbUser) {
 				dbUser = {
-					name: xss(name),
+					name,
 					address: user.toLowerCase(),
 					clovers: [],
 					created: null,
 					modified: null
 				}
 			} else {
-				dbUser.name = xss(name)
+				dbUser.name = name
 			}
 
 			dbUser.clovers = dbUser.clovers.map(c => c.board)
