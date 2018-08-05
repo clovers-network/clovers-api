@@ -7,13 +7,15 @@ var utils = require('ethers').utils
 
 export const oneEthInWei = utils.parseEther('1').toString(10)
 
-export const userTemplate = {
-  name: null,
-  address: null,
-  clovers: [],
-  created: '0x0',
-  modified: '0x0',
-  balance: '0x0'
+export function userTemplate() {
+  return {
+    name: null,
+    address: null,
+    clovers: [],
+    created: '0x0',
+    modified: '0x0',
+    balance: '0x0'
+  }
 }
 
 export function dodb(db, command) {
@@ -77,17 +79,27 @@ export function parseLogForStorage(l) {
 }
 
 export function padBigNum(amount) {
+  amount = amount
+    .toString(16)
+    .toLowerCase()
+    .replace('0x', '')
   var re = /[0-9A-Fa-f]{6}/g
-  if (re.test(amount.toString(16))) {
+  if (re.test(amount) || amount === '0') {
     amount =
       '0x' +
       amount
         .toString(16)
         .toLowerCase()
         .replace('0x', '')
+  } else {
+    console.log(amount + ' is not hex')
   }
   re.lastIndex = 0 // be sure to reset the index after using .text()
+  if (amount === '0x0') amount = 0
+  amount = amount === '0x0' ? '0' : amount.toString(16)
+  console.log('is it a bn?', typeof amount, amount)
   amount = new BigNumber(amount)
+
   if (amount.lt(0)) throw new Error('No Negative Numbers')
   return (
     '0x' +

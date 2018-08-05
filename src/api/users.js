@@ -1,7 +1,7 @@
 import resource from 'resource-router-middleware'
 
 import r from 'rethinkdb'
-import { toRes } from '../lib/util'
+import { toRes, userTemplate } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -72,13 +72,9 @@ export default ({ config, db, io }) => {
     name = xss(name).substring(0, 34)
     load(req, id, (err, dbUser) => {
       if (!dbUser) {
-        dbUser = {
-          name,
-          address: user.toLowerCase(),
-          clovers: [],
-          created: null,
-          modified: null
-        }
+        dbUser = userTemplate()
+        dbUser.name = name
+        dbUser.address = user.toLowerCase()
       } else {
         dbUser.name = name
       }

@@ -1,6 +1,6 @@
 import r from 'rethinkdb'
 import { events, wallet } from '../lib/ethers-utils'
-import { dodb, sym, padBigNum } from '../lib/util'
+import { dodb, sym, padBigNum, userTemplate } from '../lib/util'
 import Reversi from 'clovers-reversi'
 let db
 let io
@@ -83,7 +83,7 @@ async function updateUser(log) {
     await dodb(db, command)
     io && io.emit('updateUser', user)
   } else {
-    user = userTemplate
+    user = userTemplate()
     user.name = log.data._to
     user.address = log.data._to
     user.clovers = [log.data._tokenId]

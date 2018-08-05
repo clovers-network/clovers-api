@@ -27,7 +27,7 @@ const tables = [
   },
   {
     name: 'orders',
-    index: 'market'
+    index: 'id'
   }
 ]
 
@@ -190,9 +190,12 @@ function populateLogs() {
       console.log('Current block number: ' + blockNumber)
       try {
         Promise.all([
-          populateLog('Clovers').catch(reject)
-          // populateLog('ClubToken').catch(reject),
-          // populateLog('CloversController').catch(reject)
+          populateLog('Clovers').catch(reject),
+          populateLog('CloversController').catch(reject),
+          populateLog('ClubToken').catch(reject),
+          populateLog('ClubTokenController').catch(reject),
+          populateLog('CurationMarket').catch(reject),
+          populateLog('SimpleCloversMarket').catch(reject)
         ])
           .then(resolve)
           .catch(reject)
@@ -209,6 +212,10 @@ function populateLog(contract, key = 0) {
     if (key >= eventTypes.length) {
       resolve()
     } else {
+      if (!eventTypes[key]) {
+        console.log('dont watch this event' + eventTypes[key])
+        return resolve()
+      }
       console.log('populateLog - ' + contract + ' - ' + eventTypes[key])
       // console.log(events[contract].instance)
       console.log(eventTypes[key])
