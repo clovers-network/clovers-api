@@ -15,12 +15,12 @@ export default ({ config, db, io }) => {
       .table('users')
       .get(id)
       .default({})
-      .merge({
-        clovers: r
-          .db('clovers_v2')
-          .table('clovers')
-          .getAll(r.args(r.row('clovers').default([])))
-          .coerceTo('array')
+      .do(doc => {
+        return r.branch(
+          doc.hasFields('clovers'),
+          doc,
+          doc.merge({ clovers: [] })
+        )
       })
       .run(db, callback)
   }
@@ -74,12 +74,10 @@ export default ({ config, db, io }) => {
       if (!dbUser) {
         dbUser = userTemplate()
         dbUser.name = name
-        dbUser.address = user.toLowerCase()
+        dbUser.address = id.toLowerCase()
       } else {
         dbUser.name = name
       }
-
-      dbUser.clovers = dbUser.clovers.map(c => c.board)
 
       const owner = dbUser.address.toLowerCase() === user.toLowerCase()
       if (err || !owner) {
@@ -99,7 +97,7 @@ export default ({ config, db, io }) => {
             dbUser = changes[0].new_val
           }
           io.emit('updateUser', dbUser)
-          res.sendStatus(200).end()
+          res.json(dbUser).end()
         })
     })
   })
