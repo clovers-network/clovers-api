@@ -83,13 +83,13 @@ async function updateUser(log) {
     await dodb(db, command)
     io && io.emit('updateUser', user)
   } else {
-    user = {
-      name: log.data._to,
-      address: log.data._to,
-      clovers: [log.data._tokenId],
-      created: log.blockNumber,
-      modified: log.blockNumber
-    }
+    user = userTemplate
+    user.name = log.data._to
+    user.address = log.data._to
+    user.clovers = [log.data._tokenId]
+    user.created = log.blockNumber
+    user.modified = log.blockNumber
+
     command = r
       .db('clovers_v2')
       .table('users')

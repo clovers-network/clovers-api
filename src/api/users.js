@@ -100,9 +100,9 @@ export default ({ config, db, io }) => {
             return
           }
           if (changes[0]) {
-            newUser = changes[0].new_val
+            dbUser = changes[0].new_val
           }
-          io.emit('updateUser', newUser)
+          io.emit('updateUser', dbUser)
           res.sendStatus(200).end()
         })
     })
