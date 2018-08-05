@@ -38,7 +38,6 @@ export var socketing = function({ _io, _db }) {
 
 async function beginListen(contract, key = 0) {
   let eventTypes = events[contract].eventTypes
-  console.log(contract, eventTypes[key], eventTypes.length, key)
   if (key > eventTypes.length - 1) return
   beginListen(contract, key + 1)
   let eventType = events[contract].instance.interface.events[eventTypes[key]]

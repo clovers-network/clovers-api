@@ -1504,9 +1504,9 @@ clone@^2.0.0, clone@^2.1.1:
   version "2.1.1"
   resolved "https://registry.yarnpkg.com/clone/-/clone-2.1.1.tgz#d217d1e961118e3ac9a4b8bba3285553bf647cdb"
 
-clovers-contracts@^1.0.8:
-  version "1.0.8"
-  resolved "https://registry.yarnpkg.com/clovers-contracts/-/clovers-contracts-1.0.8.tgz#45a6e10f4f9d97676dc09aa365aff3819422eb8d"
+clovers-contracts@^1.0.10:
+  version "1.0.10"
+  resolved "https://registry.yarnpkg.com/clovers-contracts/-/clovers-contracts-1.0.10.tgz#339c997c8ddc88c404c0f3af8e0845827db2061a"
 
 clovers-reversi@^1.0.3:
   version "1.0.14"

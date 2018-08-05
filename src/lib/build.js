@@ -264,6 +264,8 @@ function populateLog(contract, key = 0) {
         let eventType =
           events[contract].instance.interface.events[eventTypes[key]]
         let transferCoder = iface.events[eventTypes[key]]
+        if (!eventType)
+          console.log('no ' + contract + ' - ' + eventTypes[key] + ' !!!!!!!')
         provider
           .getLogs({
             address: address.toLowerCase(),

@@ -34,7 +34,7 @@
   "license": "MIT",
   "dependencies": {
     "body-parser": "^1.13.3",
-    "clovers-contracts": "^1.0.8",
+    "clovers-contracts": "^1.0.10",
     "clovers-reversi": "^1.0.3",
     "compression": "^1.5.2",
     "cors": "^2.7.1",
