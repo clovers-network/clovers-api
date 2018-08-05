@@ -12,8 +12,16 @@ export default ({ config, db, io}) => resource({
    *  Errors terminate the request, success sets `req[id] = data`.
    */
   load(req, id, callback) {
-    r.db('clovers_v2').table('users').get(id).merge({
-      clovers: r.db('clovers_v2').table('clovers').getAll(r.args(r.row('clovers'))).coerceTo('array')
+    r.db('clovers_v2')
+      .table('users')
+      .get(id)
+      .default({})
+      .merge({
+        clovers: r
+          .db('clovers_v2')
+          .table('clovers')
+          .getAll(r.args(r.row('clovers').default([])))
+          .coerceTo('array')
     }).run(db, callback)
   },
 
