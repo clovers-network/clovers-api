@@ -1,78 +1,82 @@
-import r from "rethinkdb";
-import xss from "xss";
-import config from "../config.json";
-import { handleEvent } from "../socketing";
-import ethers from "ethers";
-import reversi from "clovers-reversi";
-import { parseLogForStorage } from "./util";
+import r from 'rethinkdb'
+import xss from 'xss'
+import config from '../config.json'
+import { handleEvent } from '../socketing'
+import ethers from 'ethers'
+import reversi from 'clovers-reversi'
+import { parseLogForStorage } from './util'
 
-import { provider, events, web3, web3mode } from "../lib/ethers-utils";
+import { provider, events, web3, web3mode } from '../lib/ethers-utils'
 
 const tables = [
   {
-    name: "clovers",
-    index: "board"
+    name: 'clovers',
+    index: 'board'
   },
   {
-    name: "users",
-    index: "address"
+    name: 'users',
+    index: 'address'
   },
   {
-    name: "chats",
-    index: "id"
+    name: 'chats',
+    index: 'id'
   },
   {
-    name: "logs",
-    index: "transactionHash"
+    name: 'logs',
+    index: 'transactionHash'
+  },
+  {
+    name: 'orders',
+    index: 'market'
   }
-];
+]
 
-let usernames = [];
-let clovernames = [];
-let db, io, running;
+let usernames = []
+let clovernames = []
+let db, io, running
 
 export function build(_db) {
-  db = _db;
-  rebuildDatabases();
+  db = _db
+  rebuildDatabases()
 }
 
 export function mine(_db, _io) {
-  if (!db) db = _db;
-  io = _io;
-  running = true;
-  io.on("mine", running => {
-    running = data;
-  });
+  if (!db) db = _db
+  io = _io
+  running = true
+  io.on('mine', running => {
+    running = data
+  })
   if (running) {
-    running = true;
-    run();
+    running = true
+    run()
     function run() {
-      reversi.mine();
+      reversi.mine()
       if (reversi.symmetrical) {
-        self.postMessage(reversi);
+        self.postMessage(reversi)
       }
       if (running) {
         setTimeout(() => {
-          mine();
-        }, 0);
+          mine()
+        }, 0)
       }
     }
     setInterval(() => {
-      self.postMessage({ hashRate });
-      hashRate = 0;
-    }, 1000);
-  } else if (data === "stop") {
-    running = false;
-    self.close();
+      self.postMessage({ hashRate })
+      hashRate = 0
+    }, 1000)
+  } else if (data === 'stop') {
+    running = false
+    self.close()
   } else {
-    self.close();
+    self.close()
   }
 }
 
 function rebuildDatabases() {
   // testEvent()
 
-  console.log("rebuildDatabases");
+  console.log('rebuildDatabases')
   createDB()
     .then(createTables)
     .then(populateLogs)
@@ -80,12 +84,12 @@ function rebuildDatabases() {
     .then(nameClovers)
     .then(nameUsers)
     .then(res => {
-      console.log("done!");
-      process.exit();
+      console.log('done!')
+      process.exit()
     })
     .catch(err => {
-      console.log(err);
-    });
+      console.log(err)
+    })
 }
 //
 // function testEvent() {
@@ -136,82 +140,82 @@ function rebuildDatabases() {
 //   }
 // }
 function createDB() {
-  console.log("createDB");
+  console.log('createDB')
   return new Promise((resolve, reject) => {
     r.dbList().run(db, (err, res) => {
-      if (err) return reject(err);
-      if (res.findIndex(a => a === "clovers_v2") > -1) {
-        console.log("dbDrop clovers_v2");
-        r.dbDrop("clovers_v2").run(db, (err, res) => {
-          if (err) return reject(err);
-          createDB().then(resolve);
-        });
+      if (err) return reject(err)
+      if (res.findIndex(a => a === 'clovers_v2') > -1) {
+        console.log('dbDrop clovers_v2')
+        r.dbDrop('clovers_v2').run(db, (err, res) => {
+          if (err) return reject(err)
+          createDB().then(resolve)
+        })
       } else {
-        console.log("dbCreate clovers_v2");
-        r.dbCreate("clovers_v2").run(db, (err, res) => {
-          if (err) return reject(err);
-          resolve();
-        });
+        console.log('dbCreate clovers_v2')
+        r.dbCreate('clovers_v2').run(db, (err, res) => {
+          if (err) return reject(err)
+          resolve()
+        })
       }
-    });
-  });
+    })
+  })
 }
 function createTables(i = 0) {
-  console.log("createTables");
+  console.log('createTables')
   return new Promise((resolve, reject) => {
     if (i >= tables.length) {
-      resolve();
+      resolve()
     } else {
-      let table = tables[i];
-      console.log("tableCreate " + table.name);
-      r.db("clovers_v2")
+      let table = tables[i]
+      console.log('tableCreate ' + table.name)
+      r.db('clovers_v2')
         .tableCreate(table.name, { primaryKey: table.index })
         .run(db, (err, result) => {
-          if (err) return reject(err);
+          if (err) return reject(err)
           createTables(i + 1).then(() => {
-            resolve();
-          });
-        });
+            resolve()
+          })
+        })
     }
-  });
+  })
 }
 
-let currBlock = null;
+let currBlock = null
 
 function populateLogs() {
-  console.log("populateLogs");
+  console.log('populateLogs')
   return new Promise((resolve, reject) => {
     provider.getBlockNumber().then(blockNumber => {
-      currBlock = blockNumber;
-      console.log("Current block number: " + blockNumber);
+      currBlock = blockNumber
+      console.log('Current block number: ' + blockNumber)
       try {
         Promise.all([
-          populateLog("Clovers").catch(reject)
+          populateLog('Clovers').catch(reject)
           // populateLog('ClubToken').catch(reject),
           // populateLog('CloversController').catch(reject)
         ])
           .then(resolve)
-          .catch(reject);
+          .catch(reject)
       } catch (err) {
-        reject(err);
+        reject(err)
       }
-    });
-  });
+    })
+  })
 }
 
 function populateLog(contract, key = 0) {
   return new Promise((resolve, reject) => {
-    let eventTypes = events[contract].eventTypes;
+    let eventTypes = events[contract].eventTypes
     if (key >= eventTypes.length) {
-      resolve();
+      resolve()
     } else {
-      console.log("populateLog - " + contract + " - " + eventTypes[key]);
+      console.log('populateLog - ' + contract + ' - ' + eventTypes[key])
       // console.log(events[contract].instance)
-      console.log(eventTypes[key]);
+      console.log(eventTypes[key])
       // console.log(eventType)
-      let address = events[contract].address;
-      let abi = events[contract].abi;
-      let iface = new ethers.Interface(abi);
+      let address = events[contract].address
+      let abi = events[contract].abi
+      let iface = new ethers.Interface(abi)
 
       // console.log(config.genesisBlock)
       if (web3mode) {
@@ -251,192 +255,192 @@ function populateLog(contract, key = 0) {
         // })
       } else {
         let eventType =
-          events[contract].instance.interface.events[eventTypes[key]];
-        let transferCoder = iface.events[eventTypes[key]];
+          events[contract].instance.interface.events[eventTypes[key]]
+        let transferCoder = iface.events[eventTypes[key]]
         provider
           .getLogs({
             address: address.toLowerCase(),
             topics: eventType().topics,
             fromBlock: config.genesisBlock,
-            toBlock: "latest"
+            toBlock: 'latest'
           })
           .then((logs, err) => {
-            if (err) return reject(err);
+            if (err) return reject(err)
 
-            console.log(eventType().name + ": " + logs.length + " logs");
+            console.log(eventType().name + ': ' + logs.length + ' logs')
 
             logs = logs.map(l => {
               try {
-                l.name = contract + "_" + eventType().name;
-                l.data = transferCoder.parse(l.topics, l.data);
-                l.data = parseLogForStorage(l.data);
+                l.name = contract + '_' + eventType().name
+                l.data = transferCoder.parse(l.topics, l.data)
+                l.data = parseLogForStorage(l.data)
               } catch (err) {
-                reject(err);
+                reject(err)
               }
-              return l;
-            });
+              return l
+            })
             return r
-              .db("clovers_v2")
-              .table("logs")
+              .db('clovers_v2')
+              .table('logs')
               .insert(logs)
               .run(db, (err, results) => {
-                if (err) return reject(err);
+                if (err) return reject(err)
                 return populateLog(contract, key + 1)
                   .then(resolve)
-                  .catch(reject);
-              });
+                  .catch(reject)
+              })
           })
           .catch(error => {
-            console.log("error!!!");
-            console.log(error);
-          });
+            console.log('error!!!')
+            console.log(error)
+          })
       }
     }
-  });
+  })
 }
 
 function processLogs() {
-  console.log("processLogs");
+  console.log('processLogs')
   return new Promise((resolve, reject) => {
-    console.log("a");
-    r.db("clovers_v2")
-      .table("logs")
-      .orderBy("blockNumber")
+    console.log('a')
+    r.db('clovers_v2')
+      .table('logs')
+      .orderBy('blockNumber')
       .run(db, (err, logs) => {
-        console.log("b");
-        if (err) return reject(err);
-        console.log("c");
+        console.log('b')
+        if (err) return reject(err)
+        console.log('c')
         processLog(logs)
           .then(() => {
-            console.log("processLog resolved");
-            resolve();
+            console.log('processLog resolved')
+            resolve()
           })
           .catch(error => {
-            console.log("processLog rejected");
-            reject(error);
-          });
-      });
-  });
+            console.log('processLog rejected')
+            reject(error)
+          })
+      })
+  })
 }
 
 function processLog(logs, i = 0) {
-  console.log("processing log " + i + "/" + logs.length);
+  console.log('processing log ' + i + '/' + logs.length)
   return new Promise((resolve, reject) => {
     if (i >= logs.length) {
-      resolve();
+      resolve()
     } else {
-      let log = logs[i];
+      let log = logs[i]
       handleEvent({ log, db })
         .then(() => {
           processLog(logs, i + 1)
             .then(resolve)
-            .catch(reject);
+            .catch(reject)
         })
-        .catch(reject);
+        .catch(reject)
     }
-  });
+  })
 }
 
 function nameClovers() {
-  console.log("nameClovers");
+  console.log('nameClovers')
   return new Promise((resolve, reject) => {
-    r.db("clovers")
-      .table("logs")
-      .filter({ name: "newCloverName" })
-      .orderBy("blockNumber")
+    r.db('clovers')
+      .table('logs')
+      .filter({ name: 'newCloverName' })
+      .orderBy('blockNumber')
       .run(db, (err, logs) => {
-        if (err) return reject(err);
-        console.log("newCloverName:", logs.length);
-        if (!logs.length) resolve();
+        if (err) return reject(err)
+        console.log('newCloverName:', logs.length)
+        if (!logs.length) resolve()
         logs.toArray((err, result) => {
-          if (err) return reject(err);
+          if (err) return reject(err)
           nameClover(result)
             .then(resolve)
-            .catch(reject);
-        });
-      });
-  });
+            .catch(reject)
+        })
+      })
+  })
 }
 
 function nameClover(logs, key = 0) {
   return new Promise((resolve, reject) => {
-    if (logs.length === key) resolve();
-    let log = logs[key];
-    r.db("clovers_v2")
-      .table("clovers")
+    if (logs.length === key) resolve()
+    let log = logs[key]
+    r.db('clovers_v2')
+      .table('clovers')
       .get(log.data.board)
       .run(db, (err, clover) => {
-        if (err) return reject(err);
+        if (err) return reject(err)
         if (!clover) {
-          console.log("clover " + log.data.board + " not found");
+          console.log('clover ' + log.data.board + ' not found')
           // return reject(new Error('clover ' + log.data.board + ' not found'))
           nameClover(logs, key + 1)
             .then(resolve)
-            .catch(reject);
+            .catch(reject)
         } else {
-          clover.name = xss(log.data.name);
-          r.db("clovers_v2")
-            .table("clovers")
+          clover.name = xss(log.data.name)
+          r.db('clovers_v2')
+            .table('clovers')
             .get(log.data.board)
             .update(clover)
             .run(db, (err, result) => {
-              if (err) return reject(err);
+              if (err) return reject(err)
               nameClover(logs, key + 1)
                 .then(resolve)
-                .catch(reject);
-            });
+                .catch(reject)
+            })
         }
-      });
-  });
+      })
+  })
 }
 
 function nameUsers() {
-  console.log("nameUsers");
+  console.log('nameUsers')
   return new Promise((resolve, reject) => {
-    r.db("clovers")
-      .table("logs")
-      .filter({ name: "newUserName" })
-      .orderBy("blockNumber")
+    r.db('clovers')
+      .table('logs')
+      .filter({ name: 'newUserName' })
+      .orderBy('blockNumber')
       .run(db, (err, logs) => {
-        if (err) return reject(err);
+        if (err) return reject(err)
         logs.toArray((err, result) => {
-          if (err) return reject(err);
+          if (err) return reject(err)
           nameUser(result)
             .then(resolve)
-            .catch(reject);
-        });
-      });
-  });
+            .catch(reject)
+        })
+      })
+  })
 }
 
 function nameUser(logs, key = 0) {
   return new Promise((resolve, reject) => {
-    if (logs.length === key) resolve();
-    let log = logs[key];
-    r.db("clovers_v2")
-      .table("users")
+    if (logs.length === key) resolve()
+    let log = logs[key]
+    r.db('clovers_v2')
+      .table('users')
       .get(log.data.player)
       .run(db, (err, user) => {
-        if (err) return reject(err);
+        if (err) return reject(err)
         if (!user) {
-          console.log("user " + log.data.player + " not found");
+          console.log('user ' + log.data.player + ' not found')
           // return reject(new Error('user ' + log.data.player + ' not found'))
           nameUser(logs, key + 1)
             .then(resolve)
-            .catch(reject);
+            .catch(reject)
         } else {
-          user.name = xss(log.data.name);
-          r.db("clovers_v2")
-            .table("users")
+          user.name = xss(log.data.name)
+          r.db('clovers_v2')
+            .table('users')
             .get(log.data.player)
             .update(user)
             .run(db, (err, result) => {
-              if (err) return reject(err);
+              if (err) return reject(err)
               nameUser(logs, key + 1)
                 .then(resolve)
-                .catch(reject);
-            });
+                .catch(reject)
+            })
         }
-      });
-  });
+      })
+  })
 }
