@@ -1,7 +1,7 @@
 import resource from 'resource-router-middleware'
 
 import r from 'rethinkdb'
-import { toRes } from '../lib/util'
+import { toRes, userTemplate } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -15,7 +15,7 @@ export default ({ config, db, io }) => {
       .table('users')
       .get(id)
       .default({})
-      .do((doc) => {
+      .do(doc => {
         return r.branch(
           doc.hasFields('clovers'),
           doc,
@@ -72,18 +72,12 @@ export default ({ config, db, io }) => {
     name = xss(name).substring(0, 34)
     load(req, id, (err, dbUser) => {
       if (!dbUser) {
-        dbUser = {
-          name,
-          address: user.toLowerCase(),
-          clovers: [],
-          created: null,
-          modified: null
-        }
+        dbUser = userTemplate()
+        dbUser.name = name
+        dbUser.address = id.toLowerCase()
       } else {
         dbUser.name = name
       }
-
-      dbUser.clovers = dbUser.clovers.map(c => c.board)
 
       const owner = dbUser.address.toLowerCase() === user.toLowerCase()
       if (err || !owner) {
@@ -103,11 +97,7 @@ export default ({ config, db, io }) => {
             dbUser = changes[0].new_val
           }
           io.emit('updateUser', dbUser)
-          res.json({
-            address: dbUser.address,
-            modified: dbUser.modified,
-            name: dbUser.name
-          }).end()
+          res.json(dbUser).end()
         })
     })
   })
