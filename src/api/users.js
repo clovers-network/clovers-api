@@ -15,12 +15,12 @@ export default ({ config, db, io }) => {
       .table('users')
       .get(id)
       .default({})
-      .merge({
-        clovers: r
-          .db('clovers_v2')
-          .table('clovers')
-          .getAll(r.args(r.row('clovers').default([])))
-          .coerceTo('array')
+      .do((doc) => {
+        return r.branch(
+          doc.hasFields('clovers'),
+          doc,
+          doc.merge({ clovers: [] })
+        )
       })
       .run(db, callback)
   }
