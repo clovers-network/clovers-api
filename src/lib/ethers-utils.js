@@ -1,10 +1,11 @@
 import config from '../config'
 import {
-	Clovers,
-	ClubToken,
-	CloversController,
-	SimpleCloversMarket,
-	CurationMarket
+  Clovers,
+  ClubToken,
+  CloversController,
+  SimpleCloversMarket,
+  CurationMarket,
+  ClubTokenController
 } from 'clovers-contracts'
 var ethers = Object.assign(require('ethers'), require('ethers-contracts'))
 
@@ -21,40 +22,49 @@ var infuraProvider = new ethers.providers.InfuraProvider(network)
 var etherscanProvider = new ethers.providers.EtherscanProvider(network)
 
 export var jsonRpcProvider = new ethers.providers.JsonRpcProvider(
-	'http://localhost:7545',
-	ethers.providers.networks.unspecified
+  'http://localhost:7545',
+  ethers.providers.networks.unspecified
 )
 
 var fallbackProvider = new ethers.providers.FallbackProvider([
-	infuraProvider,
-	etherscanProvider
-	// jsonRpcProvider
+  infuraProvider,
+  etherscanProvider
+  // jsonRpcProvider
 ])
 export let provider = providers.getDefaultProvider(network)
 // export let provider = fallbackProvider;
 // export let provider = jsonRpcProvider;
 
 var web3Provider = ZeroClientProvider({
-	getAccounts: function() {},
-	rpcUrl: 'https://rinkeby.infura.io/v3/' + config.infuraKey
+  getAccounts: function() {},
+  rpcUrl: 'https://rinkeby.infura.io/v3/' + config.infuraKey
 })
 export var web3 = new Web3(web3Provider)
 
 let simpleCloversMarketABI = SimpleCloversMarket.abi
 let simpleCloversMarketAddress =
-	SimpleCloversMarket.networks[config.networkId].address
+  SimpleCloversMarket.networks[config.networkId].address
 let simpleCloversMarketInstance = new ethers.Contract(
-	simpleCloversMarketAddress,
-	simpleCloversMarketABI,
-	provider
+  simpleCloversMarketAddress,
+  simpleCloversMarketABI,
+  provider
 )
 
 let curationMarketABI = CurationMarket.abi
 let curationMarketAddress = CurationMarket.networks[config.networkId].address
 let curationMarketInstance = new ethers.Contract(
-	curationMarketAddress,
-	curationMarketABI,
-	provider
+  curationMarketAddress,
+  curationMarketABI,
+  provider
+)
+
+let clubTokenControllerABI = ClubTokenController.abi
+let clubTokenControllerAddress =
+  ClubTokenController.networks[config.networkId].address
+let clubTokenControllerInstance = new ethers.Contract(
+  clubTokenControllerAddress,
+  clubTokenControllerABI,
+  provider
 )
 
 let cloversABI = Clovers.abi
@@ -66,80 +76,106 @@ let cloversWeb3Instance = _clovers.at(cloversAddress)
 let clubTokenABI = ClubToken.abi
 let clubTokenAddress = ClubToken.networks[config.networkId].address
 let clubTokenInstance = new ethers.Contract(
-	clubTokenAddress,
-	clubTokenABI,
-	provider
+  clubTokenAddress,
+  clubTokenABI,
+  provider
 )
 let _clubToken = web3.eth.contract(clubTokenABI)
 let clubTokenWeb3Instance = _clubToken.at(clubTokenAddress)
 
 let cloversControllerABI = CloversController.abi
 let cloversControllerAddress =
-	CloversController.networks[config.networkId].address
+  CloversController.networks[config.networkId].address
 let cloversControllerInstance = new ethers.Contract(
-	cloversControllerAddress,
-	cloversControllerABI,
-	provider
+  cloversControllerAddress,
+  cloversControllerABI,
+  provider
 )
 let _cloversController = web3.eth.contract(cloversControllerABI)
 let cloversControllerWeb3Instance = _cloversController.at(
-	cloversControllerAddress
+  cloversControllerAddress
 )
 
 const walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
 
 export let wallet = {
-	CloversController: new ethers.Contract(
-		cloversControllerAddress,
-		cloversControllerABI,
-		walletProvider
-	)
+  CloversController: new ethers.Contract(
+    cloversControllerAddress,
+    cloversControllerABI,
+    walletProvider
+  )
 }
 
 export let events = {
-	SimpleCloversMarket: {
-		abi: simpleCloversMarketABI,
-		address: simpleCloversMarketAddress,
-		instance: simpleCloversMarketInstance,
-		eventTypes: ['updatePrice', 'OwnershipTransferred']
-	},
-	CurationMarket: {
-		abi: curationMarketABI,
-		address: curationMarketAddress,
-		instance: curationMarketInstance,
-		eventTypes: ['Transfer', 'Mint', 'Burn', 'OwnershipTransferred']
-	},
-	Clovers: {
-		abi: cloversABI,
-		address: cloversAddress,
-		instance: cloversInstance,
-		// web3instance: cloversWeb3Instance,
-		eventTypes: [
-			'Transfer',
-			'Approval',
-			'ApprovalForAll',
-			'OwnershipTransferred'
-		]
-	},
-	ClubToken: {
-		abi: clubTokenABI,
-		address: clubTokenAddress,
-		instance: clubTokenInstance,
-		// web3instance: clubTokenWeb3Instance,
-		eventTypes: ['Burn', 'Mint', 'Approval', 'Transfer', 'OwnershipTransferred']
-	},
-	CloversController: {
-		abi: cloversControllerABI,
-		address: cloversControllerAddress,
-		instance: cloversControllerInstance,
-		// web3instance: cloversControllerWeb3Instance,
-		eventTypes: [
-			'cloverCommitted',
-			'cloverClaimed',
-			// "stakeAndRewardRetrieved",
-			// "cloverChallenged",
-			// "stakeRetrieved",
-			'OwnershipTransferred'
-		]
-	}
+  SimpleCloversMarket: {
+    abi: simpleCloversMarketABI,
+    address: simpleCloversMarketAddress,
+    instance: simpleCloversMarketInstance,
+    eventTypes: [
+      'updatePrice'
+      // 'OwnershipTransferred'
+    ]
+  },
+  CurationMarket: {
+    abi: curationMarketABI,
+    address: curationMarketAddress,
+    instance: curationMarketInstance,
+    eventTypes: [
+      'Transfer',
+      'Mint',
+      'Burn',
+      'Buy',
+      'Sell'
+      // 'OwnershipTransferred'
+    ]
+  },
+  Clovers: {
+    abi: cloversABI,
+    address: cloversAddress,
+    instance: cloversInstance,
+    // web3instance: cloversWeb3Instance,
+    eventTypes: [
+      'Transfer'
+      // 'Approval',
+      // 'ApprovalForAll',
+      // 'OwnershipTransferred'
+    ]
+  },
+  ClubToken: {
+    abi: clubTokenABI,
+    address: clubTokenAddress,
+    instance: clubTokenInstance,
+    // web3instance: clubTokenWeb3Instance,
+    eventTypes: [
+      'Burn',
+      'Mint',
+      // 'Approval',
+      'Transfer'
+      //'OwnershipTransferred'
+    ]
+  },
+  ClubTokenController: {
+    abi: clubTokenControllerABI,
+    address: clubTokenControllerAddress,
+    instance: clubTokenControllerInstance,
+    eventTypes: [
+      'Buy',
+      'Sell'
+      // 'OwnershipTransferred'
+    ]
+  },
+  CloversController: {
+    abi: cloversControllerABI,
+    address: cloversControllerAddress,
+    instance: cloversControllerInstance,
+    // web3instance: cloversControllerWeb3Instance,
+    eventTypes: [
+      // 'cloverCommitted',
+      // 'cloverClaimed'
+      // "stakeAndRewardRetrieved",
+      // "cloverChallenged",
+      // "stakeRetrieved",
+      // 'OwnershipTransferred'
+    ]
+  }
 }

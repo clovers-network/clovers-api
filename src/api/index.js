@@ -1,15 +1,19 @@
-import { version } from "../../package.json"
-import { Router } from "express"
+import { version } from '../../package.json'
+import { Router } from 'express'
 
-import clovers from "./clovers"
-import users from "./users"
-import logs from "./logs"
+import clovers from './clovers'
+import orders from './orders'
+import users from './users'
+import logs from './logs'
 
 export default ({ config, db, io }) => {
   let api = Router()
 
   // mount the clovers resource
   api.use('/clovers', clovers({ config, db, io }))
+
+  // mount the orders resource
+  api.use('/orders', orders({ config, db, io }))
 
   // mount the users resource
   api.use('/users', users({ config, db, io }))
