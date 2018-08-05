@@ -11,6 +11,9 @@ export default ({ config, db, io }) => {
    *  Errors terminate the request, success sets `req[id] = data`.
    */
   const load = (req, id, callback) => {
+    if (typeof id === 'string') {
+      id = id.toLowerCase()
+    }
     r.db('clovers_v2')
       .table('users')
       .get(id)
@@ -71,10 +74,9 @@ export default ({ config, db, io }) => {
     let name = req.body.name || ''
     name = xss(name).substring(0, 34)
     load(req, id, (err, dbUser) => {
-      if (!dbUser) {
-        dbUser = userTemplate()
+      if (!dbUser.address) {
+        dbUser = userTemplate(id.toLowerCase())
         dbUser.name = name
-        dbUser.address = id.toLowerCase()
       } else {
         dbUser.name = name
       }

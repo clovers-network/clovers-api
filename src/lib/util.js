@@ -7,10 +7,10 @@ var utils = require('ethers').utils
 
 export const oneEthInWei = utils.parseEther('1').toString(10)
 
-export function userTemplate() {
+export function userTemplate(address = null) {
   return {
     name: null,
-    address: null,
+    address: address,
     clovers: [],
     created: '0x0',
     modified: '0x0',
