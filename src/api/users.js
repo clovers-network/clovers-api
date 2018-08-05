@@ -28,6 +28,8 @@ export default ({ config, db, io }) => {
   // const pageSize = 12;
 
   let router = resource({
+    load,
+
     /** Property name to store preloaded entity on `request`. */
     id: 'user',
 
