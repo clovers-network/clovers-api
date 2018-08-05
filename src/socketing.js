@@ -32,14 +32,19 @@ export var socketing = function({ _io, _db }) {
   beginListen('CloversController')
   beginListen('SimpleCloversMarket')
   beginListen('CurationMarket')
+  beginListen('ClubTokenController')
 }
 
 async function beginListen(contract, key = 0) {
   let eventTypes = events[contract].eventTypes
+  console.log(contract, eventTypes[key], eventTypes.length, key)
   if (key > eventTypes.length - 1) return
   beginListen(contract, key + 1)
   let eventType = events[contract].instance.interface.events[eventTypes[key]]
-  if (!eventType) return
+  if (!eventType) {
+    console.log(eventTypes[key] + ' doesnt exists')
+    return
+  }
   // let listen = "on" + eventType().name.toLowerCase();
   // events[contract].instance[listen] = (...log) => {
   //   console.log("!!!!!");
