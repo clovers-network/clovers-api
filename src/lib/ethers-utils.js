@@ -135,7 +135,7 @@ export let events = {
     instance: cloversInstance,
     // web3instance: cloversWeb3Instance,
     eventTypes: [
-      // 'Transfer'
+      'Transfer'
       // 'Approval',
       // 'ApprovalForAll',
       // 'OwnershipTransferred'
