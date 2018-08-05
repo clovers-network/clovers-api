@@ -22,8 +22,8 @@ const tables = [
     index: 'id'
   },
   {
-    name: 'logs',
-    index: 'transactionHash'
+    name: 'logs'
+    // index: 'transactionHash'
   },
   {
     name: 'orders',
@@ -206,8 +206,6 @@ function populateLog(contract, key = 0) {
         return resolve()
       }
       console.log('populateLog - ' + contract + ' - ' + eventTypes[key])
-      // console.log(events[contract].instance)
-      // console.log(eventType)
       let address = events[contract].address
       let abi = events[contract].abi
       let iface = new ethers.Interface(abi)
@@ -215,8 +213,9 @@ function populateLog(contract, key = 0) {
       let eventType =
         events[contract].instance.interface.events[eventTypes[key]]
       let transferCoder = iface.events[eventTypes[key]]
-      if (!eventType)
-        console.log('no ' + contract + ' - ' + eventTypes[key] + ' !!!!!!!')
+      if (!eventType) {
+        throw new Error('no ' + contract + ' - ' + eventTypes[key])
+      }
 
       provider
         .getLogs({
