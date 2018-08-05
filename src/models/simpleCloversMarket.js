@@ -1,46 +1,48 @@
-import r from "rethinkdb";
-import utils from "web3-utils";
-import BigNumber from "bignumber.js";
-import { padBigNum } from "../lib/util";
-
+import r from 'rethinkdb'
+import utils from 'web3-utils'
+import BigNumber from 'bignumber.js'
+import { padBigNum, dodb } from '../lib/util'
+let db, io
 // event updatePrice(uint256 _tokenId, uint256 price);
-export let simpleCloversMarketUpdatePrice = async function({ log, io, db }) {
-  console.log(log.name + " called");
-  let _tokenId = log.data._tokenId;
-  await changeCloverPrice(_tokenId, log);
-};
+export let simpleCloversMarketUpdatePrice = async function({
+	log,
+	io: _io,
+	db: _db
+}) {
+	db = _db
+	io = _io
+
+	console.log(log.name + ' called')
+	let _tokenId = log.data._tokenId
+	await changeCloverPrice(_tokenId, log)
+}
 
 export let simpleCloversMarketOwnershipTransferred = async function({
-  log,
-  io,
-  db
+	log,
+	io,
+	db
 }) {
-  console.log(log.name + " does not affect the database");
-};
+	console.log(log.name + ' does not affect the database')
+}
 
-function changeCloverPrice(_tokenId, log) {
-  return new Promise((resolve, reject) => {
-    let price = log.data.price;
-    price = typeof price == "object" ? price : new BigNumber(price);
+async function changeCloverPrice(_tokenId, log) {
+	let price = log.data.price
+	price = typeof price == 'object' ? price : new BigNumber(price)
 
-    r.db("clovers_v2")
-      .table("clovers")
-      .get(_tokenId)
-      .run(db, (err, clover) => {
-        if (err) return reject(err);
+	let command = r
+		.db('clovers_v2')
+		.table('clovers')
+		.get(_tokenId)
+	let clover = await dodb(db, command)
 
-        clover.price = padBigNum(price.toString(16));
-        clover.modified = log.blockNumber;
+	clover.price = padBigNum(price.toString(16))
+	clover.modified = log.blockNumber
 
-        r.db("clovers_v2")
-          .table("clover")
-          .get(_tokenId)
-          .update(clover)
-          .run(db, (err, result) => {
-            if (err) return reject(err);
-            io && io.emit("updateClover", clover);
-            resolve();
-          });
-      });
-  });
+	command = r
+		.db('clovers_v2')
+		.table('clover')
+		.get(_tokenId)
+		.update(clover)
+	await dodb(db, command)
+	io && io.emit('updateClover', clover)
 }
