@@ -9,8 +9,8 @@ import {
 } from 'clovers-contracts'
 var ethers = Object.assign(require('ethers'), require('ethers-contracts'))
 
-const ZeroClientProvider = require('web3-provider-engine/zero.js')
-import Web3 from 'web3'
+// const ZeroClientProvider = require('web3-provider-engine/zero.js')
+// import Web3 from 'web3'
 export let iface = ethers.Interface
 export let web3mode = false
 ethers.apiToken = config.etherscanAPI
@@ -35,11 +35,11 @@ export let provider = providers.getDefaultProvider(network)
 // export let provider = fallbackProvider;
 // export let provider = jsonRpcProvider;
 
-var web3Provider = ZeroClientProvider({
-  getAccounts: function() {},
-  rpcUrl: 'https://rinkeby.infura.io/v3/' + config.infuraKey
-})
-export var web3 = new Web3(web3Provider)
+// var web3Provider = ZeroClientProvider({
+//   getAccounts: function() {},
+//   rpcUrl: 'https://rinkeby.infura.io/v3/' + config.infuraKey
+// })
+// export var web3 = new Web3(web3Provider)
 
 let simpleCloversMarketABI = SimpleCloversMarket.abi
 let simpleCloversMarketAddress =
@@ -70,8 +70,8 @@ let clubTokenControllerInstance = new ethers.Contract(
 let cloversABI = Clovers.abi
 let cloversAddress = Clovers.networks[config.networkId].address
 let cloversInstance = new ethers.Contract(cloversAddress, cloversABI, provider)
-let _clovers = web3.eth.contract(cloversABI)
-let cloversWeb3Instance = _clovers.at(cloversAddress)
+// let _clovers = web3.eth.contract(cloversABI)
+// let cloversWeb3Instance = _clovers.at(cloversAddress)
 
 let clubTokenABI = ClubToken.abi
 let clubTokenAddress = ClubToken.networks[config.networkId].address
@@ -80,8 +80,8 @@ let clubTokenInstance = new ethers.Contract(
   clubTokenABI,
   provider
 )
-let _clubToken = web3.eth.contract(clubTokenABI)
-let clubTokenWeb3Instance = _clubToken.at(clubTokenAddress)
+// let _clubToken = web3.eth.contract(clubTokenABI)
+// let clubTokenWeb3Instance = _clubToken.at(clubTokenAddress)
 
 let cloversControllerABI = CloversController.abi
 let cloversControllerAddress =
@@ -91,10 +91,10 @@ let cloversControllerInstance = new ethers.Contract(
   cloversControllerABI,
   provider
 )
-let _cloversController = web3.eth.contract(cloversControllerABI)
-let cloversControllerWeb3Instance = _cloversController.at(
-  cloversControllerAddress
-)
+// let _cloversController = web3.eth.contract(cloversControllerABI)
+// let cloversControllerWeb3Instance = _cloversController.at(
+//   cloversControllerAddress
+// )
 
 const walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
 
@@ -112,7 +112,7 @@ export let events = {
     address: simpleCloversMarketAddress,
     instance: simpleCloversMarketInstance,
     eventTypes: [
-      'updatePrice'
+      // 'updatePrice'
       // 'OwnershipTransferred'
     ]
   },
@@ -122,8 +122,8 @@ export let events = {
     instance: curationMarketInstance,
     eventTypes: [
       'Transfer',
-      'Mint',
-      'Burn',
+      // 'Mint',
+      // 'Burn',
       'Buy',
       'Sell'
       // 'OwnershipTransferred'
@@ -135,7 +135,7 @@ export let events = {
     instance: cloversInstance,
     // web3instance: cloversWeb3Instance,
     eventTypes: [
-      // 'Transfer'
+      'Transfer'
       // 'Approval',
       // 'ApprovalForAll',
       // 'OwnershipTransferred'
@@ -147,8 +147,8 @@ export let events = {
     instance: clubTokenInstance,
     // web3instance: clubTokenWeb3Instance,
     eventTypes: [
-      'Burn',
-      'Mint',
+      // 'Burn',
+      // 'Mint',
       // 'Approval',
       'Transfer'
       //'OwnershipTransferred'
@@ -162,6 +162,7 @@ export let events = {
       'Buy',
       'Sell'
       // 'OwnershipTransferred'
+      // 'Transfer'
     ]
   },
   CloversController: {

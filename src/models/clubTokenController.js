@@ -11,7 +11,7 @@ export let clubTokenControllerSell = async function({ log, io, db }) {
 }
 async function addBuySell(log, user, isBuy, db) {
   isBuy = isBuy === 'buy'
-  console.log(log)
+
   let order = {
     market: 'ClubToken',
     created: log.blockNumber,

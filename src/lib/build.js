@@ -182,28 +182,17 @@ function createTables(i = 0) {
 
 let currBlock = null
 
-function populateLogs() {
+async function populateLogs() {
   console.log('populateLogs')
-  return new Promise((resolve, reject) => {
-    provider.getBlockNumber().then(blockNumber => {
-      currBlock = blockNumber
-      console.log('Current block number: ' + blockNumber)
-      try {
-        Promise.all([
-          populateLog('Clovers').catch(reject),
-          populateLog('CloversController').catch(reject),
-          populateLog('ClubToken').catch(reject),
-          populateLog('ClubTokenController').catch(reject),
-          populateLog('CurationMarket').catch(reject),
-          populateLog('SimpleCloversMarket').catch(reject)
-        ])
-          .then(resolve)
-          .catch(reject)
-      } catch (err) {
-        reject(err)
-      }
-    })
-  })
+  let blockNumber = await provider.getBlockNumber()
+  currBlock = blockNumber
+  console.log('Current block number: ' + blockNumber)
+  await populateLog('Clovers')
+  await populateLog('CloversController')
+  await populateLog('ClubToken')
+  await populateLog('ClubTokenController')
+  await populateLog('CurationMarket')
+  await populateLog('SimpleCloversMarket')
 }
 
 function populateLog(contract, key = 0) {
@@ -218,92 +207,63 @@ function populateLog(contract, key = 0) {
       }
       console.log('populateLog - ' + contract + ' - ' + eventTypes[key])
       // console.log(events[contract].instance)
-      console.log(eventTypes[key])
       // console.log(eventType)
       let address = events[contract].address
       let abi = events[contract].abi
       let iface = new ethers.Interface(abi)
 
-      // console.log(config.genesisBlock)
-      if (web3mode) {
-        // let eventType = events[contract].instance.interface.events[eventTypes[key]]
-        // var filter = web3.eth.filter({
-        //   fromBlock: 0,
-        //   toBlock: 20,
-        //   topics: eventType().topics
-        // })
-        // filter.get((err, logs) => {
-        //   let event = abi.find((a) => a.name === eventType().name)
-        //   let names = event.inputs.map((o) => o.name)
-        //   let types = event.inputs.map((o) => o.type)
-        //   logs.map((l) => {
-        //     try {
-        //       console.log(l)
-        //       console.log(names, types, l.data)
-        //       let decoded = iface.decodeParams(names, types, l.data)
-        //       l.data = decoded
-        //       // if (eventType.name === 'Registered') {
-        //       //   l.data.lastPaidAmount = l.data.lastPaidAmount.toString()
-        //       //   l.data.created = l.data.modified.toString()
-        //       //   l.data.modified = l.data.modified.toString()
-        //       //   l.data.findersFee = l.data.findersFee.toString()
-        //       // }
-        //       l.name = contract + '_' + eventType().name
-        //     } catch (err) {
-        //       console.log(err)
-        //     }
-        //     return l
-        //   })
-        //   console.log(logs)
-        //   return r.db('clovers_v2').table('logs').insert(logs).run(db, (err, results) => {
-        //     if (err) return reject(err)
-        //     return populateLog(contract, key + 1).then(resolve).catch(reject)
-        //   })
-        // })
-      } else {
-        let eventType =
-          events[contract].instance.interface.events[eventTypes[key]]
-        let transferCoder = iface.events[eventTypes[key]]
-        if (!eventType)
-          console.log('no ' + contract + ' - ' + eventTypes[key] + ' !!!!!!!')
-        provider
-          .getLogs({
-            address: address.toLowerCase(),
-            topics: eventType().topics,
-            fromBlock: config.genesisBlock,
-            toBlock: 'latest'
+      let eventType =
+        events[contract].instance.interface.events[eventTypes[key]]
+      let transferCoder = iface.events[eventTypes[key]]
+      if (!eventType)
+        console.log('no ' + contract + ' - ' + eventTypes[key] + ' !!!!!!!')
+
+      provider
+        .getLogs({
+          address: address.toLowerCase(),
+          topics: eventType().topics,
+          fromBlock: 0,
+          fromBlock: config.genesisBlock,
+          toBlock: 'latest'
+        })
+        .then((logs, err) => {
+          if (err) return reject(err)
+
+          console.log(eventType().name + ': ' + logs.length + ' logs')
+          logs = logs.filter(log => {
+            if (log.address.toLowerCase() !== address.toLowerCase()) {
+              console.log(log.address)
+              console.log('not my contract!!!!!')
+              return false
+            } else {
+              return true
+            }
           })
-          .then((logs, err) => {
-            if (err) return reject(err)
-
-            console.log(eventType().name + ': ' + logs.length + ' logs')
-
-            logs = logs.map(l => {
-              try {
-                l.name = contract + '_' + eventType().name
-                l.data = transferCoder.parse(l.topics, l.data)
-                l.data = parseLogForStorage(l.data)
-              } catch (err) {
-                reject(err)
-              }
-              return l
+          logs = logs.map(l => {
+            try {
+              l.name = contract + '_' + eventType().name
+              l.data = transferCoder.parse(l.topics, l.data)
+              l.data = parseLogForStorage(l.data)
+            } catch (err) {
+              reject(err)
+            }
+            return l
+          })
+          return r
+            .db('clovers_v2')
+            .table('logs')
+            .insert(logs)
+            .run(db, (err, results) => {
+              if (err) return reject(err)
+              return populateLog(contract, key + 1)
+                .then(resolve)
+                .catch(reject)
             })
-            return r
-              .db('clovers_v2')
-              .table('logs')
-              .insert(logs)
-              .run(db, (err, results) => {
-                if (err) return reject(err)
-                return populateLog(contract, key + 1)
-                  .then(resolve)
-                  .catch(reject)
-              })
-          })
-          .catch(error => {
-            console.log('error!!!')
-            console.log(error)
-          })
-      }
+        })
+        .catch(error => {
+          console.log('error!!!')
+          console.log(error)
+        })
     }
   })
 }
@@ -311,14 +271,15 @@ function populateLog(contract, key = 0) {
 function processLogs() {
   console.log('processLogs')
   return new Promise((resolve, reject) => {
-    console.log('a')
     r.db('clovers_v2')
       .table('logs')
-      .orderBy('blockNumber')
+      .orderBy(
+        r.asc('blockNumber'),
+        r.asc('transactionIndex'),
+        r.asc('logIndex')
+      )
       .run(db, (err, logs) => {
-        console.log('b')
         if (err) return reject(err)
-        console.log('c')
         processLog(logs)
           .then(() => {
             console.log('processLog resolved')

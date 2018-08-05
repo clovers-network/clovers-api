@@ -9,13 +9,13 @@ export const oneEthInWei = utils.parseEther('1').toString(10)
 
 export function userTemplate(address = null) {
   return {
-    name: null,
+    name: '',
     address: address,
     clovers: [],
-    created: '0x0',
-    modified: '0x0',
-    balance: '0x0',
-    curationMarket: []
+    created: '0',
+    modified: '0',
+    balance: '0',
+    curationMarket: {}
   }
 }
 
@@ -53,7 +53,7 @@ export async function getLowestPrice(
           contract,
           targetAmount,
           _tokenId,
-          currentPrice.sub(bigIncrement),
+          currentPrice.minus(bigIncrement),
           true
         )
   }
@@ -72,7 +72,7 @@ export function parseLogForStorage(l) {
       if (key === '_tokenId') {
         l[key] = '0x' + l[key]._bn.toString(16)
       } else {
-        l[key] = padBigNum(l[key]._bn.toString(16))
+        l[key] = l[key]._bn.toString(10)
       }
     }
   })
@@ -83,15 +83,11 @@ export function padBigNum(amount) {
   if (amount.constructor === Array) {
     amount = amount[0]
   }
-  amount = typeof amount === 'object' ? amount : new BigNumber(amount, 16)
-  if (amount.lt('0')) throw new Error('No Negative Numbers')
-  return (
-    '0x' +
-    amount
-      .toString(16)
-      .replace('0x', '')
-      .padStart(64, 0)
-  )
+  amount = typeof amount === 'object' ? amount : new BigNumber(amount)
+  if (amount.lt(0)) {
+    throw new Error('no-negative-numbers')
+  }
+  return amount.toString(10)
 }
 
 export function toRes(res, status = 200) {

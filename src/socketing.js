@@ -102,11 +102,10 @@ async function beginListen(contract, key = 0) {
 
 export var handleEvent = async function({ io, db, log }) {
   io && io.emit('addEvent', log)
-  console.log('handleEvent ' + log.name)
   let foo = log.name.split('_')
   let contract = foo[0]
   let name = foo[1]
-
+  console.log('handle ' + name + ' from ' + contract)
   switch (contract) {
     case 'Clovers':
       if (typeof clovers['clovers' + name] === 'function') {

@@ -78,8 +78,7 @@ async function updateUser(log) {
     command = r
       .db('clovers_v2')
       .table('users')
-      .get(log.data._to)
-      .update(user)
+      .insert(user, { returnChanges: true, conflict: 'update' })
     await dodb(db, command)
     io && io.emit('updateUser', user)
   } else {
@@ -111,8 +110,8 @@ async function updateClover(log) {
   command = r
     .db('clovers_v2')
     .table('clovers')
-    .get(log.data._tokenId)
-    .update(clover)
+    .insert(clover, { returnChanges: true, conflict: 'update' })
+
   await dodb(db, command)
   io && io.emit('updateClover', clover)
 
@@ -127,8 +126,8 @@ async function updateClover(log) {
     command = r
       .db('clovers_v2')
       .table('users')
-      .get(log.data._to)
-      .update(user)
+      .insert(user, { returnChanges: true, conflict: 'update' })
+
     await dodb(db, command)
     io && io.emit('updateUser', user)
   } else {
