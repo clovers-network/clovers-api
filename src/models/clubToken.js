@@ -65,10 +65,11 @@ async function changeUserBalance(user_id, amount, add, log) {
   } else if (!user.balance) {
     user.balance = userTemplate().balance
   }
+  console.log(user.balance)
+  user.balance = new BigNumber(user.balance)
+  console.log(user.balance)
   user.balance = padBigNum(
-    add
-      ? new BigNumber(user.balance).add(amount)
-      : new BigNumber(user.balance).sub(amount)
+    add ? user.balance.plus(amount) : user.balance.sub(amount)
   )
   user.modified = log.blockNumber
   command = r

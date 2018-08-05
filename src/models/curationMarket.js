@@ -18,8 +18,8 @@ async function addBuySell(log, user, isBuy, db) {
   isBuy = isBuy === 'buy'
   let order = {
     market: log.data._tokenId,
-    created: log.data.blockNumber,
-    transactionIndex: log.data.transactionIndex,
+    created: log.blockNumber,
+    transactionIndex: log.transactionIndex,
     type: isBuy ? 'buy' : 'sell',
     user,
     tokens: padBigNum(log.data.tokens),
@@ -153,11 +153,13 @@ async function changeUserBalance(user_id, amount, _tokenId, add, log) {
     .table('users')
     .get(user_id)
   let user = await dodb(db, command)
+  console.log(userTemplate())
+  if (!user.curationMarket) user.curationMarket = userTemplate().curationMarket
   if (!user.curationMarket[_tokenId]) {
     user.curationMarket[_tokenId] = null
   }
   let newVal = add
-    ? new BigNumber(user.curationMarket[_tokenId]).add(amount)
+    ? new BigNumber(user.curationMarket[_tokenId]).plus(amount)
     : new BigNumber(user.curationMarket[_tokenId]).sub(amount)
 
   if (newVal.eq(0)) {

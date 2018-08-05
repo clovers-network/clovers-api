@@ -85,7 +85,7 @@ async function updateUser(log) {
   } else {
     user = userTemplate()
     user.name = log.data._to
-    user.address = log.data._to
+    user.address = log.data._to.toLowerCase()
     user.clovers = [log.data._tokenId]
     user.created = log.blockNumber
     user.modified = log.blockNumber
@@ -104,7 +104,7 @@ async function updateClover(log) {
     .db('clovers_v2')
     .table('clovers')
     .get(log.data._tokenId)
-  clover = await dodb(db, command)
+  let clover = await dodb(db, command)
   if (!clover) throw new Error('clover ' + log.data._tokenId + ' not found')
   clover.owner = log.data._to
   clover.modified = log.blockNumber

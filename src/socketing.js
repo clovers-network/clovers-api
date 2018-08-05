@@ -4,6 +4,7 @@ import * as clovers from './models/clovers'
 import * as clubToken from './models/clubToken'
 import * as cloversController from './models/cloversController'
 import * as clubTokenController from './models/clubTokenController'
+import * as curationMarket from './models/curationMarket'
 import { parseLogForStorage } from './lib/util'
 import r from 'rethinkdb'
 

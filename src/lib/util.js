@@ -14,7 +14,8 @@ export function userTemplate(address = null) {
     clovers: [],
     created: '0x0',
     modified: '0x0',
-    balance: '0x0'
+    balance: '0x0',
+    curationMarket: []
   }
 }
 
@@ -39,7 +40,7 @@ export async function getLowestPrice(
   }
   let littleIncrement = utils.parseEther('0.001')
   let bigIncrement = utils.parseEther('0.1')
-  currentPrice = currentPrice.add(useLittle ? littleIncrement : bigIncrement)
+  currentPrice = currentPrice.plus(useLittle ? littleIncrement : bigIncrement)
   if (_tokenId) {
     let resultOfSpend = await contract.getBuy(_tokenId, currentPrice)
   } else {
