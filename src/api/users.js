@@ -5,6 +5,7 @@ import { toRes } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
+
 export default ({ config, db, io }) => {
   /** For requests with an `id`, you can auto-load the entity.
    *  Errors terminate the request, success sets `req[id] = data`.
@@ -13,11 +14,12 @@ export default ({ config, db, io }) => {
     r.db('clovers_v2')
       .table('users')
       .get(id)
+      .default({})
       .merge({
         clovers: r
           .db('clovers_v2')
           .table('clovers')
-          .getAll(r.args(r.row('clovers')))
+          .getAll(r.args(r.row('clovers').default([])))
           .coerceTo('array')
       })
       .run(db, callback)
@@ -26,6 +28,8 @@ export default ({ config, db, io }) => {
   // const pageSize = 12;
 
   let router = resource({
+    load,
+
     /** Property name to store preloaded entity on `request`. */
     id: 'user',
 
