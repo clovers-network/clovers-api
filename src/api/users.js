@@ -103,7 +103,11 @@ export default ({ config, db, io }) => {
             dbUser = changes[0].new_val
           }
           io.emit('updateUser', dbUser)
-          res.sendStatus(200).end()
+          res.json({
+            address: dbUser.address,
+            modified: dbUser.modified,
+            name: dbUser.name
+          }).end()
         })
     })
   })
