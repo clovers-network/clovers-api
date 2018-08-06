@@ -70,7 +70,7 @@ async function updateUser(log) {
   let command = r
     .db('clovers_v2')
     .table('users')
-    .get(log.data._to)
+    .get(log.data._to.toLowerCase())
   let user = await dodb(db, command)
   if (user) {
     user.modified = log.blockNumber
@@ -118,7 +118,7 @@ async function updateClover(log) {
   command = r
     .db('clovers_v2')
     .table('users')
-    .get(log.data._from)
+    .get(log.data._from.toLowerCase())
   let user = await dodb(db, command)
   if (user) {
     user.clovers.splice(user.clovers.indexOf(log.data._tokenId), 1)
