@@ -14,7 +14,10 @@ export default ({ config, db, io }) =>
     load(req, id, callback) {
       r.db('clovers_v2')
         .table('orders')
-        .get(id)
+        // .get(id)
+        .orderBy(r.desc('created'))
+        .filter({ market: id })
+        // .slice(0, 100)
         .run(db, (err, order) => {
           callback(err, order)
         })
