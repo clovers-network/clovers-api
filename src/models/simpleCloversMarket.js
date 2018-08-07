@@ -3,8 +3,8 @@ import utils from 'web3-utils'
 import BigNumber from 'bignumber.js'
 import { padBigNum, dodb } from '../lib/util'
 let db, io
-// event updatePrice(uint256 _tokenId, uint256 price);
-export let simpleCloversMarketUpdatePrice = async function({
+// event updatePrice(uint256 _tokenId, uint256 price); // NOTE: lowercase u
+export let simpleCloversMarketupdatePrice = async function({
   log,
   io: _io,
   db: _db
@@ -35,14 +35,14 @@ async function changeCloverPrice(_tokenId, log) {
     .get(_tokenId)
   let clover = await dodb(db, command)
 
-  clover.price = padBigNum(price.toString(16))
+  clover.price = padBigNum(price)
   clover.modified = log.blockNumber
 
   command = r
     .db('clovers_v2')
-    .table('clover')
+    .table('clovers')
     .insert(clover, { returnChanges: true, conflict: 'update' })
-
   await dodb(db, command)
   io && io.emit('updateClover', clover)
+  console.log(io ? 'emit updateClover' : 'do not emit updateClover')
 }

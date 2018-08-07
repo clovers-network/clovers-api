@@ -1,16 +1,18 @@
 import r from 'rethinkdb'
 import { events, wallet } from '../lib/ethers-utils'
-import { dodb, sym, padBigNum, userTemplate } from '../lib/util'
+import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 let db
 let io
 export const cloversTransfer = async ({ log, io: _io, db: _db }) => {
   db = _db
   io = _io
-  // update the user
-  await updateUser(log)
+  // update the users
+  await updateUsers(log)
+
   // update the clover
-  if (log.data._from === '0x0000000000000000000000000000000000000000') {
+  if (log.data._from === ZERO_ADDRESS) {
+    console.log('new clover minted!')
     await addNewClover(log)
   } else {
     await updateClover(log)
@@ -34,10 +36,12 @@ export const cloversOwnershipTransferred = async function({ log, io, _db }) {
 
 function isValid(tokenId, cloverMoves, cloverSymmetries) {
   let reversi = new Reversi()
-  reversi.playGameByteMoves(cloverMoves[0], cloverMoves[1])
+  console.log('cloverMoves', cloverMoves[0][0], cloverMoves[0][1])
+  reversi.playGameByteMoves(cloverMoves[0][0], cloverMoves[0][1])
 
   // check if game had an error or isn't complete
   if (!reversi.complete || reversi.error) {
+    console.log('not complete or has error', reversi)
     return false
   }
   // check if boards don't match
@@ -48,6 +52,14 @@ function isValid(tokenId, cloverMoves, cloverSymmetries) {
       .replace('0x', '')
       .toLowerCase()
   ) {
+    console.log(
+      "boards don't match",
+      reversi.byteBoard.replace('0x', '').toLowerCase(),
+      tokenId
+        .toString(16)
+        .replace('0x', '')
+        .toLowerCase()
+    )
     return false
   }
   // check if symmetries were wrong
@@ -62,19 +74,66 @@ function isValid(tokenId, cloverMoves, cloverSymmetries) {
       .replace('0x', '')
       .toLowerCase()
   ) {
+    console.log(
+      'symmetricals were wrong',
+      reversi
+        .returnSymmetriesAsBN()
+        .toString(16)
+        .replace('0x', '')
+        .toLowerCase(),
+      cloverSymmetries
+        .toString(16)
+        .replace('0x', '')
+        .toLowerCase()
+    )
     return false
   }
+  return true
 }
 
-async function updateUser(log) {
+async function updateUsers(log) {
+  // update to user
   let command = r
     .db('clovers_v2')
     .table('users')
     .get(log.data._to.toLowerCase())
   let user = await dodb(db, command)
+  if (!user) {
+    user = userTemplate()
+    user.name = log.data._to
+    user.address = log.data._to.toLowerCase()
+    user.created = log.blockNumber
+  }
+  user.clovers.push(log.data._tokenId)
+  user.modified = log.blockNumber
+
+  command = r
+    .db('clovers_v2')
+    .table('users')
+    .insert(user, { returnChanges: true, conflict: 'update' })
+  await dodb(db, command)
+  io && io.emit('updateUser', user)
+
+  // update from user
+  if (log.data._from === ZERO_ADDRESS) return
+  command = r
+    .db('clovers_v2')
+    .table('users')
+    .get(log.data._from.toLowerCase())
+  user = await dodb(db, command)
   if (user) {
+    let index = user.clovers.indexOf(log.data._tokenId)
+    if (index < 0) {
+      throw new Error(
+        'cant remove clover ' +
+          log.data._tokenId +
+          ' if user ' +
+          log.data._from +
+          ' doesnt own it'
+      )
+    }
+    user.clovers.splice(index, 1)
     user.modified = log.blockNumber
-    user.clovers.push(log.data._tokenId)
     command = r
       .db('clovers_v2')
       .table('users')
@@ -82,19 +141,8 @@ async function updateUser(log) {
     await dodb(db, command)
     io && io.emit('updateUser', user)
   } else {
-    user = userTemplate()
-    user.name = log.data._to
-    user.address = log.data._to.toLowerCase()
-    user.clovers = [log.data._tokenId]
-    user.created = log.blockNumber
-    user.modified = log.blockNumber
-
-    command = r
-      .db('clovers_v2')
-      .table('users')
-      .insert(user)
-    await dodb(db, command)
-    io && io.emit('addUser', user)
+    // this should not happen
+    throw new Error('cant find for user ' + log.data._from + ' but not found')
   }
 }
 
@@ -105,7 +153,7 @@ async function updateClover(log) {
     .get(log.data._tokenId)
   let clover = await dodb(db, command)
   if (!clover) throw new Error('clover ' + log.data._tokenId + ' not found')
-  clover.owner = log.data._to
+  clover.owner = log.data._to.toLowerCase()
   clover.modified = log.blockNumber
   command = r
     .db('clovers_v2')
@@ -114,26 +162,6 @@ async function updateClover(log) {
 
   await dodb(db, command)
   io && io.emit('updateClover', clover)
-
-  command = r
-    .db('clovers_v2')
-    .table('users')
-    .get(log.data._from.toLowerCase())
-  let user = await dodb(db, command)
-  if (user) {
-    user.clovers.splice(user.clovers.indexOf(log.data._tokenId), 1)
-    user.modified = log.blockNumber
-    command = r
-      .db('clovers_v2')
-      .table('users')
-      .insert(user, { returnChanges: true, conflict: 'update' })
-
-    await dodb(db, command)
-    io && io.emit('updateUser', user)
-  } else {
-    // this should not happen
-    throw new Error('looking for user ' + log.data._from + ' but not found')
-  }
 }
 
 async function addNewClover(log) {
@@ -156,7 +184,7 @@ async function addNewClover(log) {
   let clover = {
     name: tokenId,
     board: tokenId,
-    owner: log.data._to,
+    owner: log.data._to.toLowerCase(),
     moves: cloverMoves,
     reward: padBigNum(cloverReward),
     symmetries: sym(cloverSymmetries),
@@ -172,19 +200,23 @@ async function addNewClover(log) {
     .insert(clover)
   await dodb(db, command)
   io && io.emit('addClover', clover)
-
   // wait til afterwards so the clover shows up (even if it's just pending)
-  if (log.data._to.toLowerCase().replace('0x', '') === events.Clovers.address) {
-    console.log('this clover is in limbo and needs to be verified')
+  if (log.data._to.toLowerCase() === events.Clovers.address.toLowerCase()) {
+    console.log(tokenId + ' is being verified')
     let verified = isValid(tokenId, cloverMoves, cloverSymmetries)
+    // dont verify clovers from the initial build
     let initialBuild = process.argv.findIndex(c => c === 'build') > -1
     if (initialBuild) return
     if (verified) {
-      await wallet.CloversController.retrieveStake(tokenId)
+      console.log(tokenId + ' is valid, move to new owner')
+      var tx = await wallet.CloversController.retrieveStake(tokenId)
+      var doneish = await tx.wait()
+      console.log(tokenId + ' moved to new owner  - tx:' + doneish.hash)
     } else {
-      await wallet.CloversController.challengeClover(tokenId)
+      console.log(tokenId + ' is not valid, please burn')
+      var tx = await wallet.CloversController.challengeClover(tokenId)
+      var doneish = await tx.wait()
+      console.log(tokenId + ' has been burned  - tx:' + doneish.hash)
     }
-  } else {
-    console.log('this clover is fine')
   }
 }

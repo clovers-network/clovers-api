@@ -112,7 +112,7 @@ export let events = {
     address: simpleCloversMarketAddress,
     instance: simpleCloversMarketInstance,
     eventTypes: [
-      // 'updatePrice'
+      'updatePrice'
       // 'OwnershipTransferred'
     ]
   },

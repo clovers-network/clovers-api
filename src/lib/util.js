@@ -6,7 +6,7 @@ import BigNumber from 'bignumber.js'
 var utils = require('ethers').utils
 
 export const oneEthInWei = utils.parseEther('1').toString(10)
-
+export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 export function userTemplate(address = null) {
   return {
     name: '',
@@ -85,7 +85,7 @@ export function padBigNum(amount) {
   }
   amount = typeof amount === 'object' ? amount : new BigNumber(amount)
   if (amount.lt(0)) {
-    throw new Error('no-negative-numbers')
+    console.log('negative number ' + amount.toString())
   }
   return amount.toString(10)
 }

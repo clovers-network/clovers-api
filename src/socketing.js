@@ -5,6 +5,7 @@ import * as clubToken from './models/clubToken'
 import * as cloversController from './models/cloversController'
 import * as clubTokenController from './models/clubTokenController'
 import * as curationMarket from './models/curationMarket'
+import * as simpleCloversMarket from './models/simpleCloversMarket'
 import { parseLogForStorage } from './lib/util'
 import r from 'rethinkdb'
 
@@ -17,7 +18,8 @@ export var socketing = function({ _io, _db }) {
   io.on('connection', function(socket) {
     connections += 1
     console.log('opened, now ' + connections + ' connections')
-
+    io.emit('welcome')
+    io.emit('updateClover', {})
     socket.on('data', function(data) {
       console.log(data)
     })
