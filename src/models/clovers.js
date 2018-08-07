@@ -202,11 +202,11 @@ async function addNewClover(log) {
   io && io.emit('addClover', clover)
   // wait til afterwards so the clover shows up (even if it's just pending)
   if (log.data._to.toLowerCase() === events.Clovers.address.toLowerCase()) {
+    let initialBuild = process.argv.findIndex(c => c === 'build') > -1
+    if (initialBuild) return
     console.log(tokenId + ' is being verified')
     let verified = isValid(tokenId, cloverMoves, cloverSymmetries)
     // dont verify clovers from the initial build
-    let initialBuild = process.argv.findIndex(c => c === 'build') > -1
-    if (initialBuild) return
     if (verified) {
       console.log(tokenId + ' is valid, move to new owner')
       var tx = await wallet.CloversController.retrieveStake(tokenId)

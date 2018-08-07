@@ -18,8 +18,6 @@ export var socketing = function({ _io, _db }) {
   io.on('connection', function(socket) {
     connections += 1
     console.log('opened, now ' + connections + ' connections')
-    io.emit('welcome')
-    io.emit('updateClover', {})
     socket.on('data', function(data) {
       console.log(data)
     })
