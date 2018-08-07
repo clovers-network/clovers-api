@@ -4,6 +4,7 @@ import r from 'rethinkdb'
 import { toRes, toSVG } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
+import { syncClover } from '../models/clovers'
 import xss from 'xss'
 
 export default ({ config, db, io }) => {
@@ -61,6 +62,19 @@ export default ({ config, db, io }) => {
       console.log('No ID, or invalid')
       res.sendStatus(404)
     }
+  })
+
+  router.get('/sync/:id', async (req, res) => {
+    const { id } = req.params
+    load(req, id, (err, clover) => {
+      if (err || !clover) {
+        res.sendStatus(401).end()
+        return
+      } else {
+        syncClover(db, io, clover)
+        res.sendStatus(200).end()
+      }
+    })
   })
 
   // Basic authentication

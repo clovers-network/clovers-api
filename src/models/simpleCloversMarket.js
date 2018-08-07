@@ -14,7 +14,7 @@ export let simpleCloversMarketupdatePrice = async function({
 
   console.log(log.name + ' called')
   let _tokenId = log.data._tokenId
-  await changeCloverPrice(_tokenId, log)
+  await changeCloverPrice(db, io, _tokenId, log)
 }
 
 export let simpleCloversMarketOwnershipTransferred = async function({
@@ -25,8 +25,12 @@ export let simpleCloversMarketOwnershipTransferred = async function({
   console.log(log.name + ' does not affect the database')
 }
 
-async function changeCloverPrice(_tokenId, log) {
+export async function changeCloverPrice(db, io, _tokenId, log) {
   let price = log.data.price
+  console.log(price)
+  if (Array.isArray(price)) {
+    price = price[0]
+  }
   price = typeof price == 'object' ? price : new BigNumber(price)
 
   let command = r
@@ -34,10 +38,12 @@ async function changeCloverPrice(_tokenId, log) {
     .table('clovers')
     .get(_tokenId)
   let clover = await dodb(db, command)
-
+  console.log(price)
+  if (price.eq(0)) {
+    console.log('removed from market or sold (set to 0)')
+  }
   clover.price = padBigNum(price)
   clover.modified = log.blockNumber
-
   command = r
     .db('clovers_v2')
     .table('clovers')
