@@ -109,7 +109,7 @@ export function toRes(res, status = 200) {
 export function toSVG(id, size = 400) {
   size = parseInt(size)
   return new Promise((resolve, reject) => {
-    let green = '#008B39'
+    let green = '#01B463'
     let black = '#000000'
     let white = '#FFFFFF'
     let grey = '#808080'
@@ -166,7 +166,6 @@ export function toSVG(id, size = 400) {
       '" r="' +
       radius +
       '"/>'
-
     for (let i = 0; i < 64; i++) {
       let row = Math.floor(i / 8)
       let col = i % 8
@@ -184,6 +183,7 @@ export function toSVG(id, size = 400) {
         case r.EMPTY:
           fill = green
           stroke = 'none'
+          break
         default:
           continue
       }
