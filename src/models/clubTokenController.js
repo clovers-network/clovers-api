@@ -28,6 +28,7 @@ async function addBuySell(log, user, isBuy, db) {
     .table('orders')
     .insert(order)
   await dodb(db, command)
+  io && io.emit('addOrder', order)
 }
 export let clubTokenControllerOwnershipTransferred = function({ log, io, db }) {
   console.log(log)

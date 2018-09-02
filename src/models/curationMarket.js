@@ -38,6 +38,7 @@ async function addBuySell(log, user, isBuy, db) {
     .table('orders')
     .insert(order)
   await dodb(db, command)
+  io && io.emit('addOrder', order)
 }
 
 // event Burn(uint256 _tokenId, address indexed burner, uint256 value);

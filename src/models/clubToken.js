@@ -62,7 +62,7 @@ async function changeUserBalance(user_id, amount, add, log) {
     user = userTemplate()
     user.address = user_id
   } else if (!user.balance) {
-    user.balance = userTemplate().balance
+    user.balance = await events.ClubToken.instance.balanceOf(user.address)
   }
   let balance = await events.ClubToken.instance.balanceOf(user.address)
   console.log('contract balance is ' + balance.toString())

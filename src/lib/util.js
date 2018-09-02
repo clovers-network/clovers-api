@@ -121,6 +121,7 @@ export function toSVG(id, size = 400) {
 
     r.byteBoardPopulateBoard(id)
     r.calcWinners()
+    r.isSymmetrical()
 
     let fill, stroke, sequence
     let strokeWidth = 1
@@ -151,6 +152,10 @@ export function toSVG(id, size = 400) {
       fill = grey
       stroke = grey
     }
+    // if (r.symmetrical) {
+    //   strokeWidth = 2
+    //   stroke = green
+    // }
 
     svg +=
       '<circle shape-rendering="optimizeQuality" fill="' +
