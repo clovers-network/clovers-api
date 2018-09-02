@@ -3,13 +3,13 @@ import { events } from '../lib/ethers-utils'
 import { padBigNum, dodb } from '../lib/util'
 // event Buy(address buyer, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply);
 export let clubTokenControllerBuy = async function({ log, io, db }) {
-  await addBuySell(log, log.data.buyer, 'buy', db)
+  await addBuySell(log, log.data.buyer, 'buy', io, db)
 }
 // event Sell(address seller, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply);
 export let clubTokenControllerSell = async function({ log, io, db }) {
-  await addBuySell(log, log.data.seller, 'sell', db)
+  await addBuySell(log, log.data.seller, 'sell', io, db)
 }
-async function addBuySell(log, user, isBuy, db) {
+async function addBuySell(log, user, isBuy, io, db) {
   isBuy = isBuy === 'buy'
 
   let order = {
