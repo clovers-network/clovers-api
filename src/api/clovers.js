@@ -7,12 +7,13 @@ import { auth } from '../middleware/auth'
 import { syncClover } from '../models/clovers'
 import xss from 'xss'
 import Reversi from 'clovers-reversi'
+import BigNumber from 'BigNumber.js'
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
     id = id.toLowerCase()
     if (id.substr(0,2) !== '0x') {
-      id = '0x' + parseInt(id).toString(16).toLowerCase()
+      id = '0x' + new BigNumber(id).toString(16).toLowerCase()
     }
     r.db('clovers_v2')
       .table('clovers')
