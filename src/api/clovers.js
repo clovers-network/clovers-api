@@ -78,7 +78,7 @@ export default ({ config, db, io }) => {
         nft.external_url = 'https://clovers.network/clovers/' + id
         nft.home_url = nft.external_url
 
-        nft.background_color = game.blackScore > game.whiteScore ? '#ffffff' : (game.whiteScore > game.blackScore ? '#808080' : '#ffffff')
+        nft.background_color = game.blackScore > game.whiteScore ? '#ffffff' : (game.whiteScore > game.blackScore ? '#ffffff' : '#ffffff')
         nft.attributes = clover
 
         let properties = []
