@@ -7,7 +7,7 @@ import { auth } from '../middleware/auth'
 import { syncClover } from '../models/clovers'
 import xss from 'xss'
 import Reversi from 'clovers-reversi'
-import BigNumber from 'BigNumber.js'
+import BigNumber from 'bignumber.js'
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
