@@ -10,6 +10,10 @@ import Reversi from 'clovers-reversi'
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
+    id = id.toLowerCase()
+    if (id.substr(0,2) !== '0x') {
+      id = '0x' + parseInt(id).toString(16).toLowerCase()
+    }
     r.db('clovers_v2')
       .table('clovers')
       .get(id)
