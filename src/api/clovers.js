@@ -6,6 +6,7 @@ import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import { syncClover } from '../models/clovers'
 import xss from 'xss'
+import Reversi from 'clovers-reversi'
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
@@ -49,6 +50,44 @@ export default ({ config, db, io }) => {
     read({ clover }, res) {
       res.json(clover)
     }
+  })
+
+  router.get('/metadata/:id', async (req, res) => {
+    const { id } = req.params
+    load(req, id, (err, clover) => {
+      if (err || !clover) {
+        res.sendStatus(401).end()
+        return
+      } else {
+        let reversi = new Reversi()
+        let nft = {}
+        console.log(clover.moves[0])
+        console.log(...clover.moves[0])
+        let game = reversi.playGameByteMoves(...clover.moves[0])
+        nft.name = clover.name
+        nft.description = 'This Clover ' + clover.board + ' was created with the moves: ' + reversi.byteMovesToStringMoves(...clover.moves[0])
+
+        nft.image = 'https://api2.clovers.network/clovers/svg/' + id
+        nft.image_url = nft.image
+
+        nft.external_url = 'https://clovers.network/clovers/' + id
+        nft.home_url = nft.external_url
+
+        nft.background_color = game.blackScore > game.whiteScore ? '#ffffff' : (game.whiteScore > game.blackScore ? '#808080' : '#ffffff')
+        nft.attributes = clover
+
+        let properties = []
+        Object.entries(nft.attributes).forEach((entry) => {
+          properties.push({
+            key: entry[0],
+            value: entry[1],
+            type: typeof entry[1]
+          })
+        })
+        nft.properties = properties
+        res.json(nft).end()
+      }
+    })
   })
 
   router.get('/svg/:id/:size?', async (req, res) => {
