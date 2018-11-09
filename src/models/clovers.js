@@ -73,12 +73,10 @@ function isValid(tokenId, cloverMoves, cloverSymmetries) {
   if (
     reversi
       .returnSymmetriesAsBN()
-      .toString(16)
-      .replace('0x', '')
+      .toString(10)
       .toLowerCase() !==
     cloverSymmetries
-      .toString(16)
-      .replace('0x', '')
+      .toString(10)
       .toLowerCase()
   ) {
     console.log(
