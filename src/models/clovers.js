@@ -16,13 +16,18 @@ export const cloversTransfer = async ({ log, io: _io, db: _db }) => {
     console.log(error.message)
     console.log(error.stack)
   }
-
-  // update the clover
-  if (log.data._from === ZERO_ADDRESS) {
-    console.log('new clover minted!')
-    await addNewClover(log)
-  } else {
-    await updateClover(log)
+  try {
+    // update the clover
+    if (log.data._from === ZERO_ADDRESS) {
+      console.log('new clover minted!')
+      await addNewClover(log)
+    } else {
+      await updateClover(log)
+    }
+  } catch (error) {
+    console.log('error while adding/updating clovers')
+    console.log(error.message)
+    console.log(error.stack)
   }
 }
 export const cloversApproval = async function({ log, io, _db }) {
