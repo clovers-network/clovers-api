@@ -1,3 +1,4 @@
+const debug = require('debug')('app:models:simpleCloversMarket')
 import r from 'rethinkdb'
 import utils from 'web3-utils'
 import BigNumber from 'bignumber.js'
@@ -12,7 +13,7 @@ export let simpleCloversMarketupdatePrice = async function({
   db = _db
   io = _io
 
-  console.log(log.name + ' called')
+  debug(log.name + ' called')
   let _tokenId = log.data._tokenId
   await changeCloverPrice(db, io, _tokenId, log)
 }
@@ -22,12 +23,12 @@ export let simpleCloversMarketOwnershipTransferred = async function({
   io,
   db
 }) {
-  console.log(log.name + ' does not affect the database')
+  debug(log.name + ' does not affect the database')
 }
 
 export async function changeCloverPrice(db, io, _tokenId, log) {
   let price = log.data.price
-  console.log(price)
+  debug(price)
   if (Array.isArray(price)) {
     price = price[0]
   }
@@ -38,9 +39,9 @@ export async function changeCloverPrice(db, io, _tokenId, log) {
     .table('clovers')
     .get(_tokenId)
   let clover = await dodb(db, command)
-  console.log(price)
+  debug(price)
   if (price.eq(0)) {
-    console.log('removed from market or sold (set to 0)')
+    debug('removed from market or sold (set to 0)')
   }
   clover.price = padBigNum(price)
   clover.modified = log.blockNumber
@@ -50,5 +51,5 @@ export async function changeCloverPrice(db, io, _tokenId, log) {
     .insert(clover, { returnChanges: true, conflict: 'update' })
   await dodb(db, command)
   io && io.emit('updateClover', clover)
-  console.log(io ? 'emit updateClover' : 'do not emit updateClover')
+  debug(io ? 'emit updateClover' : 'do not emit updateClover')
 }

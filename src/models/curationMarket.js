@@ -1,3 +1,4 @@
+const debug = require('debug')('app:models:curationMarket')
 import r from 'rethinkdb'
 import utils from 'web3-utils'
 import BigNumber from 'bignumber.js'
@@ -43,13 +44,13 @@ async function addBuySell(log, user, isBuy, db) {
 
 // event Burn(uint256 _tokenId, address indexed burner, uint256 value);
 export let curationMarketBurn = async function({ log, io: _io, db: _db }) {
-  console.log(log.name + ' does not affect the database')
+  debug(log.name + ' does not affect the database')
   //takes place w transfer
 }
 
 // event Mint(uint256 _tokenId, address indexed to, uint256 amount);
 export let curationMarketMint = async function({ log, io: _io, db: _db }) {
-  console.log(log.name + ' does not affect the database')
+  debug(log.name + ' does not affect the database')
   //takes place w transfer
 }
 
@@ -76,7 +77,7 @@ export let curationMarketOwnershipTransferred = async function({
   io: _io,
   db: _db
 }) {
-  console.log(log.name + ' does not affect the database')
+  debug(log.name + ' does not affect the database')
 }
 
 async function changeUserBalance(user_id, amount, _tokenId, add, log) {

@@ -1,3 +1,4 @@
+const debug = require('debug')('app:socketing')
 import { provider, events } from './lib/ethers-utils'
 import ethers from 'ethers'
 import * as clovers from './models/clovers'
@@ -17,16 +18,16 @@ export var socketing = function({ _io, _db }) {
   var connections = 0
   io.on('connection', function(socket) {
     connections += 1
-    console.log('opened, now ' + connections + ' connections')
+    debug('opened, now ' + connections + ' connections')
     socket.on('data', function(data) {
-      console.log(data)
+      debug(data)
     })
     socket.on('disconnect', function() {
       connections -= 1
-      console.log('closed, now ' + connections + ' connections')
+      debug('closed, now ' + connections + ' connections')
     })
     socket.on('error', function(err) {
-      console.log('error')
+      debug('error')
     })
   })
   beginListen('Clovers')
@@ -43,21 +44,23 @@ async function beginListen(contract, key = 0) {
   beginListen(contract, key + 1)
   let eventType = events[contract].instance.interface.events[eventTypes[key]]
   if (!eventType) {
-    console.log(eventTypes[key] + ' doesnt exists')
+    debug(eventTypes[key] + ' doesnt exists')
     return
   }
   // let listen = "on" + eventType().name.toLowerCase();
   // events[contract].instance[listen] = (...log) => {
-  //   console.log("!!!!!");
-  //   console.log(log);
+  //   debug("!!!!!");
+  //   debug(log);
   // };
   // var address =
   //   "0x000000000000000000000000" + events[contract].address.substring(2);
   let topics = eventType().topics
   // topics.push(address);
-  console.log('make a listener on ' + contract + ' ' + eventType().name)
-  provider.on(topics, log => {
+  debug('make a listener on ' + contract + ' ' + eventType().name)
+  provider.on(topics, (log) => {
     let address = events[contract].address
+
+    // filter out events from different contracts
     if (log.address.toLowerCase() !== address.toLowerCase()) {
       return
     }
@@ -66,37 +69,29 @@ async function beginListen(contract, key = 0) {
 
     log.name = contract + '_' + eventType().name
 
-    let transferCoder = iface.events[eventTypes[key]]
-    log.data = transferCoder.parse(log.topics, log.data)
-    if (false) {
-      let event = events[contract].abi.find(a => a.name === eventType().name)
-      let names = event.inputs.map(o => o.name)
-      let types = event.inputs.map(o => o.type)
-      log.data = iface.decodeParams(names, types, log.data)
-    } else {
-      try {
-        let transferCoder = iface.events[eventTypes[key]]
-        log.data = transferCoder.parse(log.topics, log.data)
-      } catch (err) {
-        if (err.message.indexOf('invalid arrayify value') == -1) {
-          console.log('didnt work')
-          console.log(log)
-          console.error(err)
-        } else {
-          // console.log("why invalid arrify?");
-        }
-      }
+    // method below works better :)
+    // let event = events[contract].abi.find(a => a.name === eventType().name)
+    // let names = event.inputs.map(o => o.name)
+    // let types = event.inputs.map(o => o.type)
+    // log.data = iface.decodeParams(names, types, log.data)
 
-      log.data = parseLogForStorage(log.data)
-      r.db('clovers_v2')
-        .table('logs')
-        .insert(log)
-        .run(db, (err, results) => {
-          console.log((err ? 'ERROR ' : 'SUCCESS ') + 'saving ' + log.name)
-          if (err) throw new Error(err)
-          handleEvent({ io, db, log })
-        })
+    try {
+      let transferCoder = iface.events[eventTypes[key]]
+      log.data = transferCoder.parse(log.topics, log.data)
+    } catch (err) {
+      debug(err)
+      return
     }
+
+    log.data = parseLogForStorage(log.data)
+    r.db('clovers_v2')
+      .table('logs')
+      .insert(log)
+      .run(db, (err, results) => {
+        debug((err ? 'ERROR ' : 'SUCCESS ') + 'saving ' + log.name)
+        if (err) throw new Error(err)
+        handleEvent({ io, db, log })
+      })
   })
 }
 
@@ -105,7 +100,7 @@ export var handleEvent = async function({ io, db, log }) {
   let foo = log.name.split('_')
   let contract = foo[0]
   let name = foo[1]
-  console.log('handle ' + name + ' from ' + contract)
+  debug('handle ' + name + ' from ' + contract)
   switch (contract) {
     case 'Clovers':
       if (typeof clovers['clovers' + name] === 'function') {

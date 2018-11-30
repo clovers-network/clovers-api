@@ -1,3 +1,4 @@
+const debug = require('debug')('app:models:clovers')
 import r from 'rethinkdb'
 import { events, wallet } from '../lib/ethers-utils'
 import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
@@ -5,6 +6,7 @@ import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 let db
 let io
+
 export const cloversTransfer = async ({ log, io: _io, db: _db }) => {
   db = _db
   io = _io
@@ -12,48 +14,48 @@ export const cloversTransfer = async ({ log, io: _io, db: _db }) => {
   try {
     await updateUsers(log)
   } catch (error) {
-    console.log('error while updating users')
-    console.log(error.message)
-    console.log(error.stack)
+    debug('error while updating users')
+    debug(error.message)
+    debug(error.stack)
   }
   try {
     // update the clover
     if (log.data._from === ZERO_ADDRESS) {
-      console.log('new clover minted!')
+      debug('new clover minted!')
       await addNewClover(log)
     } else {
       await updateClover(log)
     }
   } catch (error) {
-    console.log('error while adding/updating clovers')
-    console.log(error.message)
-    console.log(error.stack)
+    debug('error while adding/updating clovers')
+    debug(error.message)
+    debug(error.stack)
   }
 }
 export const cloversApproval = async function({ log, io, _db }) {
   // db = _db
   // io = _io
-  console.log(log.name + ' does not affect the database')
+  debug(log.name + ' does not affect the database')
 }
 export const cloversApprovalForAll = async function({ log, io, _db }) {
   // db = _db
   // io = _io
-  console.log(log.name + ' does not affect the database')
+  debug(log.name + ' does not affect the database')
 }
 export const cloversOwnershipTransferred = async function({ log, io, _db }) {
   // db = _db
   // io = _io
-  console.log(log.name + ' does not affect the database')
+  debug(log.name + ' does not affect the database')
 }
 
 function isValid(tokenId, cloverMoves, cloverSymmetries) {
   let reversi = new Reversi()
-  console.log('cloverMoves', cloverMoves[0][0], cloverMoves[0][1])
+  debug('cloverMoves', cloverMoves[0][0], cloverMoves[0][1])
   reversi.playGameByteMoves(cloverMoves[0][0], cloverMoves[0][1])
 
   // check if game had an error or isn't complete
   if (!reversi.complete || reversi.error) {
-    console.log('not complete or has error', reversi)
+    debug('not complete or has error', reversi)
     return false
   }
   // check if boards don't match
@@ -64,7 +66,7 @@ function isValid(tokenId, cloverMoves, cloverSymmetries) {
       .replace('0x', '')
       .toLowerCase()
   ) {
-    console.log(
+    debug(
       "boards don't match",
       reversi.byteBoard.replace('0x', '').toLowerCase(),
       tokenId
@@ -84,7 +86,7 @@ function isValid(tokenId, cloverMoves, cloverSymmetries) {
       .toString(10)
       .toLowerCase()
   ) {
-    console.log(
+    debug(
       'symmetricals were wrong',
       reversi
         .returnSymmetriesAsBN()
@@ -104,8 +106,8 @@ function isValid(tokenId, cloverMoves, cloverSymmetries) {
 export async function syncClover(_db, _io, clover) {
   db = _db
   io = _io
-  console.log('checking clover')
-  console.log(clover)
+  debug('checking clover')
+  debug(clover)
   // sync clover
   // test if exists
   let log = {
@@ -114,7 +116,7 @@ export async function syncClover(_db, _io, clover) {
   }
   const exists = await events.Clovers.instance.exists(clover.board)
   if (!exists) {
-    console.log('clover DOES NOT exists')
+    debug('clover DOES NOT exists')
     log.data._from = clover.owner
     log.data._to = ZERO_ADDRESS
     // remove from current owner
@@ -123,7 +125,7 @@ export async function syncClover(_db, _io, clover) {
     await updateClover(log)
     return
   } else {
-    console.log('clover exists')
+    debug('clover exists')
   }
 
   // test for salePrice
@@ -131,11 +133,11 @@ export async function syncClover(_db, _io, clover) {
     clover.board
   )
   if (salePrice.toString(10) !== clover.price.toString(10)) {
-    console.log('sale price wrong')
+    debug('sale price wrong')
     log.data.price = salePrice
     await changeCloverPrice(db, io, clover.board, log)
   } else {
-    console.log('sale price ok')
+    debug('sale price ok')
   }
 
   // test for owner
@@ -144,12 +146,12 @@ export async function syncClover(_db, _io, clover) {
     owner = owner[0]
   }
   if (owner.toLowerCase() !== clover.owner.toLowerCase()) {
-    console.log('owner is wrong')
+    debug('owner is wrong')
     log.data._to = owner
     await updateClover(log)
     await updateUser(log, owner, 'add')
   } else {
-    console.log('owner is ok')
+    debug('owner is ok')
   }
 }
 
@@ -197,9 +199,9 @@ async function updateUser(log, user_id, add) {
 }
 
 async function updateUsers(log) {
-  console.log('update users for clover ' + log.data._tokenId)
-  console.log('add to:' + log.data._to.toLowerCase())
-  console.log('remove from:' + log.data._from.toLowerCase())
+  debug('update users for clover ' + log.data._tokenId)
+  debug('add to:' + log.data._to.toLowerCase())
+  debug('remove from:' + log.data._from.toLowerCase())
   await updateUser(log, log.data._to, 'add')
   await updateUser(log, log.data._from, 'remove')
 }
@@ -258,23 +260,38 @@ async function addNewClover(log) {
     .insert(clover)
   await dodb(db, command)
   io && io.emit('addClover', clover)
+
   // wait til afterwards so the clover shows up (even if it's just pending)
   if (log.data._to.toLowerCase() === events.Clovers.address.toLowerCase()) {
-    let initialBuild = process.argv.findIndex(c => c === 'build') > -1
-    if (initialBuild) return
-    console.log(tokenId + ' is being verified')
-    let verified = isValid(tokenId, cloverMoves, cloverSymmetries)
+    // cancel if initial build
+    if (process.argv.findIndex(c => c === 'build') > -1) return
+
+    oracleVerify(clover, cloverSymmetries)
+  }
+}
+
+async function oracleVerify ({ name, moves }, symmetries) {
+  debug(name + ' is being verified')
+  const options = {
+    gasPrice: 10000000000
+  }
+  try {
     // dont verify clovers from the initial build
-    if (verified) {
-      console.log(tokenId + ' is valid, move to new owner')
-      var tx = await wallet.CloversController.retrieveStake(tokenId)
-      var doneish = await tx.wait()
-      console.log(tokenId + ' moved to new owner  - tx:' + doneish.hash)
+    if (isValid(name, moves, symmetries)) {
+      debug(name + ' is valid, move to new owner')
+      const tx = await wallet.CloversController.retrieveStake(name, options)
+      const doneish = await tx.wait()
+      debug(name + ' moved to new owner  - tx:' + doneish.hash)
     } else {
-      console.log(tokenId + ' is not valid, please burn')
-      var tx = await wallet.CloversController.challengeClover(tokenId)
-      var doneish = await tx.wait()
-      console.log(tokenId + ' has been burned  - tx:' + doneish.hash)
+      debug(name + ' is not valid, please burn')
+      const tx = await wallet.CloversController.challengeClover(name, options)
+      const doneish = await tx.wait()
+      debug(name + ' has been burned  - tx:' + doneish.hash)
     }
+  } catch (err) {
+    debug(err)
+    setTimeout(() => {
+      oracleVerify({ name, moves}, symmetries)
+    }, 1000 * 5)
   }
 }

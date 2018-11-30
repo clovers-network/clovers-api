@@ -5,7 +5,7 @@
   "main": "dist",
   "scripts": {
     "db": "rethinkdb",
-    "dev": "nodemon -w src --exec \"babel-node src --presets es2015,stage-0\"",
+    "dev": "DEBUG=app:* nodemon -w src --exec \"babel-node src --presets es2015,stage-0\"",
     "build": "babel src -s -D -d dist --presets es2015,stage-0",
     "start": "pm2 start dist",
     "prestart": "npm run -s build",
@@ -39,6 +39,7 @@
     "clovers-reversi": "^1.0.18",
     "compression": "^1.5.2",
     "cors": "^2.7.1",
+    "debug": "^4.1.0",
     "eth-sig-util": "^1.4.2",
     "ethers": "^3.0.9",
     "ethers-contracts": "^2.2.1",

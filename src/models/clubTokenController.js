@@ -1,3 +1,4 @@
+const debug = require('debug')('app:models:clubTokenController')
 import r from 'rethinkdb'
 import { events } from '../lib/ethers-utils'
 import { padBigNum, dodb } from '../lib/util'
@@ -31,5 +32,5 @@ async function addBuySell(log, user, isBuy, io, db) {
   io && io.emit('addOrder', order)
 }
 export let clubTokenControllerOwnershipTransferred = function({ log, io, db }) {
-  console.log(log)
+  debug(log)
 }

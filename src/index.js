@@ -1,3 +1,4 @@
+const debug = require('debug')('app:index')
 import http from 'http'
 import express from 'express'
 import cors from 'cors'
@@ -43,7 +44,7 @@ initializeDb((db) => {
     app.use('/', api({ config, db, io }))
 
     app.server.listen(port, () => {
-      console.log(`Started on port ${app.server.address().port}`)
+      debug(`Started on port ${app.server.address().port}`)
     })
     socketing({_db: db, _io: io})
     if (process.argv.findIndex((c) => c === 'mine') > -1) {
