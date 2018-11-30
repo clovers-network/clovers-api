@@ -10,7 +10,7 @@ export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 export function userTemplate(address = null) {
   return {
     name: '',
-    address: address,
+    address: address.toLowerCase(),
     clovers: [],
     created: '0',
     modified: '0',

@@ -59,8 +59,7 @@ async function changeUserBalance(user_id, amount, add, log) {
     .get(user_id)
   let user = await dodb(db, command)
   if (!user) {
-    user = userTemplate()
-    user.address = user_id
+    user = userTemplate(user_id)
   } else if (!user.balance) {
     user.balance = await events.ClubToken.instance.balanceOf(user.address)
   }

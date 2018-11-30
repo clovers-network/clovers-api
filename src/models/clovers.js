@@ -154,17 +154,17 @@ export async function syncClover(_db, _io, clover) {
 }
 
 async function updateUser(log, user_id, add) {
-  if (user_id === ZERO_ADDRESS) return
+  user_id = user_id.toLowerCase()
+  if (user_id === ZERO_ADDRESS.toLowerCase()) return
   add = add == 'add'
   let command = r
     .db('clovers_v2')
     .table('users')
-    .get(user_id.toLowerCase())
+    .get(user_id)
   let user = await dodb(db, command)
   if (add) {
     if (!user) {
-      user = userTemplate()
-      user.address = user_id.toLowerCase()
+      user = userTemplate(user_id)
       user.created = log.blockNumber
     }
     let index = user.clovers.indexOf(log.data._tokenId)
