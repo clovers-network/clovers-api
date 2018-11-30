@@ -167,8 +167,15 @@ async function updateUser(log, user_id, add) {
       user.address = user_id.toLowerCase()
       user.created = log.blockNumber
     }
-    user.clovers.push(log.data._tokenId)
-    user.modified = log.blockNumber
+    let index = user.clovers.indexOf(log.data._tokenId)
+    if (index < 0) {
+      user.clovers.push(log.data._tokenId)
+      user.modified = log.blockNumber
+    } else {
+      console.log('for some reason this clover was added to a user who already owned it')
+      console.log(log)
+      console.log(user_id)
+    }
   } else {
     if (user) {
       let index = user.clovers.indexOf(log.data._tokenId)
