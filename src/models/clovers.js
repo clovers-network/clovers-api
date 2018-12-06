@@ -174,9 +174,9 @@ async function updateUser(log, user_id, add) {
       user.clovers.push(log.data._tokenId)
       user.modified = log.blockNumber
     } else {
-      console.log('for some reason this clover was added to a user who already owned it')
-      console.log(log)
-      console.log(user_id)
+      debug('for some reason this clover was added to a user who already owned it')
+      debug(log)
+      debug(user_id)
     }
   } else {
     if (user) {
@@ -287,13 +287,15 @@ async function oracleVerify ({ name, moves }, symmetries) {
     if (isValid(name, moves, symmetries)) {
       debug(name + ' is valid, move to new owner')
       const tx = await wallet.CloversController.retrieveStake(name, options)
+      debug('started tx:' + tx.hash)
       const doneish = await tx.wait()
-      debug(name + ' moved to new owner  - tx:' + doneish.hash)
+      debug(name + ' moved to new owner')
     } else {
       debug(name + ' is not valid, please burn')
       const tx = await wallet.CloversController.challengeClover(name, options)
+      debug('started tx:' + tx.hash)
       const doneish = await tx.wait()
-      debug(name + ' has been burned  - tx:' + doneish.hash)
+      debug(name + ' has been burned')
     }
   } catch (err) {
     debug(err)
