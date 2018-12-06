@@ -30,7 +30,8 @@ export function commentTemplate(user, board, comment = '') {
     userName: user.name || user.address,
     created: new Date(),
     edited: null,
-    deleted: false
+    deleted: false,
+    flagged: false
   }
 }
 

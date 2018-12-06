@@ -6,6 +6,8 @@ import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
 
+const whitelist = []
+
 export default ({ config, db, io }) => {
   /** For requests with an `id`, you can auto-load the entity.
    *  Errors terminate the request, success sets `req[id] = data`.
@@ -62,17 +64,22 @@ export default ({ config, db, io }) => {
     const { board } = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
-      debug('No user, 401')
       res.status(401).end()
       return
     }
 
     const user = await r.db('clovers_v2').table('users')
       .get(userAddress.toLowerCase()).pluck('address', 'name').run(db)
-    const comment = xss(req.body.comment || '')
+    const comment = xss(req.body.comment || '').trim()
+
+    if (!comment.length) {
+      res.status(400).end()
+      return
+    }
 
     // generate the chat
     const chat = commentTemplate(user, board.toLowerCase(), comment)
+    // save it
     r.db('clovers_v2').table('chats')
       .insert(chat).run(db, (err, { generated_keys }) => {
         if (err) {
@@ -84,13 +91,49 @@ export default ({ config, db, io }) => {
       })
   })
 
-  // router.put('/:id', async (req, res) => {
-  //   const { id } = req.params
-  //   const { user } = req.auth
-  //   let comment = req.body.comment || ''
-  //   comment = xss(comment)
-  //   const chat =
-  // })
+  router.delete('/:id', async (req, res) => {
+    const { id } = req.params
+    const userAddress = req.auth && req.auth.user
+    if (!userAddress) {
+      res.status(401).end()
+      return
+    }
+
+    const comment = await r.db('clovers_v2').table('chats')
+      .get(id).default({}).without('clovers').run(db)
+
+    if (!comment.id) {
+      res.status(404).end()
+      return
+    }
+
+    if (userAddress.toLowerCase() === comment.userAddress) {
+      await r.db('clovers_v2').table('chats')
+      .get(id).update({
+        deleted: true,
+        comment: 'Deleted',
+        edited: r.now()
+      }).run(db)
+    } else {
+      const board = await r.db('clovers_v2').table('clovers')
+      .get(comment.board).run(db)
+
+      if (
+        userAddress.toLowerCase() === board.owner ||
+        whitelist.includes(userAddress.toLowerCase())
+      ) {
+        await r.db('clovers_v2').table('chats')
+        .get(id).update({
+          flagged: true,
+          edited: r.now()
+        }).run(db)
+      } else {
+        res.status(401).end()
+        return
+      }
+    }
+    res.status(200).end()
+  })
 
   return router
 }
