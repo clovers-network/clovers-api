@@ -19,6 +19,21 @@ export function userTemplate(address = null) {
   }
 }
 
+export function commentTemplate(user, board, comment = '') {
+  if (!user) throw new Error('Must provide user object')
+  if (!board) throw new Error('Board ID required')
+  return {
+    board,
+    comment,
+
+    userAddress: user.address,
+    userName: user.name || user.address,
+    created: new Date(),
+    edited: null,
+    deleted: false
+  }
+}
+
 export function dodb(db, command) {
   return new Promise((resolve, reject) => {
     command.run(db, (err, result) => {
