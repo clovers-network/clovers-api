@@ -10,6 +10,7 @@ import api from './api'
 import config from './config.json'
 import { socketing } from './socketing'
 import { build, mine } from './lib/build'
+import { commentListener } from './api/chats'
 
 let app = express()
 
@@ -36,6 +37,7 @@ initializeDb((db) => {
     build(db)
   } else {
     const io = require('socket.io')(app.server)
+    commentListener(app.server, db)
 
     // internal middleware
     app.use(middleware({ config, db }))
@@ -47,6 +49,7 @@ initializeDb((db) => {
       debug(`Started on port ${app.server.address().port}`)
     })
     socketing({_db: db, _io: io})
+
     if (process.argv.findIndex((c) => c === 'mine') > -1) {
       mine(db, io)
     }

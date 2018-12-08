@@ -6,6 +6,7 @@ import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
 
+// addresses that can moderate comments :)
 const whitelist = []
 
 export default ({ config, db, io }) => {
@@ -16,11 +17,8 @@ export default ({ config, db, io }) => {
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
-    r.db('clovers_v2')
-      .table('chats')
-      .get(id)
-      .default({})
-      .run(db, callback)
+    req.boardId = id
+    callback()
   }
 
   // const pageSize = 12;
@@ -32,28 +30,24 @@ export default ({ config, db, io }) => {
     id: 'chat',
 
     /** GET / - List all entities */
-    index({ query }, res) {
-      let limit = parseInt(query.limit) || 100
-      let offset = parseInt(query.offset) || 0
-      limit = Math.min(limit, 500)
-      r.db('clovers_v2')
-        .table('chats')
-        .slice(offset, offset + limit)
-        .run(db, toRes(res))
+    index(req, res) {
+      //
+      res.status(400).json({ error: 'Please provide a Clover ID' }).end()
     },
 
-    /** POST / - Create a new entity */
-    // create({ body }, res) {
-    //   res.json(body)
-    // },
+    /** GET /:id - return Clover comments */
+    read({ boardId }, res) {
+      debug('get chat by board id', boardId)
 
-    /** GET /:id - Return a given entity */
-    read({ user }, res) {
-      res.json(user)
+      r.db('clovers_v2').table('chats')
+      .filter({ board: boardId })
+      .orderBy(r.asc('created'))
+      .run(db, toRes(res))
     }
   })
 
-  // Basic authentication
+  // Authentication header required
+  // Format: btoa(Basic address:signedmessage)
   router.use(
     basicAuth({
       authorizer: auth
@@ -69,10 +63,11 @@ export default ({ config, db, io }) => {
     }
 
     const user = await r.db('clovers_v2').table('users')
-      .get(userAddress.toLowerCase()).pluck('address', 'name').run(db)
+      .get(userAddress.toLowerCase()).default({})
+      .pluck('address', 'name').run(db)
     const comment = xss(req.body.comment || '').trim()
 
-    if (!comment.length) {
+    if (!comment.length || !user.address) {
       res.status(400).end()
       return
     }
@@ -136,4 +131,42 @@ export default ({ config, db, io }) => {
   })
 
   return router
+}
+
+export function commentListener (server, db) {
+  const io = require('socket.io')(server, { path: '/comments' })
+  let connections = 0
+  io.on('connection', (socket) => {
+    debug('+1 comment subscribers: ', connections += 1)
+
+    socket.on('disconnect', () => {
+      debug('-1 comment subscribers: ', connections -= 1)
+    })
+  })
+
+  // listen to chat changes :)
+  r.db('clovers_v2').table('chats').changes().run(db, (err, cursor) => {
+    if (err) {
+      console.error(err)
+      return
+    }
+    cursor.each((err, doc) => {
+      if (err) {
+        console.error(err)
+        return
+      }
+      if (doc.new_val && !doc.old_val) {
+        debug('new comment', doc.new_val.id)
+        io.emit('new comment', doc.new_val)
+      } else if (!doc.new_val) {
+        // deleted comment
+        debug('comment deleted', doc.old_val.id)
+        io.emit('delete comment', doc.old_val)
+      } else {
+        // probably an update
+        debug('update comment', doc.new_val.id)
+        io.emit('edit comment', doc)
+      }
+    })
+  })
 }

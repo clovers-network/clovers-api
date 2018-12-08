@@ -47,21 +47,14 @@ export default ({ config, db, io }) => {
         .run(db, toRes(res))
     },
 
-    /** POST / - Create a new entity */
-    create({ body }, res) {
-      // r.db('clovers_v2').table('users').get(id).update(user).run(db, (err, result) => {
-      //   io.emit('updateUser', user)
-      // })
-      res.json(body)
-    },
-
     /** GET /:id - Return a given entity */
     read({ user }, res) {
       res.json(user)
     }
   })
 
-  // Basic authentication
+  // Authentication header required
+  // Format: btoa(Basic address:signedmessage)
   router.use(
     basicAuth({
       authorizer: auth
