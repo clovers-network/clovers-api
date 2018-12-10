@@ -26,8 +26,8 @@ export function commentTemplate(user, board, comment = '') {
     board,
     comment,
 
-    userAddress: user.address,
-    userName: user.name || user.address,
+    userAddress: user.address.toLowerCase(),
+    userName: user.name || user.address.toLowerCase(),
     created: new Date(),
     edited: null,
     deleted: false,
