@@ -16,18 +16,18 @@ export var socketing = function({ _io, _db }) {
   io = _io
   db = _db
   var connections = 0
-  io.on('connection', function(socket) {
+  io.on('connection', (socket) => {
     connections += 1
     debug('opened, now ' + connections + ' connections')
-    socket.on('data', function(data) {
+    socket.on('data', (data) => {
       debug(data)
     })
-    socket.on('disconnect', function() {
+    socket.on('disconnect', () => {
       connections -= 1
       debug('closed, now ' + connections + ' connections')
     })
-    socket.on('error', function(err) {
-      debug('error')
+    socket.on('error', (err) => {
+      debug('error', err)
     })
   })
   beginListen('Clovers')

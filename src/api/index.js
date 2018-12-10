@@ -4,6 +4,7 @@ import { Router } from 'express'
 import clovers from './clovers'
 import orders from './orders'
 import users from './users'
+import chats from './chats'
 import logs from './logs'
 
 export default ({ config, db, io }) => {
@@ -17,6 +18,9 @@ export default ({ config, db, io }) => {
 
   // mount the users resource
   api.use('/users', users({ config, db, io }))
+
+  // mount
+  api.use('/chats', chats({ config, db, io }))
 
   // mount the logs resource
   api.use('/logs', logs({ config, db, io }))
