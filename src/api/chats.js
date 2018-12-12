@@ -165,7 +165,7 @@ export function commentListener (server, db) {
       } else {
         // probably an update
         debug('update comment', doc.new_val.id)
-        io.emit('edit comment', doc)
+        io.emit('edit comment', doc.new_val)
       }
     })
   })
