@@ -19,7 +19,8 @@ const tables = [
   },
   {
     name: 'chats',
-    index: 'id'
+    index: 'id',
+    indexes: ['board']
   },
   {
     name: 'logs'
@@ -79,6 +80,7 @@ function rebuildDatabases() {
   console.log('rebuildDatabases')
   createDB()
     .then(createTables)
+    .then(createIndexes)
     .then(populateLogs)
     .then(processLogs)
     .then(nameClovers)
@@ -178,6 +180,33 @@ function createTables(i = 0) {
         })
     }
   })
+}
+
+// untested :)
+async function createIndexes (i = 0) {
+  if (i >= tables.length) {
+    resolve()
+  } else {
+    let table = tables[i]
+    if (!table.indexes) resolve()
+
+    console.log('createIndexes', table.name)
+    await asyncForEach(table.indexes, async (index) => {
+      await r.db('clovers_v2')
+      .table(table.name)
+      .indexCreate(index)
+      .run(db)
+      console.log('done', table.name, t)
+    })
+
+    createIndexes(i + 1)
+  }
+}
+
+async function asyncForEach (array, callback) {
+  for (let index = 0; index < array.length; index++) {
+    await callback(array[index], index, array)
+  }
 }
 
 let currBlock = null

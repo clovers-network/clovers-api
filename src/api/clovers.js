@@ -16,9 +16,17 @@ export default ({ config, db, io }) => {
       id = '0x' + new BigNumber(id).toString(16).toLowerCase()
     }
     r.db('clovers_v2')
-      .table('clovers')
-      .get(id)
-      .run(db, callback)
+    .table('clovers')
+    .get(id)
+    .do((doc) => {
+      return doc.merge({
+        commentCount: r.db('clovers_v2')
+          .table('chats')
+          .getAll(doc('board'), { index: 'board' })
+          .count()
+      })
+    })
+    .run(db, callback)
   }
 
   const pageSize = 12
@@ -32,6 +40,14 @@ export default ({ config, db, io }) => {
       r.db('clovers_v2')
         .table('clovers')
         .orderBy(r.desc('modified'))
+        .map((doc) => {
+          return doc.merge({
+            commentCount: r.db('clovers_v2')
+              .table('chats')
+              .getAll(doc('board'), { index: 'board' })
+              .count()
+          })
+        })
         .run(db, toRes(res))
 
       /* -------- paginated version ---------------- */

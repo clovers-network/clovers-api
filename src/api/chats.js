@@ -40,7 +40,7 @@ export default ({ config, db, io }) => {
       debug('get chat by board id', boardId)
 
       r.db('clovers_v2').table('chats')
-      .filter({ board: boardId })
+      .getAll(boardId, { index: 'board' })
       .orderBy(r.asc('created'))
       .run(db, toRes(res))
     }
