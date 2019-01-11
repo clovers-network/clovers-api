@@ -116,7 +116,7 @@ export async function syncClover(_db, _io, clover) {
   }
   const exists = await events.Clovers.instance.exists(clover.board)
   if (!exists) {
-    debug('clover DOES NOT exists')
+    debug('clover DOES NOT exist')
     log.data._from = clover.owner
     log.data._to = ZERO_ADDRESS
     // remove from current owner
@@ -226,26 +226,47 @@ async function updateClover(log) {
     .db('clovers_v2')
     .table('clovers')
     .insert(clover, { returnChanges: true, conflict: 'update' })
-
   await dodb(db, command)
-  io && io.emit('updateClover', clover)
+
+  // get clover again, with comments and orders
+  r.db('clovers_v2')
+    .table('clovers')
+    .get(log.data._tokenId)
+    .do((doc) => {
+      return doc.merge({
+        commentCount: r.db('clovers_v2')
+          .table('chats')
+          .getAll(doc('board'), { index: 'board' })
+          .count(),
+        lastOrder: r.db('clovers_v2')
+          .table('orders')
+          .getAll(doc('board'), { index: 'market' })
+          .orderBy(r.desc('created'), r.desc('transactionIndex'))
+          .limit(1)
+          .fold(false, (l, r) => r)
+      })
+    })
+    .run(db, (err, result) => {
+      io && io.emit('updateClover', result)
+      debug(io ? 'emit updateClover' : 'do not emit updateClover')
+    })
 }
 
 async function addNewClover(log) {
   let tokenId = log.data._tokenId
-  let cloverMoves = await events.Clovers.instance.getCloverMoves(
-    log.data._tokenId
-  )
-  let cloverReward = await events.Clovers.instance.getReward(log.data._tokenId)
-  let cloverSymmetries = await events.Clovers.instance.getSymmetries(
-    log.data._tokenId
-  )
-  let cloverBlock = await events.Clovers.instance.getBlockMinted(
-    log.data._tokenId
-  )
-  let price = await events.SimpleCloversMarket.instance.sellPrice(
-    log.data._tokenId
-  )
+  let [
+    cloverMoves,
+    cloverReward,
+    cloverSymmetries,
+    cloverBlock,
+    price
+  ] = await Promise.all([
+    events.Clovers.instance.getCloverMoves(log.data._tokenId),
+    events.Clovers.instance.getReward(log.data._tokenId),
+    events.Clovers.instance.getSymmetries(log.data._tokenId),
+    events.Clovers.instance.getBlockMinted(log.data._tokenId),
+    events.SimpleCloversMarket.instance.sellPrice(log.data._tokenId)
+  ])
   // var cloverURI = await events.Clovers.instance.tokenURI(log.data._tokenId)
 
   let clover = {
@@ -259,7 +280,10 @@ async function addNewClover(log) {
     modified: Number(cloverBlock),
     // store price as hex, padded for sorting/filtering in DB
     originalPrice: padBigNum(price),
-    price: padBigNum(price)
+    price: padBigNum(price),
+    RFTPrice: null,
+    RFTSupply: null,
+    RFTMarketCap: null
   }
   let command = r
     .db('clovers_v2')

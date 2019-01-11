@@ -28,7 +28,8 @@ const tables = [
   },
   {
     name: 'orders',
-    index: 'id'
+    index: 'id',
+    indexes: ['market']
   }
 ]
 

@@ -23,7 +23,13 @@ export default ({ config, db, io }) => {
         commentCount: r.db('clovers_v2')
           .table('chats')
           .getAll(doc('board'), { index: 'board' })
-          .count()
+          .count(),
+        lastOrder: r.db('clovers_v2')
+          .table('orders')
+          .getAll(doc('board'), { index: 'market' })
+          .orderBy(r.desc('created'), r.desc('transactionIndex'))
+          .limit(1)
+          .fold(false, (l, r) => r)
       })
     })
     .run(db, callback)
@@ -45,7 +51,13 @@ export default ({ config, db, io }) => {
             commentCount: r.db('clovers_v2')
               .table('chats')
               .getAll(doc('board'), { index: 'board' })
-              .count()
+              .count(),
+            lastOrder: r.db('clovers_v2')
+              .table('orders')
+              .getAll(doc('board'), { index: 'market' })
+              .orderBy(r.desc('created'), r.desc('transactionIndex'))
+              .limit(1)
+              .fold(false, (l, r) => r)
           })
         })
         .run(db, toRes(res))
@@ -167,7 +179,8 @@ export default ({ config, db, io }) => {
             return
           }
           if (changes[0]) {
-            clover = changes[0].new_val
+            // keep lastOrder, commentCount etc
+            clover = { ...clover, ...changes[0].new_val }
           }
           io.emit('updateClover', clover)
           res.sendStatus(200).end()
@@ -176,8 +189,4 @@ export default ({ config, db, io }) => {
   })
 
   return router
-}
-
-function isOwner(wallet, record) {
-  return record.owner === wallet
 }
