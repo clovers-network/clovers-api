@@ -48,8 +48,29 @@ export async function changeCloverPrice(db, io, _tokenId, log) {
   command = r
     .db('clovers_v2')
     .table('clovers')
-    .insert(clover, { returnChanges: true, conflict: 'update' })
+    .insert(clover, { conflict: 'update' })
   await dodb(db, command)
-  io && io.emit('updateClover', clover)
-  debug(io ? 'emit updateClover' : 'do not emit updateClover')
+
+  // get clover again, with comments and orders
+  r.db('clovers_v2')
+    .table('clovers')
+    .get(_tokenId)
+    .do((doc) => {
+      return doc.merge({
+        commentCount: r.db('clovers_v2')
+          .table('chats')
+          .getAll(doc('board'), { index: 'board' })
+          .count(),
+        lastOrder: r.db('clovers_v2')
+          .table('orders')
+          .getAll(doc('board'), { index: 'market' })
+          .orderBy(r.desc('created'), r.desc('transactionIndex'))
+          .limit(1)
+          .fold(false, (l, r) => r)
+      })
+    })
+    .run(db, (err, result) => {
+      io && io.emit('updateClover', result)
+      debug(io ? 'emit updateClover' : 'do not emit updateClover')
+    })
 }
