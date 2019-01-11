@@ -15,13 +15,14 @@ let db, io
 
 // event Buy(uint256 _tokenId, address buyer, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply);
 export let curationMarketBuy = async function({ log, io, db }) {
-  await addBuySell(log, log.data.buyer, 'buy', db)
+  await addBuySell(log, log.data.buyer, 'buy', io, db)
 }
 // event Sell(uint256 _tokenId, address seller, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply);
 export let curationMarketSell = async function({ log, io, db }) {
-  await addBuySell(log, log.data.seller, 'sell', db)
+  await addBuySell(log, log.data.seller, 'sell', io, db)
 }
-async function addBuySell(log, user, isBuy, db) {
+
+async function addBuySell(log, user, isBuy, io, db) {
   isBuy = isBuy === 'buy'
   let order = {
     market: log.data._tokenId,
@@ -39,7 +40,30 @@ async function addBuySell(log, user, isBuy, db) {
     .table('orders')
     .insert(order)
   await dodb(db, command)
-  io && io.emit('addOrder', order)
+  // io && io.emit('addOrder', order)
+
+  // get clover again, with comments and orders
+  r.db('clovers_v2')
+    .table('clovers')
+    .get(log.data._tokenId)
+    .do((doc) => {
+      return doc.merge({
+        commentCount: r.db('clovers_v2')
+          .table('chats')
+          .getAll(doc('board'), { index: 'board' })
+          .count(),
+        lastOrder: r.db('clovers_v2')
+          .table('orders')
+          .getAll(doc('board'), { index: 'market' })
+          .orderBy(r.desc('created'), r.desc('transactionIndex'))
+          .limit(1)
+          .fold(false, (l, r) => r)
+      })
+    })
+    .run(db, (err, result) => {
+      io && io.emit('updateClover', result)
+      debug(io ? 'emit updateClover' : 'do not emit updateClover')
+    })
 }
 
 // event Burn(uint256 _tokenId, address indexed burner, uint256 value);
