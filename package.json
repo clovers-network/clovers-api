@@ -10,7 +10,9 @@
     "start": "pm2 start dist",
     "prestart": "npm run -s build",
     "test": "eslint src",
-    "contracts": "npm i clovers-network/clovers-contracts --force"
+    "contracts": "npm i clovers-network/clovers-contracts --force",
+    "accessremote": "ssh -fNTL localhost:8080:127.0.0.1:8080  clover",
+    "killremote": "kill $(ps aux | grep '[s]sh' | grep 8080 | awk '{print $2}')"
   },
   "eslintConfig": {
     "extends": "eslint:recommended",
