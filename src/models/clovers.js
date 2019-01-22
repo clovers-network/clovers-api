@@ -280,10 +280,7 @@ async function addNewClover(log) {
     modified: Number(cloverBlock),
     // store price as hex, padded for sorting/filtering in DB
     originalPrice: padBigNum(price),
-    price: padBigNum(price),
-    RFTPrice: null,
-    RFTSupply: null,
-    RFTMarketCap: null
+    price: padBigNum(price)
   }
   let command = r
     .db('clovers_v2')
