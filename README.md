@@ -1,7 +1,6 @@
 # Clovers Network API
 
 Database of clovers built from contract events. API and websockets for keeping the dapp in sync with contracts.  
-Currently running version available at https://github.com/okwme/clovers-api
 
 ## Run
 
