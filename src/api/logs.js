@@ -20,12 +20,13 @@ export default ({ config, db, io }) => {
       const pageSize = 24
       const asc = query.asc === 'true'
       const page = ((parseInt(query.page) || 1) - 1) * pageSize
-      const filter = !query.filter || query.filter === '' ? 'pub' : query.filter
-      const index = filter !== 'pub' ? 'name' : 'activity'
+      const filter = !query.filter || query.filter === '' ? ['pub'] : query.filter.split(',')
+      const index = filter[0] !== 'pub' ? 'name' : 'activity'
+      debug('filter by', ...filter)
 
       let [results, count] = await Promise.all([
         r.db('clovers_v2').table('logs')
-          .getAll(filter, { index })
+          .getAll(...filter, { index })
           .orderBy(asc ? r.asc('blockNumber') : r.desc('blockNumber'))
           .slice(page, page + pageSize)
           .run(db, (err, data) => {
@@ -33,7 +34,7 @@ export default ({ config, db, io }) => {
             return data
           }),
         r.db('clovers_v2').table('logs')
-          .getAll(filter, { index })
+          .getAll(...filter, { index })
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
