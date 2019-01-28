@@ -12,7 +12,7 @@ import r from 'rethinkdb'
 
 let io, db
 
-export var socketing = function({ _io, _db }) {
+export var socketing = function ({ _io, _db }) {
   io = _io
   db = _db
   var connections = 0
@@ -38,7 +38,7 @@ export var socketing = function({ _io, _db }) {
   beginListen('ClubTokenController')
 }
 
-async function beginListen(contract, key = 0) {
+async function beginListen (contract, key = 0) {
   let eventTypes = events[contract].eventTypes
   if (key > eventTypes.length - 1) return
   beginListen(contract, key + 1)
@@ -95,8 +95,14 @@ async function beginListen(contract, key = 0) {
   })
 }
 
-export var handleEvent = async function({ io, db, log }) {
-  io && io.emit('addEvent', log)
+const ignoredTypes = ['ClubToken_Transfer','CurationMarket_Transfer']
+
+export var handleEvent = async ({ io, db, log }) => {
+  if (io && !ignoredTypes.includes(log.name)) {
+    if (log.name !== 'Clovers_Transfer' || log.data._to !== '0x8A0011ccb1850e18A9D2D4b15bd7F9E9E423c11b') {
+      io.emit('newLog', log)
+    }
+  }
   let foo = log.name.split('_')
   let contract = foo[0]
   let name = foo[1]
