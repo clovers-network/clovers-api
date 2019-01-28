@@ -30,14 +30,23 @@ const tables = [
         'activity',
         function (doc) {
           return r.branch(
-            r.expr(["ClubToken_Transfer","CurationMarket_Transfer"]).contains(doc("name")),
-            "priv",
-            "pub"
+            // log.name is not in this list
+            r.expr(['ClubToken_Transfer','CurationMarket_Transfer']).contains(doc('name')),
+            'priv',
+            r.branch(
+              doc('name').ne('Clovers_Transfer'),
+              'pub',
+              r.branch(
+                // not going to Clovers Contract
+                doc('data')('_to').ne('0x8A0011ccb1850e18A9D2D4b15bd7F9E9E423c11b'),
+                'pub',
+                'priv'
+              )
+            )
           )
         }
       ]
     ]
-    // index: 'transactionHash'
   },
   {
     name: 'orders',
