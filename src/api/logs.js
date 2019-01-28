@@ -41,6 +41,7 @@ export default ({ config, db, io }) => {
       ]).catch((err) => {
         debug('query error')
         debug(err)
+        return res.status(500).end()
       })
 
       const currentPage = parseInt(query.page) || 1
@@ -65,19 +66,3 @@ export default ({ config, db, io }) => {
 
   return router
 }
-
-// export function toRes(res, status = 200) {
-//   return (err, thing) => {
-//     if (err) return res.status(500).send(err)
-
-//     if (thing && typeof thing.toObject === 'function') {
-//       thing = thing.toObject()
-//     }
-//     thing
-//       .toArray()
-//       .then(results => {
-//         res.status(status).json(results)
-//       })
-//       .error(console.log)
-//   }
-// }
