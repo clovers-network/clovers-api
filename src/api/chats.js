@@ -5,14 +5,13 @@ import { toRes, commentTemplate } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
+import uuid from 'uuid/v4'
+import { provider } from '../lib/ethers-utils'
 
 // addresses that can moderate comments :)
 const whitelist = []
 
 export default ({ config, db, io }) => {
-  /** For requests with an `id`, you can auto-load the entity.
-   *  Errors terminate the request, success sets `req[id] = data`.
-   */
   const load = (req, id, callback) => {
     if (typeof id === 'string') {
       id = id.toLowerCase()
@@ -21,21 +20,13 @@ export default ({ config, db, io }) => {
     callback()
   }
 
-  // const pageSize = 12;
-
   let router = resource({
     load,
-
-    /** Property name to store preloaded entity on `request`. */
     id: 'chat',
-
-    /** GET / - List all entities */
     index(req, res) {
-      //
       res.status(400).json({ error: 'Please provide a Clover ID' }).end()
     },
 
-    /** GET /:id - return Clover comments */
     read({ boardId }, res) {
       debug('get chat by board id', boardId)
 
@@ -76,13 +67,35 @@ export default ({ config, db, io }) => {
     const chat = commentTemplate(user, board.toLowerCase(), comment)
     // save it
     r.db('clovers_v2').table('chats')
-      .insert(chat).run(db, (err, { generated_keys }) => {
+      .insert(chat).run(db, async (err, { generated_keys }) => {
         if (err) {
           debug('db run error')
           res.sendStatus(500).end()
           return
         }
-        res.json({ ...chat, id: generated_keys[0] }).end()
+        // emit an event pls
+        const log = {
+          id: uuid(),
+          name: 'Comment_Added',
+          removed: false,
+          blockNumber: await provider.getBlockNumber(),
+          data: {
+            userAddress: chat.userAddress,
+            userName: chat.userName,
+            board: chat.board,
+            createdAt: new Date()
+          }
+        }
+        r.db('clovers_v2').table('logs').insert(log)
+          .run(db, (err) => {
+            if (err) {
+              debug('chat log not saved')
+              debug(err)
+            } else {
+              io.emit('newLog', log)
+            }
+            res.json({ ...chat, id: generated_keys[0] }).end()
+          })
       })
   })
 

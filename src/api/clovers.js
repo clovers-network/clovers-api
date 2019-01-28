@@ -1,3 +1,4 @@
+const debug = require('debug')('app:api:clovers')
 import resource from 'resource-router-middleware'
 // import clovers from '../models/clovers'
 import r from 'rethinkdb'
@@ -8,6 +9,8 @@ import { syncClover } from '../models/clovers'
 import xss from 'xss'
 import Reversi from 'clovers-reversi'
 import BigNumber from 'bignumber.js'
+import uuid from 'uuid/v4'
+import { provider } from '../lib/ethers-utils'
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
@@ -39,7 +42,6 @@ export default ({ config, db, io }) => {
 
   let router = resource({
     id: 'clover',
-
     load,
 
     index({ query }, res) {
@@ -161,27 +163,59 @@ export default ({ config, db, io }) => {
     const { user } = req.auth
     let name = req.body.name || ''
     name = xss(name).substring(0, 34)
-    load(req, id, (err, clover) => {
+    load(req, id, async (err, clover) => {
       const owner = clover.owner.toLowerCase() === user.toLowerCase()
       if (err || !owner) {
-        res.sendStatus(401).end()
-        return
+        return res.sendStatus(401).end()
+      }
+
+      if (name === clover.name) {
+        return res.sendStatus(400).end()
       }
 
       // db update
+      const modified = await provider.getBlockNumber()
       r.db('clovers_v2')
         .table('clovers')
         .get(clover.board)
-        .update({ name }, { returnChanges: true })
+        .update({ name, modified }, { returnChanges: true })
         .run(db, (err, { changes }) => {
           if (err) {
-            res.sendStatus(500).end()
-            return
+            return res.sendStatus(500).end()
           }
+
+          const oldName = clover.name
+
           if (changes[0]) {
             // keep lastOrder, commentCount etc
             clover = { ...clover, ...changes[0].new_val }
           }
+
+          // create log entry
+          const log = {
+            id: uuid(),
+            name: 'CloverName_Changed',
+            removed: false,
+            blockNumber: modified,
+            data: {
+              board: clover.board,
+              owner: clover.owner,
+              prevName: oldName,
+              newName: clover.name,
+              changedAt: new Date()
+            }
+          }
+
+          r.db('clovers_v2').table('logs').insert(log)
+            .run(db, (err) => {
+              if (err) {
+                debug('chat log not saved')
+                debug(err)
+              } else {
+                io.emit('newLog', log)
+              }
+            })
+
           io.emit('updateClover', clover)
           res.sendStatus(200).end()
         })

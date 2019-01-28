@@ -23,7 +23,20 @@ const tables = [
     indexes: ['board']
   },
   {
-    name: 'logs'
+    name: 'logs',
+    indexes: [
+      'name',
+      [
+        'activity',
+        function (doc) {
+          return r.branch(
+            r.expr(["ClubToken_Transfer","CurationMarket_Transfer"]).contains(doc("name")),
+            "priv",
+            "pub"
+          )
+        }
+      ]
+    ]
     // index: 'transactionHash'
   },
   {
@@ -193,11 +206,13 @@ async function createIndexes (i = 0) {
 
     console.log('createIndexes', table.name)
     await asyncForEach(table.indexes, async (index) => {
+      const func = index.constructor === Array ? index[1] : undefined
+      const name = func ? index[0] : index
       await r.db('clovers_v2')
-      .table(table.name)
-      .indexCreate(index)
-      .run(db)
-      console.log('done', table.name, t)
+        .table(table.name)
+        .indexCreate(index, func)
+        .run(db)
+      console.log('done', table.name)
     })
 
     createIndexes(i + 1)
