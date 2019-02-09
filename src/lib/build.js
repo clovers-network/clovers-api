@@ -11,7 +11,32 @@ import { provider, events, web3, web3mode } from '../lib/ethers-utils'
 const tables = [
   {
     name: 'clovers',
-    index: 'board'
+    index: 'board',
+    indexes: [
+      [
+        'owner',
+        (doc) => {
+          return doc('owner').downcase()
+        }
+      ],
+      [
+        'all',
+        () => true
+      ],
+      [
+        'market',
+        (doc) => {
+          return doc('price').ne('0')
+        }
+      ],
+      [
+        'rft',
+        (doc) => {
+          // curation market address
+          return doc('owner').eq('0x9b8e917d6a511d4a22dcfa668a46b508ac26731e')
+        }
+      ]
+    ]
   },
   {
     name: 'users',
@@ -20,7 +45,14 @@ const tables = [
   {
     name: 'chats',
     index: 'id',
-    indexes: ['board']
+    indexes: [
+      [
+        'board',
+        (doc) => {
+          return doc('board').downcase()
+        }
+      ]
+    ]
   },
   {
     name: 'logs',
@@ -28,7 +60,7 @@ const tables = [
       'name',
       [
         'activity',
-        function (doc) {
+        (doc) => {
           return r.branch(
             // log.name is not in this list
             r.expr(['ClubToken_Transfer','CurationMarket_Transfer']).contains(doc('name')),

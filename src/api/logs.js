@@ -19,7 +19,7 @@ export default ({ config, db, io }) => {
     async index ({ query }, res) {
       const pageSize = 24
       const asc = query.asc === 'true'
-      const page = ((parseInt(query.page) || 1) - 1) * pageSize
+      const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
       const filter = !query.filter || query.filter === '' ? ['pub'] : query.filter.split(',')
       const index = filter[0] !== 'pub' ? 'name' : 'activity'
       debug('filter by', ...filter)
@@ -28,7 +28,7 @@ export default ({ config, db, io }) => {
         r.db('clovers_v2').table('logs')
           .getAll(...filter, { index })
           .orderBy(asc ? r.asc('blockNumber') : r.desc('blockNumber'))
-          .slice(page, page + pageSize)
+          .slice(start, start + pageSize)
           .run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -45,17 +45,22 @@ export default ({ config, db, io }) => {
         return res.status(500).end()
       })
 
-      const currentPage = parseInt(query.page) || 1
-      const hasNext = page + pageSize < count
+      const currentPage = Math.max((parseInt(query.page) || 1), 1)
+      const hasNext = start + pageSize < count
+      let prevPage = currentPage - 1 || null
+      if (start >= count) {
+        prevPage = Math.ceil(count / pageSize)
+      }
 
-      let response = {
+      const response = {
+        prevPage,
         page: currentPage,
+        nextPage: hasNext ? currentPage + 1 : null,
         allResults: count,
         pageResults: results.length,
         filterBy: filter,
         orderBy: asc ? 'ascending' : 'descending',
-        prevPage: currentPage - 1 || false,
-        nextPage: hasNext ? currentPage + 1 : false,
+
         results
       }
 

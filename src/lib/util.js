@@ -12,8 +12,8 @@ export function userTemplate(address = null) {
     name: '',
     address: address.toLowerCase(),
     clovers: [],
-    created: '0',
-    modified: '0',
+    created: 0,
+    modified: 0,
     balance: '0',
     curationMarket: {}
   }

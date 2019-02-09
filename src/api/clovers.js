@@ -32,54 +32,83 @@ export default ({ config, db, io }) => {
           .getAll(doc('board'), { index: 'market' })
           .orderBy(r.desc('created'), r.desc('transactionIndex'))
           .limit(1)
-          .fold(false, (l, r) => r)
+          .fold(null, (l, r) => r)
       })
     })
     .run(db, callback)
   }
 
-  const pageSize = 12
 
   let router = resource({
     id: 'clover',
     load,
 
-    index({ query }, res) {
-      r.db('clovers_v2')
-        .table('clovers')
-        .orderBy(r.desc('modified'))
-        .map((doc) => {
-          return doc.merge({
-            commentCount: r.db('clovers_v2')
-              .table('chats')
-              .getAll(doc('board'), { index: 'board' })
-              .count(),
-            lastOrder: r.db('clovers_v2')
-              .table('orders')
-              .getAll(doc('board'), { index: 'market' })
-              .orderBy(r.desc('created'), r.desc('transactionIndex'))
-              .limit(1)
-              .fold(false, (l, r) => r)
-          })
-        })
-        .run(db, toRes(res))
+    async index({ query }, res) {
+      const indexes = ['all', 'market', 'rft']
+      const pageSize = 12
+      const asc = query.asc === 'true'
+      const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
+      const index = !query.filter || query.filter === '' || !indexes.includes(query.filter) ? 'all' : query.filter
+      debug('filter by', index)
 
-      /* -------- paginated version ---------------- */
-      // const before = parseInt(query.before) || false
-      // const page = Math.min((parseInt(query.page) || 1), 1e6)
-      // const all = query.all && query.all === 'true'
-      // if (before) {
-      //   r.db('clovers_v2').table('clovers')
-      //     .orderBy(r.desc('modified'))
-      //     .filter(r.row('modified').lt(before))
-      //     .limit(pageSize).run(db, toRes(res))
-      // } else {
-      //   const offset = all ? 0 : pageSize * (page - 1)
-      //   const newLimit = all ? (pageSize * page) : pageSize
-      //   r.db('clovers_v2').table('clovers')
-      //     .orderBy(r.desc('modified'))
-      //     .skip(offset).limit(newLimit).run(db, toRes(res))
-      // }
+      let [results, count] = await Promise.all([
+        r.db('clovers_v2').table('clovers')
+          .getAll(true, { index })
+          .orderBy(asc ? r.asc('modified') : r.desc('modified'))
+          .slice(start, start + pageSize)
+          .map((doc) => {
+            return doc.merge({
+              commentCount: r.db('clovers_v2').table('chats')
+                .getAll(doc('board'), { index: 'board' }).count(),
+              lastOrder: r.db('clovers_v2').table('orders')
+                .getAll(doc('board'), { index: 'market' })
+                .orderBy(r.desc('created'), r.desc('transactionIndex'))
+                .limit(1).fold(null, (l, r) => r)
+            })
+          }).eqJoin('owner', r.db('clovers_v2').table('users'))
+          .map((doc) => {
+            return doc('left').merge({
+              user: doc('right')
+            })
+          })
+          .run(db, (err, data) => {
+            if (err) throw new Error(err)
+            return data
+          }),
+        r.db('clovers_v2').table('clovers')
+          .getAll(true, { index })
+          .count().run(db, (err, data) => {
+            if (err) throw new Error(err)
+            return data
+          })
+      ]).catch((err) => {
+        debug('query error')
+        debug(err)
+        return res.status(500).end()
+      })
+
+      const currentPage = Math.max((parseInt(query.page) || 1), 1)
+      const hasNext = start + pageSize < count
+      let prevPage = currentPage - 1 || null
+      if (start >= count) {
+        prevPage = Math.ceil(count / pageSize)
+      }
+
+      const response = {
+        prevPage,
+        page: currentPage,
+        nextPage: hasNext ? currentPage + 1 : null,
+        allResults: count,
+        pageResults: results.length,
+        filterBy: index,
+        orderBy: asc ? 'ascending' : 'descending',
+
+        results
+      }
+
+      const status = results.length ? 200 : 404
+
+      res.status(status).json(response).end()
     },
 
     read({ clover }, res) {
