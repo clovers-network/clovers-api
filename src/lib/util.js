@@ -95,7 +95,7 @@ export function parseLogForStorage(l) {
   return l
 }
 
-export function padBigNum(amount) {
+export function padBigNum (amount, format = 10) {
   if (amount.constructor === Array) {
     amount = amount[0]
   }
@@ -103,7 +103,7 @@ export function padBigNum(amount) {
   if (amount.lt(0)) {
     console.log('negative number ' + amount.toString())
   }
-  return amount.toString(10)
+  return amount.toString(format)
 }
 
 export function toRes(res, status = 200) {

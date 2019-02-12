@@ -48,16 +48,15 @@ async function addBuySell(log, user, isBuy, io, db) {
     .get(log.data._tokenId)
     .do((doc) => {
       return doc.merge({
-        commentCount: r.db('clovers_v2')
-          .table('chats')
+        commentCount: r.table('chats')
           .getAll(doc('board'), { index: 'board' })
           .count(),
-        lastOrder: r.db('clovers_v2')
-          .table('orders')
+        lastOrder: r.table('orders')
           .getAll(doc('board'), { index: 'market' })
           .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          .limit(1)
-          .fold(false, (l, r) => r)
+          .limit(1).fold(false, (l, r) => r),
+        user: r.table('users').get(doc('owner'))
+          .without('clovers', 'curationMarket').default(null)
       })
     })
     .run(db, (err, result) => {

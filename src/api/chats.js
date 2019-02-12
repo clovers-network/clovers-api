@@ -30,8 +30,7 @@ export default ({ config, db, io }) => {
     read({ boardId }, res) {
       debug('get chat by board id', boardId)
 
-      r.db('clovers_v2').table('chats')
-      .getAll(boardId, { index: 'board' })
+      r.table('chats').getAll(boardId, { index: 'board' })
       .orderBy(r.asc('created'))
       .run(db, toRes(res))
     }
@@ -53,7 +52,7 @@ export default ({ config, db, io }) => {
       return
     }
 
-    const user = await r.db('clovers_v2').table('users')
+    const user = await r.table('users')
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
     const comment = xss(req.body.comment || '').trim()
@@ -66,7 +65,7 @@ export default ({ config, db, io }) => {
     // generate the chat
     const chat = commentTemplate(user, board.toLowerCase(), comment)
     // save it
-    r.db('clovers_v2').table('chats')
+    r.table('chats')
       .insert(chat).run(db, async (err, { generated_keys }) => {
         if (err) {
           debug('db run error')
@@ -86,7 +85,7 @@ export default ({ config, db, io }) => {
             createdAt: new Date()
           }
         }
-        r.db('clovers_v2').table('logs').insert(log)
+        r.table('logs').insert(log)
           .run(db, (err) => {
             if (err) {
               debug('chat log not saved')
@@ -107,7 +106,7 @@ export default ({ config, db, io }) => {
       return
     }
 
-    const comment = await r.db('clovers_v2').table('chats')
+    const comment = await r.table('chats')
       .get(id).default({}).without('clovers').run(db)
 
     if (!comment.id) {
@@ -116,21 +115,21 @@ export default ({ config, db, io }) => {
     }
 
     if (userAddress.toLowerCase() === comment.userAddress) {
-      await r.db('clovers_v2').table('chats')
+      await r.table('chats')
       .get(id).update({
         deleted: true,
         comment: 'Deleted',
         edited: r.now()
       }).run(db)
     } else {
-      const board = await r.db('clovers_v2').table('clovers')
+      const board = await r.table('clovers')
       .get(comment.board).run(db)
 
       if (
         userAddress.toLowerCase() === board.owner ||
         whitelist.includes(userAddress.toLowerCase())
       ) {
-        await r.db('clovers_v2').table('chats')
+        await r.table('chats')
         .get(id).update({
           flagged: true,
           edited: r.now()
@@ -158,7 +157,7 @@ export function commentListener (server, db) {
   })
 
   // listen to chat changes :)
-  r.db('clovers_v2').table('chats').changes().run(db, (err, cursor) => {
+  r.table('chats').changes().run(db, (err, cursor) => {
     if (err) {
       console.error(err)
       return

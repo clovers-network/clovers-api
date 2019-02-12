@@ -59,7 +59,8 @@ export default ({ config, db, io }) => {
         allResults: count,
         pageResults: results.length,
         filterBy: filter,
-        orderBy: asc ? 'ascending' : 'descending',
+        sort: asc ? 'ascending' : 'descending',
+        orderBy: 'blockNumber',
 
         results
       }

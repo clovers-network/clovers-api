@@ -2,7 +2,7 @@ const debug = require('debug')('app:api:clovers')
 import resource from 'resource-router-middleware'
 // import clovers from '../models/clovers'
 import r from 'rethinkdb'
-import { toRes, toSVG } from '../lib/util'
+import { dodb, toSVG } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import { syncClover } from '../models/clovers'
@@ -12,60 +12,68 @@ import BigNumber from 'bignumber.js'
 import uuid from 'uuid/v4'
 import { provider } from '../lib/ethers-utils'
 
+const semiSecretToken = uuid()
+debug(`TOKEN ——— ${semiSecretToken}`)
+
 export default ({ config, db, io }) => {
-  const load = (req, id, callback) => {
+  const load = async (req, id, callback) => {
     id = id.toLowerCase()
     if (id.substr(0,2) !== '0x') {
       id = '0x' + new BigNumber(id).toString(16).toLowerCase()
     }
-    r.db('clovers_v2')
-    .table('clovers')
-    .get(id)
-    .do((doc) => {
+    const c = r.table('clovers')
+    .get(id).do((doc) => {
       return doc.merge({
-        commentCount: r.db('clovers_v2')
-          .table('chats')
+        commentCount: r.table('chats')
           .getAll(doc('board'), { index: 'board' })
           .count(),
-        lastOrder: r.db('clovers_v2')
-          .table('orders')
+        lastOrder: r.table('orders')
           .getAll(doc('board'), { index: 'market' })
           .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          .limit(1)
-          .fold(null, (l, r) => r)
+          .limit(1).fold(null, (l, r) => r),
+        user: r.table('users').get(doc('owner'))
+          .without('clovers', 'curationMarket').default(null)
       })
     })
-    .run(db, callback)
+    // .run(db, callback)
+    try {
+      const clover = await dodb(db, c)
+      callback(null, clover)
+    } catch (err) {
+      debug(err.toString())
+      callback('404 Not found')
+    }
   }
-
 
   let router = resource({
     id: 'clover',
     load,
 
     async index({ query }, res) {
-      const indexes = ['all', 'market', 'rft']
+      const indexes = ['all', 'forsale', 'rft']
       const pageSize = 12
+      const sort = query.sort || 'modified'
       const asc = query.asc === 'true'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
       const index = !query.filter || query.filter === '' || !indexes.includes(query.filter) ? 'all' : query.filter
-      debug('filter by', index)
+      debug('filter by', index, sort)
 
       let [results, count] = await Promise.all([
-        r.db('clovers_v2').table('clovers')
+        r.table('clovers')
           .getAll(true, { index })
-          .orderBy(asc ? r.asc('modified') : r.desc('modified'))
+          .orderBy(asc ? r.asc(sort) : r.desc(sort))
           .slice(start, start + pageSize)
           .map((doc) => {
             return doc.merge({
-              commentCount: r.db('clovers_v2').table('chats')
+              commentCount: r.table('chats')
                 .getAll(doc('board'), { index: 'board' }).count(),
-              lastOrder: r.db('clovers_v2').table('orders')
+              lastOrder: r.table('orders')
                 .getAll(doc('board'), { index: 'market' })
                 .orderBy(r.desc('created'), r.desc('transactionIndex'))
                 .limit(1).fold(null, (l, r) => r)
             })
-          }).eqJoin('owner', r.db('clovers_v2').table('users'))
+          }).eqJoin('owner', r.table('users'), { ordered: true })
+          .without({ right: ['clovers', 'curationMarket'] })
           .map((doc) => {
             return doc('left').merge({
               user: doc('right')
@@ -75,7 +83,7 @@ export default ({ config, db, io }) => {
             if (err) throw new Error(err)
             return data
           }),
-        r.db('clovers_v2').table('clovers')
+        r.table('clovers')
           .getAll(true, { index })
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)
@@ -101,7 +109,8 @@ export default ({ config, db, io }) => {
         allResults: count,
         pageResults: results.length,
         filterBy: index,
-        orderBy: asc ? 'ascending' : 'descending',
+        sort: asc ? 'ascending' : 'descending',
+        orderBy: sort,
 
         results
       }
@@ -167,7 +176,27 @@ export default ({ config, db, io }) => {
     }
   })
 
+  router.get('/sync/all', async (req, res) => {
+    const { s } = req.query
+    if (s !== semiSecretToken) return res.sendStatus(401).end()
+
+    debug('sync all of em')
+    const allClovers = await dodb(db, r.table('clovers').coerceTo('array'))
+
+    debug(`updating ${allClovers.length} clover(s)`)
+
+    await asyncForEach(allClovers, async (clover, index) => {
+      debug(`syncing clover ${index}: ${clover.board}`)
+      await syncClover(db, io, clover)
+    })
+
+    res.send('OK').end()
+  })
+
   router.get('/sync/:id', async (req, res) => {
+    const { s } = req.query
+    if (s !== semiSecretToken) return res.sendStatus(401).end()
+
     const { id } = req.params
     load(req, id, (err, clover) => {
       if (err || !clover) {
@@ -204,52 +233,57 @@ export default ({ config, db, io }) => {
 
       // db update
       const modified = await provider.getBlockNumber()
-      r.db('clovers_v2')
-        .table('clovers')
-        .get(clover.board)
-        .update({ name, modified }, { returnChanges: true })
-        .run(db, (err, { changes }) => {
+      r.table('clovers')
+      .get(clover.board)
+      .update({ name, modified }, { returnChanges: true })
+      .run(db, (err, { changes }) => {
+        if (err) {
+          return res.sendStatus(500).end()
+        }
+
+        const oldName = clover.name
+
+        if (changes[0]) {
+          // keep lastOrder, commentCount etc
+          clover = { ...clover, ...changes[0].new_val }
+        }
+
+        // create log entry
+        const log = {
+          id: uuid(),
+          name: 'CloverName_Changed',
+          removed: false,
+          blockNumber: modified,
+          data: {
+            board: clover.board,
+            owner: clover.owner,
+            prevName: oldName,
+            newName: clover.name,
+            changedAt: new Date()
+          }
+        }
+
+        r.table('logs').insert(log)
+        .run(db, (err) => {
           if (err) {
-            return res.sendStatus(500).end()
+            debug('chat log not saved')
+            debug(err)
+          } else {
+            io.emit('newLog', log)
           }
-
-          const oldName = clover.name
-
-          if (changes[0]) {
-            // keep lastOrder, commentCount etc
-            clover = { ...clover, ...changes[0].new_val }
-          }
-
-          // create log entry
-          const log = {
-            id: uuid(),
-            name: 'CloverName_Changed',
-            removed: false,
-            blockNumber: modified,
-            data: {
-              board: clover.board,
-              owner: clover.owner,
-              prevName: oldName,
-              newName: clover.name,
-              changedAt: new Date()
-            }
-          }
-
-          r.db('clovers_v2').table('logs').insert(log)
-            .run(db, (err) => {
-              if (err) {
-                debug('chat log not saved')
-                debug(err)
-              } else {
-                io.emit('newLog', log)
-              }
-            })
-
-          io.emit('updateClover', clover)
-          res.sendStatus(200).end()
         })
+
+        io.emit('updateClover', clover)
+        res.sendStatus(200).end()
+      })
     })
   })
 
   return router
+}
+
+async function asyncForEach (array, callback) {
+  for (let index = 0; index < array.length; index++) {
+    await callback(array[index], index, array)
+  }
 }

@@ -46,7 +46,6 @@ export default ({ config, db, io }) => {
 
       let [results, count] = await Promise.all([
         r.db('clovers_v2').table('users')
-          // .getAll(true, { index })
           .orderBy(asc ? r.asc('modified') : r.desc('modified'))
           .slice(start, start + pageSize)
           .run(db, (err, data) => {
@@ -54,7 +53,6 @@ export default ({ config, db, io }) => {
             return data
           }),
         r.db('clovers_v2').table('users')
-          // .getAll(true, { index })
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -79,7 +77,8 @@ export default ({ config, db, io }) => {
         allResults: count,
         pageResults: results.length,
         filterBy: null,
-        orderBy: asc ? 'ascending' : 'descending',
+        sort: asc ? 'ascending' : 'descending',
+        orderBy: 'modified',
 
         results
       }
@@ -125,6 +124,12 @@ export default ({ config, db, io }) => {
               .orderBy(r.desc('created'), r.desc('transactionIndex'))
               .limit(1).fold(null, (l, r) => r)
           })
+        }).eqJoin('owner', r.table('users'), { ordered: true })
+        .without({ right: ['clovers', 'curationMarket'] })
+        .map((doc) => {
+          return doc('left').merge({
+            user: doc('right')
+          })
         }).run(db, (err, data) => {
           if (err) throw new Error(err)
           return data
@@ -155,7 +160,8 @@ export default ({ config, db, io }) => {
       allResults: count,
       pageResults: results.length,
       filterBy: id.toLowerCase(),
-      orderBy: asc ? 'ascending' : 'descending',
+      sort: asc ? 'ascending' : 'descending',
+      orderBy: 'modified',
 
       results
     }

@@ -107,7 +107,7 @@ export async function syncClover(_db, _io, clover) {
   db = _db
   io = _io
   debug('checking clover')
-  debug(clover)
+  debug(clover.board)
   // sync clover
   // test if exists
   let log = {
@@ -132,7 +132,13 @@ export async function syncClover(_db, _io, clover) {
   const salePrice = await events.SimpleCloversMarket.instance.sellPrice(
     clover.board
   )
-  if (salePrice.toString(10) !== clover.price.toString(10)) {
+  let padPrice = salePrice.toString(10)
+  if (padPrice !== '0') padPrice = padPrice.padStart(64, '0')
+  if (padPrice !== clover.price) {
+  // if (salePrice.toString(10) !== clover.price.toString(10)) {
+  // let hexPrice = BigInt(salePrice.toString()).toString(16)
+  // hexPrice = hexPrice === '0' ? '0' : hexPrice.padStart(64, '0')
+  // if (hexPrice !== clover.price) {
     debug('sale price wrong')
     log.data.price = salePrice
     await changeCloverPrice(db, io, clover.board, log)
@@ -141,17 +147,22 @@ export async function syncClover(_db, _io, clover) {
   }
 
   // test for owner
-  let owner = await events.Clovers.instance.ownerOf(clover.board)
-  if (Array.isArray(owner)) {
-    owner = owner[0]
-  }
-  if (owner.toLowerCase() !== clover.owner.toLowerCase()) {
-    debug('owner is wrong')
-    log.data._to = owner
-    await updateClover(log)
-    await updateUser(log, owner, 'add')
-  } else {
-    debug('owner is ok')
+  try {
+    let owner = await events.Clovers.instance.ownerOf(clover.board)
+    if (Array.isArray(owner)) {
+      owner = owner[0]
+    }
+    if (owner.toLowerCase() !== clover.owner.toLowerCase()) {
+      debug('owner is wrong')
+      log.data._to = owner
+      await updateClover(log)
+      await updateUser(log, owner, 'add')
+    } else {
+      debug('owner is ok')
+    }
+  } catch (err) {
+    debug(err.toString())
+    debug('invalid address probably, continue')
   }
 }
 
@@ -234,16 +245,15 @@ async function updateClover(log) {
     .get(log.data._tokenId)
     .do((doc) => {
       return doc.merge({
-        commentCount: r.db('clovers_v2')
-          .table('chats')
+        commentCount: r.table('chats')
           .getAll(doc('board'), { index: 'board' })
           .count(),
-        lastOrder: r.db('clovers_v2')
-          .table('orders')
+        lastOrder: r.table('orders')
           .getAll(doc('board'), { index: 'market' })
           .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          .limit(1)
-          .fold(false, (l, r) => r)
+          .limit(1).fold(false, (l, r) => r),
+        user: r.table('users').get(doc('owner'))
+          .without('clovers', 'curationMarket').default(null)
       })
     })
     .run(db, (err, result) => {
@@ -253,6 +263,7 @@ async function updateClover(log) {
 }
 
 async function addNewClover(log) {
+  debug('adding new Clover', log.data._tokenId)
   let tokenId = log.data._tokenId
   let [
     cloverMoves,
@@ -282,11 +293,12 @@ async function addNewClover(log) {
     originalPrice: padBigNum(price),
     price: padBigNum(price)
   }
-  let command = r
-    .db('clovers_v2')
-    .table('clovers')
-    .insert(clover)
+  let command = r.table('clovers').insert(clover)
   await dodb(db, command)
+
+  clover.user = await r.table('users').get(clover.owner).run(db)
+  debug('emit new clover info', clover)
+
   io && io.emit('addClover', clover)
 
   // wait til afterwards so the clover shows up (even if it's just pending)
