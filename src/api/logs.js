@@ -7,8 +7,7 @@ import { toRes } from '../lib/util'
 export default ({ config, db, io }) => {
   const id = 'log'
   const load = (req, id, callback) => {
-    r.db('clovers_v2')
-      .table('logs')
+    r.table('logs')
       .get(id)
       .run(db, callback)
   }
@@ -25,7 +24,7 @@ export default ({ config, db, io }) => {
       debug('filter by', ...filter)
 
       let [results, count] = await Promise.all([
-        r.db('clovers_v2').table('logs')
+        r.table('logs')
           .getAll(...filter, { index })
           .orderBy(asc ? r.asc('blockNumber') : r.desc('blockNumber'))
           .slice(start, start + pageSize)
@@ -33,7 +32,7 @@ export default ({ config, db, io }) => {
             if (err) throw new Error(err)
             return data
           }),
-        r.db('clovers_v2').table('logs')
+        r.table('logs')
           .getAll(...filter, { index })
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)

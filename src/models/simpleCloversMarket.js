@@ -39,10 +39,7 @@ export async function changeCloverPrice (db, io, _tokenId, log) {
 
   // price = BigInt(price.toString()).toString(16)
 
-  let command = r
-    .db('clovers_v2')
-    .table('clovers')
-    .get(_tokenId)
+  let command = r.table('clovers').get(_tokenId)
   let clover = await dodb(db, command)
 
   if (price.eq(0)) {
@@ -53,15 +50,12 @@ export async function changeCloverPrice (db, io, _tokenId, log) {
   }
   clover.price = price
   clover.modified = log.blockNumber
-  command = r
-    .db('clovers_v2')
-    .table('clovers')
+  command = r.table('clovers')
     .insert(clover, { conflict: 'update' })
   await dodb(db, command)
 
   // get clover again, with comments and orders
-  r.db('clovers_v2')
-    .table('clovers')
+  r.table('clovers')
     .get(_tokenId)
     .do((doc) => {
       return doc.merge({

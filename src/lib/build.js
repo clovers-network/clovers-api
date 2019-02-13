@@ -225,8 +225,7 @@ function createTables(i = 0) {
     } else {
       let table = tables[i]
       console.log('tableCreate ' + table.name)
-      r.db('clovers_v2')
-        .tableCreate(table.name, { primaryKey: table.index })
+      r.tableCreate(table.name, { primaryKey: table.index })
         .run(db, (err, result) => {
           if (err) return reject(err)
           createTables(i + 1).then(() => {
@@ -249,8 +248,7 @@ async function createIndexes (i = 0) {
     await asyncForEach(table.indexes, async (index) => {
       const func = index.constructor === Array ? index[1] : undefined
       const name = func ? index[0] : index
-      await r.db('clovers_v2')
-        .table(table.name)
+      await r.table(table.name)
         .indexCreate(index, func)
         .run(db)
       console.log('done', table.name)
@@ -334,9 +332,7 @@ function populateLog(contract, key = 0) {
             }
             return l
           })
-          return r
-            .db('clovers_v2')
-            .table('logs')
+          return r.table('logs')
             .insert(logs)
             .run(db, (err, results) => {
               if (err) return reject(err)
@@ -356,8 +352,7 @@ function populateLog(contract, key = 0) {
 function processLogs() {
   console.log('processLogs')
   return new Promise((resolve, reject) => {
-    r.db('clovers_v2')
-      .table('logs')
+    r.table('logs')
       .orderBy(
         r.asc('blockNumber'),
         r.asc('transactionIndex'),
@@ -399,8 +394,7 @@ function processLog(logs, i = 0) {
 function nameClovers() {
   console.log('nameClovers')
   return new Promise((resolve, reject) => {
-    r.db('clovers')
-      .table('logs')
+    r.table('logs')
       .filter({ name: 'newCloverName' })
       .orderBy('blockNumber')
       .run(db, (err, logs) => {
@@ -421,8 +415,7 @@ function nameClover(logs, key = 0) {
   return new Promise((resolve, reject) => {
     if (logs.length === key) resolve()
     let log = logs[key]
-    r.db('clovers_v2')
-      .table('clovers')
+    r.table('clovers')
       .get(log.data.board)
       .run(db, (err, clover) => {
         if (err) return reject(err)
@@ -434,8 +427,7 @@ function nameClover(logs, key = 0) {
             .catch(reject)
         } else {
           clover.name = xss(log.data.name)
-          r.db('clovers_v2')
-            .table('clovers')
+          r.table('clovers')
             .get(log.data.board)
             .update(clover)
             .run(db, (err, result) => {
@@ -452,8 +444,7 @@ function nameClover(logs, key = 0) {
 function nameUsers() {
   console.log('nameUsers')
   return new Promise((resolve, reject) => {
-    r.db('clovers')
-      .table('logs')
+    r.table('logs')
       .filter({ name: 'newUserName' })
       .orderBy('blockNumber')
       .run(db, (err, logs) => {
@@ -472,8 +463,7 @@ function nameUser(logs, key = 0) {
   return new Promise((resolve, reject) => {
     if (logs.length === key) resolve()
     let log = logs[key]
-    r.db('clovers_v2')
-      .table('users')
+    r.table('users')
       .get(log.data.player)
       .run(db, (err, user) => {
         if (err) return reject(err)
@@ -485,8 +475,7 @@ function nameUser(logs, key = 0) {
             .catch(reject)
         } else {
           user.name = xss(log.data.name)
-          r.db('clovers_v2')
-            .table('users')
+          r.table('users')
             .get(log.data.player)
             .update(user)
             .run(db, (err, result) => {

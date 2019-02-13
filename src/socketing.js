@@ -84,8 +84,7 @@ async function beginListen (contract, key = 0) {
     }
 
     log.data = parseLogForStorage(log.data)
-    r.db('clovers_v2')
-      .table('logs')
+    r.table('logs')
       .insert(log)
       .run(db, (err, results) => {
         debug((err ? 'ERROR ' : 'SUCCESS ') + 'saving ' + log.name)

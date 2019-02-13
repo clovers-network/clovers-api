@@ -54,10 +54,7 @@ async function changeUserBalance(user_id, amount, add, log) {
   user_id = user_id.toLowerCase()
   amount = typeof amount == 'object' ? amount : new BigNumber(amount)
   add = add == 'add'
-  let command = r
-    .db('clovers_v2')
-    .table('users')
-    .get(user_id)
+  let command = r.table('users').get(user_id)
   let user = await dodb(db, command)
   if (!user) {
     user = userTemplate(user_id)
@@ -74,9 +71,7 @@ async function changeUserBalance(user_id, amount, add, log) {
   user.balance = padBigNum(balance)
 
   user.modified = log.blockNumber
-  command = r
-    .db('clovers_v2')
-    .table('users')
+  command = r.table('users')
     .insert(user, { returnChanges: true, conflict: 'update' })
   let changes = await dodb(db, command)
   debug('update user!')

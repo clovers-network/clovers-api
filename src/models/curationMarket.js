@@ -35,16 +35,12 @@ async function addBuySell(log, user, isBuy, io, db) {
     poolBalance: padBigNum(log.data.poolBalance),
     tokenSupply: padBigNum(log.data.tokenSupply)
   }
-  let command = r
-    .db('clovers_v2')
-    .table('orders')
-    .insert(order)
+  let command = r.table('orders').insert(order)
   await dodb(db, command)
   // io && io.emit('addOrder', order)
 
   // get clover again, with comments and orders
-  r.db('clovers_v2')
-    .table('clovers')
+  r.table('clovers')
     .get(log.data._tokenId)
     .do((doc) => {
       return doc.merge({
@@ -107,10 +103,7 @@ async function changeUserBalance(user_id, amount, _tokenId, add, log) {
   user_id = user_id.toLowerCase()
   amount = typeof amount == 'object' ? amount : new BigNumber(amount)
   add = add == 'add'
-  let command = r
-    .db('clovers_v2')
-    .table('users')
-    .get(user_id)
+  let command = r.table('users').get(user_id)
   let user = await dodb(db, command)
   if (!user) {
     user = userTemplate(user_id)
@@ -125,9 +118,7 @@ async function changeUserBalance(user_id, amount, _tokenId, add, log) {
   balance = add ? balance.plus(amount) : balance.minus(amount)
   user.curationMarket[_tokenId] = padBigNum(balance)
   user.modified = log.blockNumber
-  command = r
-    .db('clovers_v2')
-    .table('users')
+  command = r.table('users')
     .insert(user, { returnChanges: true, conflict: 'update' })
   let changes = await dodb(db, command)
   io && io.emit('updateUser', user)

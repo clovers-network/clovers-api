@@ -170,10 +170,7 @@ async function updateUser(log, user_id, add) {
   user_id = user_id.toLowerCase()
   if (user_id === ZERO_ADDRESS.toLowerCase()) return
   add = add == 'add'
-  let command = r
-    .db('clovers_v2')
-    .table('users')
-    .get(user_id)
+  let command = r.table('users').get(user_id)
   let user = await dodb(db, command)
   if (add) {
     if (!user) {
@@ -208,9 +205,7 @@ async function updateUser(log, user_id, add) {
       throw new Error('cant find for user ' + log.data._from + ' but not found')
     }
   }
-  command = r
-    .db('clovers_v2')
-    .table('users')
+  command = r.table('users')
     .insert(user, { returnChanges: true, conflict: 'update' })
   await dodb(db, command)
   io && io.emit('updateUser', user)
@@ -225,23 +220,18 @@ async function updateUsers(log) {
 }
 
 async function updateClover(log) {
-  let command = r
-    .db('clovers_v2')
-    .table('clovers')
+  let command = r.table('clovers')
     .get(log.data._tokenId)
   let clover = await dodb(db, command)
   if (!clover) throw new Error('clover ' + log.data._tokenId + ' not found')
   clover.owner = log.data._to.toLowerCase()
   clover.modified = log.blockNumber
-  command = r
-    .db('clovers_v2')
-    .table('clovers')
+  command = r.table('clovers')
     .insert(clover, { returnChanges: true, conflict: 'update' })
   await dodb(db, command)
 
   // get clover again, with comments and orders
-  r.db('clovers_v2')
-    .table('clovers')
+  r.table('clovers')
     .get(log.data._tokenId)
     .do((doc) => {
       return doc.merge({

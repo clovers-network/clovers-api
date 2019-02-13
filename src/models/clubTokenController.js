@@ -24,10 +24,7 @@ async function addBuySell(log, user, isBuy, io, db) {
     poolBalance: padBigNum(log.data.poolBalance),
     tokenSupply: padBigNum(log.data.tokenSupply)
   }
-  let command = r
-    .db('clovers_v2')
-    .table('orders')
-    .insert(order)
+  let command = r.table('orders').insert(order)
   await dodb(db, command)
   io && io.emit('addOrder', order)
 }

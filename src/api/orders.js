@@ -12,8 +12,7 @@ export default ({ config, db, io }) =>
      *  Errors terminate the request, success sets `req[id] = data`.
      */
     load(req, id, callback) {
-      r.db('clovers_v2')
-        .table('orders')
+      r.table('orders')
         // .get(id)
         .orderBy(r.desc('created'))
         .filter({ market: id })
@@ -28,8 +27,7 @@ export default ({ config, db, io }) =>
       let limit = parseInt(query.limit) || 100
       let offset = parseInt(query.offset) || 0
       limit = Math.min(limit, 500)
-      r.db('clovers_v2')
-        .table('orders')
+      r.table('orders')
         .orderBy(r.desc('created'), r.desc('transactionIndex'))
         .slice(offset, offset + limit)
         .run(db, toRes(res))

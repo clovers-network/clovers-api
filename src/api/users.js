@@ -15,8 +15,7 @@ export default ({ config, db, io }) => {
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
-    r.db('clovers_v2')
-      .table('users')
+    r.table('users')
       .get(id)
       .default({})
       .do((doc) => {
@@ -45,14 +44,14 @@ export default ({ config, db, io }) => {
       debug('get users')
 
       let [results, count] = await Promise.all([
-        r.db('clovers_v2').table('users')
+        r.table('users')
           .orderBy(asc ? r.asc('modified') : r.desc('modified'))
           .slice(start, start + pageSize)
           .run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
           }),
-        r.db('clovers_v2').table('users')
+        r.table('users')
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -90,8 +89,7 @@ export default ({ config, db, io }) => {
       // let limit = parseInt(query.limit) || 100
       // let offset = parseInt(query.offset) || 0
       // limit = Math.min(limit, 500)
-      // r.db('clovers_v2')
-      //   .table('users')
+      // r.table('users')
       //   .slice(offset, offset + limit)
       //   .run(db, toRes(res))
     },
@@ -111,15 +109,15 @@ export default ({ config, db, io }) => {
     debug('get user clovers', start)
 
     let [results, count] = await Promise.all([
-      r.db('clovers_v2').table('clovers')
+      r.table('clovers')
         .getAll(id.toLowerCase(), { index })
         .orderBy(asc ? r.asc('modified') : r.desc('modified'))
         .slice(start, start + pageSize)
         .map((doc) => {
           return doc.merge({
-            commentCount: r.db('clovers_v2').table('chats')
+            commentCount: r.table('chats')
               .getAll(doc('board'), { index: 'board' }).count(),
-            lastOrder: r.db('clovers_v2').table('orders')
+            lastOrder: r.table('orders')
               .getAll(doc('board'), { index: 'market' })
               .orderBy(r.desc('created'), r.desc('transactionIndex'))
               .limit(1).fold(null, (l, r) => r)
@@ -134,7 +132,7 @@ export default ({ config, db, io }) => {
           if (err) throw new Error(err)
           return data
         }),
-      r.db('clovers_v2').table('clovers')
+      r.table('clovers')
         .getAll(id.toLowerCase(), { index })
         .count().run(db, (err, data) => {
           if (err) throw new Error(err)
@@ -203,8 +201,7 @@ export default ({ config, db, io }) => {
       }
 
       // db update
-      r.db('clovers_v2')
-        .table('users')
+      r.table('users')
         .insert(dbUser, { returnChanges: true, conflict: 'update' })
         .run(db, (err, { changes }) => {
           if (err) {
