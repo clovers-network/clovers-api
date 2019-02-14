@@ -104,14 +104,17 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     const pageSize = 12
     const asc = req.query.asc === 'true'
+    const sort = req.query.sort || 'modified'
     const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
-    const index = 'owner'
+    const filter = req.query.filter === 'forsale'
+    const index = filter ? 'ownerfilter' : 'owner'
+    const search = filter ? [id.toLowerCase(), 'forsale'] : id.toLowerCase()
     debug('get user clovers', start)
 
     let [results, count] = await Promise.all([
       r.table('clovers')
-        .getAll(id.toLowerCase(), { index })
-        .orderBy(asc ? r.asc('modified') : r.desc('modified'))
+        .getAll(search, { index })
+        .orderBy(asc ? r.asc(sort) : r.desc(sort))
         .slice(start, start + pageSize)
         .map((doc) => {
           return doc.merge({
@@ -133,7 +136,7 @@ export default ({ config, db, io }) => {
           return data
         }),
       r.table('clovers')
-        .getAll(id.toLowerCase(), { index })
+        .getAll(search, { index })
         .count().run(db, (err, data) => {
           if (err) throw new Error(err)
           return data

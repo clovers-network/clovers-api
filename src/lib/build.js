@@ -35,6 +35,19 @@ const tables = [
           // curation market address
           return doc('owner').eq('0x9b8e917d6a511d4a22dcfa668a46b508ac26731e')
         }
+      ],
+      [
+        'ownerfilter',
+        (doc) => {
+          return [
+            doc('owner').downcase(),
+            r.branch(
+              doc('price').ne('0'),
+              'forsale',
+              false
+            )
+          ]
+        }
       ]
     ]
   },
