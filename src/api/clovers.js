@@ -13,7 +13,7 @@ import uuid from 'uuid/v4'
 import { provider } from '../lib/ethers-utils'
 
 const semiSecretToken = uuid()
-debug(`TOKEN ——— ${semiSecretToken}`)
+console.log(`TOKEN ——— ${semiSecretToken}`)
 
 export default ({ config, db, io }) => {
   const load = async (req, id, callback) => {
