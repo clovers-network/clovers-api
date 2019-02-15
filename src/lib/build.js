@@ -335,11 +335,20 @@ function populateLog(contract, key = 0) {
               return true
             }
           })
-          logs = logs.map(l => {
+          const userKeys = ['_to', 'owner', 'buyer', 'seller']
+          logs = logs.map((l) => {
             try {
+              let userAddress = null
               l.name = contract + '_' + eventType().name
               l.data = transferCoder.parse(l.topics, l.data)
               l.data = parseLogForStorage(l.data)
+
+              for (let k of Object.keys(log.data)) {
+                if (userKeys.includes(k)) {
+                  userAddress = log.data[k].toLowerCase()
+                }
+              }
+              log.userAddress = userAddress
             } catch (err) {
               reject(err)
             }

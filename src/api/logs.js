@@ -28,6 +28,17 @@ export default ({ config, db, io }) => {
           .getAll(...filter, { index })
           .orderBy(asc ? r.asc('blockNumber') : r.desc('blockNumber'))
           .slice(start, start + pageSize)
+          // include the users
+          .map((doc) => {
+            return doc.merge({
+              user: r.branch(
+                doc('userAddress').ne(null),
+                r.table('users').get(doc('userAddress')).default({})
+                  .without('clovers', 'curationMarket'),
+                null
+              )
+            })
+          })
           .run(db, (err, data) => {
             if (err) throw new Error(err)
             return data

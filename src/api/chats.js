@@ -78,6 +78,7 @@ export default ({ config, db, io }) => {
           name: 'Comment_Added',
           removed: false,
           blockNumber: await provider.getBlockNumber(),
+          userAddress: null, // necessary data below
           data: {
             userAddress: chat.userAddress,
             userName: chat.userName,

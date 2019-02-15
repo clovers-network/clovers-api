@@ -254,6 +254,7 @@ export default ({ config, db, io }) => {
           name: 'CloverName_Changed',
           removed: false,
           blockNumber: modified,
+          userAddress: null,
           data: {
             board: clover.board,
             owner: clover.owner,

@@ -84,6 +84,17 @@ async function beginListen (contract, key = 0) {
     }
 
     log.data = parseLogForStorage(log.data)
+
+    const userKeys = ['_to', 'owner', 'buyer', 'seller']
+    let userAddress = null
+    for (let k of Object.keys(log.data)) {
+      if (userKeys.includes(k)) {
+        userAddress = log.data[k].toLowerCase()
+      }
+    }
+
+    log.userAddress = userAddress
+
     r.table('logs')
       .insert(log)
       .run(db, (err, results) => {
