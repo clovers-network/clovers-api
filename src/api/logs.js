@@ -32,7 +32,7 @@ export default ({ config, db, io }) => {
           .map((doc) => {
             return doc.merge({
               user: r.branch(
-                doc('userAddress').ne(null),
+                doc('userAddress').default(null).ne(null),
                 r.table('users').get(doc('userAddress')).default({})
                   .without('clovers', 'curationMarket'),
                 null
