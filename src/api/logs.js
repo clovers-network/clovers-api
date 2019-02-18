@@ -1,19 +1,18 @@
 const debug = require('debug')('app:api:logs')
 import resource from 'resource-router-middleware'
 import r from 'rethinkdb'
-import { toRes } from '../lib/util'
+// import { toRes } from '../lib/util'
 
 
 export default ({ config, db, io }) => {
-  const id = 'log'
-  const load = (req, id, callback) => {
-    r.table('logs')
-      .get(id)
-      .run(db, callback)
-  }
+  // const load = (req, id, callback) => {
+  //   r.table('logs')
+  //     .get(id)
+  //     .run(db, callback)
+  // }
   const router = resource({
-    id,
-    load,
+    id: 'log',
+    // load,
 
     async index ({ query }, res) {
       const pageSize = 24

@@ -100,7 +100,11 @@ async function beginListen (contract, key = 0) {
       .run(db, (err, results) => {
         debug((err ? 'ERROR ' : 'SUCCESS ') + 'saving ' + log.name)
         if (err) throw new Error(err)
-        handleEvent({ io, db, log })
+        // include user info
+        r.table('users').get(log.userAddress).run(db, (err, user) => {
+          log.user = user
+          handleEvent({ io, db, log })
+        })
       })
   })
 }

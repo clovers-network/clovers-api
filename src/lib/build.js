@@ -71,6 +71,7 @@ const tables = [
     name: 'logs',
     indexes: [
       'name',
+      'userAddress',
       [
         'activity',
         (doc) => {
@@ -87,6 +88,20 @@ const tables = [
                 'pub',
                 'priv'
               )
+            )
+          )
+        }
+      ],
+      [
+        'clover',
+        (doc) => {
+          return r.branch(
+            doc.hasFields({ data: 'board' }),
+            doc('data')('board').downcase(),
+            r.branch(
+              doc.hasFields({ data: '_tokenId' }),
+              doc('data')('_tokenId').downcase(),
+              null,
             )
           )
         }

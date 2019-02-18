@@ -134,8 +134,8 @@ export default ({ config, db, io }) => {
       } else {
         let reversi = new Reversi()
         let nft = {}
-        console.log(clover.moves[0])
-        console.log(...clover.moves[0])
+        debug(clover.moves[0])
+        debug(...clover.moves[0])
         let game = reversi.playGameByteMoves(...clover.moves[0])
         nft.name = clover.name
         nft.description = 'This Clover ' + clover.board + ' was created with the moves: ' + reversi.byteMovesToStringMoves(...clover.moves[0])
@@ -171,9 +171,76 @@ export default ({ config, db, io }) => {
       res.setHeader('Content-Type', 'image/svg+xml')
       res.send(svg)
     } catch (err) {
-      console.log('No ID, or invalid')
+      debug('No ID, or invalid', err)
       res.sendStatus(404)
     }
+  })
+
+  router.get('/:id/activity', async (req, res) => {
+    const { id } = req.params
+    debug(`getting activity for ${id}`)
+
+    const pageSize = 12
+    const asc = req.query.asc === 'true'
+    const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
+    const index = 'clover'
+    debug('filter by', id)
+
+    let [results, count] = await Promise.all([
+      r.table('logs')
+        .getAll(id, { index })
+        .orderBy(asc ? r.asc('blockNumber') : r.desc('blockNumber'))
+        .slice(start, start + pageSize)
+        // include the users
+        .map((doc) => {
+          return doc.merge({
+            user: r.branch(
+              doc('userAddress').default(null).ne(null),
+              r.table('users').get(doc('userAddress')).default({})
+                .without('clovers', 'curationMarket'),
+              null
+            )
+          })
+        })
+        .run(db, (err, data) => {
+          if (err) throw new Error(err)
+          return data
+        }),
+      r.table('logs')
+        .getAll(id, { index })
+        .count().run(db, (err, data) => {
+          if (err) throw new Error(err)
+          return data
+        })
+    ]).catch((err) => {
+      debug('query error')
+      debug(err)
+      return res.status(500).end()
+    })
+
+    const currentPage = Math.max((parseInt(req.query.page) || 1), 1)
+    const hasNext = start + pageSize < count
+    let prevPage = currentPage - 1 || null
+    if (start >= count) {
+      prevPage = Math.ceil(count / pageSize)
+    }
+
+    const response = {
+      prevPage,
+      page: currentPage,
+      nextPage: hasNext ? currentPage + 1 : null,
+      allResults: count,
+      pageResults: results.length,
+      filterBy: id,
+      sort: asc ? 'ascending' : 'descending',
+      orderBy: 'blockNumber',
+
+      results
+    }
+
+    const status = results.length ? 200 : 404
+
+    res.status(status).json(response).end()
   })
 
   router.get('/sync/all', async (req, res) => {
