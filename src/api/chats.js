@@ -23,16 +23,49 @@ export default ({ config, db, io }) => {
   let router = resource({
     load,
     id: 'chat',
-    index(req, res) {
+    index (req, res) {
       res.status(400).json({ error: 'Please provide a Clover ID' }).end()
     },
 
-    read({ boardId }, res) {
-      debug('get chat by board id', boardId)
+    async read ({ boardId, query }, res) {
+      const pageSize = 16
+      const before = query.before ? new Date(query.before) : new Date()
 
-      r.table('chats').getAll(boardId, { index: 'board' })
-      .orderBy(r.asc('created'))
-      .run(db, toRes(res))
+      debug('get chat by board id', boardId, before)
+
+      const [results, count] = await Promise.all([
+        r.table('chats').between(
+          [boardId, r.minval],
+          [boardId, before],
+          { index: 'dates' }
+        ).orderBy(r.desc('created'))
+          .limit(pageSize)
+          .run(db, (err, data) => {
+            if (err) throw new Error(err)
+            return data
+          }),
+        r.table('chats').getAll(boardId, { index: 'board' })
+          .count().run(db, (err, data) => {
+            if (err) throw new Error(err)
+            return data
+          })
+      ]).catch((err) => {
+        debug('query error')
+        debug(err)
+        return res.status(500).end()
+      })
+
+      const response = {
+        before,
+
+        allResults: count,
+        pageResults: results.length,
+        results: results // .reverse()
+      }
+
+      const status = results.length ? 200 : 404
+
+      res.status(status).json(response).end()
     }
   })
 
@@ -64,6 +97,10 @@ export default ({ config, db, io }) => {
 
     // generate the chat
     const chat = commentTemplate(user, board.toLowerCase(), comment)
+    const blockNum = await provider.getBlockNumber().catch((err) => {
+      debug(err.toString())
+      return 0
+    })
     // save it
     r.table('chats')
       .insert(chat).run(db, async (err, { generated_keys }) => {
@@ -77,7 +114,7 @@ export default ({ config, db, io }) => {
           id: uuid(),
           name: 'Comment_Added',
           removed: false,
-          blockNumber: await provider.getBlockNumber(),
+          blockNumber: blockNum,
           userAddress: null, // necessary data below
           data: {
             userAddress: chat.userAddress,

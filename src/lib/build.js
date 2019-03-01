@@ -64,6 +64,12 @@ const tables = [
         (doc) => {
           return doc('board').downcase()
         }
+      ],
+      [
+        'dates',
+        (doc) => {
+          return [doc('board'), doc('created')]
+        }
       ]
     ]
   },
