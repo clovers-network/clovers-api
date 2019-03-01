@@ -106,8 +106,12 @@ const tables = [
             doc('data')('board').downcase(),
             r.branch(
               doc.hasFields({ data: '_tokenId' }),
-              doc('data')('_tokenId').downcase(),
-              null,
+              r.branch(
+                doc('name').ne('CurationMarket_Transfer'),
+                doc('data')('_tokenId').downcase(),
+                null
+              ),
+              null
             )
           )
         }
