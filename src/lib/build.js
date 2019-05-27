@@ -14,6 +14,12 @@ const tables = [
     index: 'board',
     indexes: [
       [
+        'Sym',
+        (doc) => {
+          return doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
+        }
+      ],
+      [
         'RotSym',
         (doc) => {
           return doc('symmetries')('RotSym').eq(1)
