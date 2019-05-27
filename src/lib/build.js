@@ -14,6 +14,36 @@ const tables = [
     index: 'board',
     indexes: [
       [
+        'RotSym',
+        (doc) => {
+          return doc('symmetries')('RotSym').eq(1)
+        }
+      ],
+      [
+        'X0Sym',
+        (doc) => {
+          return doc('symmetries')('X0Sym').eq(1)
+        }
+      ],
+      [
+        'XYSym',
+        (doc) => {
+          return doc('symmetries')('XYSym').eq(1)
+        }
+      ],
+      [
+        'XnYSym',
+        (doc) => {
+          return doc('symmetries')('XnYSym').eq(1)
+        }
+      ],
+      [
+        'Y0Sym',
+        (doc) => {
+          return doc('symmetries')('Y0Sym').eq(1)
+        }
+      ],
+      [
         'owner',
         (doc) => {
           return doc('owner').downcase()
