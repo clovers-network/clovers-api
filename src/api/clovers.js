@@ -166,13 +166,19 @@ export default ({ config, db, io }) => {
   router.get('/svg/:id/:size?', async (req, res) => {
     try {
       let { id, size } = req.params
+
+      if (typeof id !== 'string') {
+        id = '0'
+      }
+      id = id.replace(/\s+/g, '')
+
       const svg = await toSVG(id, size || 400)
 
       res.setHeader('Content-Type', 'image/svg+xml')
       res.send(svg)
     } catch (err) {
       debug('No ID, or invalid', err)
-      res.sendStatus(404)
+      res.sendStatus(400)
     }
   })
 
