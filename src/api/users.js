@@ -22,7 +22,7 @@ export default ({ config, db, io }) => {
         return r.branch(
           doc.hasFields('clovers'),
           doc,
-          doc.merge({ clovers: [] })
+          doc.merge({ clovers: [], address: id })
         )
       })
       .run(db, callback)
