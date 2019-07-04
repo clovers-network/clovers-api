@@ -101,14 +101,23 @@ export default ({ config, db, io }) => {
   })
 
   router.get('/:id/clovers', async (req, res) => {
+    const indexes = ['forsale', 'Sym']
+    const map = {
+      forsale: ['ownerfilter', 'forsale'],
+      Sym: ['ownersym', true]
+    }
+
     const { id } = req.params
+    const { filter } = req.query
+
     const pageSize = 12
     const asc = req.query.asc === 'true'
     const sort = req.query.sort || 'modified'
     const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
-    const filter = req.query.filter === 'forsale'
-    const index = filter ? 'ownerfilter' : 'owner'
-    const search = filter ? [id.toLowerCase(), 'forsale'] : id.toLowerCase()
+    const index = indexes.includes(filter) ? map[filter][0] : 'owner'
+    const search = indexes.includes(filter) ? [id.toLowerCase(), map[filter][1]] : id.toLowerCase()
+
+    debug(index, search)
     debug('get user clovers', start)
 
     let [results, count] = await Promise.all([

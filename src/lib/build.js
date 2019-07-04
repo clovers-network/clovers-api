@@ -84,6 +84,15 @@ const tables = [
             )
           ]
         }
+      ],
+      [
+        'ownersym',
+        (doc) => {
+          return [
+            doc('owner').downcase(),
+            doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
+          ]
+        }
       ]
     ]
   },

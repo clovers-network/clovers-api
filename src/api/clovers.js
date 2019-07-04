@@ -273,7 +273,7 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     load(req, id, (err, clover) => {
       if (err || !clover) {
-        res.sendStatus(401).end()
+        res.sendStatus(500).end()
         return
       } else {
         syncClover(db, io, clover)
