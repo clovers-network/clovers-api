@@ -63,7 +63,8 @@ export default ({ config, db, io }) => {
         results: results // .reverse()
       }
 
-      const status = results.length ? 200 : 404
+      // const status = results.length ? 200 : 404
+      const status = 200
 
       res.status(status).json(response).end()
     }
