@@ -7,7 +7,7 @@
     "db": "rethinkdb",
     "dev": "DEBUG=app:* nodemon -w src --exec \"babel-node src --presets es2015,stage-0\"",
     "build": "babel src -s -D -d dist --presets es2015,stage-0",
-    "start": "pm2 start dist",
+    "start": "pm2 start ecosystem.config.js",
     "prestart": "npm run -s build",
     "test": "eslint src",
     "contracts": "npm i clovers-network/clovers-contracts --force",
