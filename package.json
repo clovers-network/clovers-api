@@ -9,6 +9,8 @@
     "build": "babel src -s -D -d dist --presets es2015,stage-0",
     "start": "pm2 start ecosystem.config.js",
     "prestart": "npm run -s build",
+    "reload": "pm2 reload ecosystem.config.js",
+    "prereload": "npm i && npm run -s build",
     "test": "eslint src",
     "contracts": "npm i clovers-network/clovers-contracts --force",
     "accessremote": "ssh -fNTL localhost:8080:127.0.0.1:8080  clover",
