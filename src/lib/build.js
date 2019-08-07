@@ -93,6 +93,16 @@ const tables = [
             doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
           ]
         }
+      ],
+      [
+        'public',
+        (doc) => {
+          return r.expr([
+            // clovers and null address
+            '0x8a0011ccb1850e18a9d2d4b15bd7f9e9e423c11b',
+            '0x0000000000000000000000000000000000000000'
+          ]).contains(doc('owner')).eq(false)
+        }
       ]
     ]
   },
@@ -128,18 +138,18 @@ const tables = [
         (doc) => {
           return r.branch(
             // log.name is not in this list
+            // if
             r.expr(['ClubToken_Transfer','CurationMarket_Transfer']).contains(doc('name')),
             'priv',
-            r.branch(
-              doc('name').ne('Clovers_Transfer'),
-              'pub',
-              r.branch(
-                // not going to Clovers Contract
-                doc('data')('_to').ne('0x8A0011ccb1850e18A9D2D4b15bd7F9E9E423c11b'),
-                'pub',
-                'priv'
-              )
-            )
+            // else if
+            doc('name').ne('Clovers_Transfer'),
+            'pub',
+            // not going to Clovers Contract
+            // else if
+            doc('data')('_to').ne('0x8A0011ccb1850e18A9D2D4b15bd7F9E9E423c11b'),
+            'pub',
+            // else
+            'priv'
           )
         }
       ],
