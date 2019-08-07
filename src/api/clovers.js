@@ -23,25 +23,28 @@ export default ({ config, db, io }) => {
     }
     const c = r.table('clovers')
     .get(id).do((doc) => {
-      return doc.merge({
-        commentCount: r.table('chats')
-          .getAll(doc('board'), { index: 'board' })
-          .count(),
-        lastOrder: r.table('orders')
-          .getAll(doc('board'), { index: 'market' })
-          .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          .limit(1).fold(null, (l, r) => r),
-        user: r.table('users').get(doc('owner'))
-          .without('clovers', 'curationMarket').default(null)
-      })
+      return r.branch(
+        doc.eq(null),
+        r.error('404 Not Found'),
+        doc.merge({
+          commentCount: r.table('chats')
+            .getAll(doc('board'), { index: 'board' })
+            .count(),
+          lastOrder: r.table('orders')
+            .getAll(doc('board'), { index: 'market' })
+            .orderBy(r.desc('created'), r.desc('transactionIndex'))
+            .limit(1).fold(null, (l, r) => r),
+          user: r.table('users').get(doc('owner'))
+            .without('clovers', 'curationMarket').default(null)
+        })
+      )
     })
     // .run(db, callback)
     try {
       const clover = await dodb(db, c)
       callback(null, clover)
     } catch (err) {
-      debug(err.toString())
-      callback('404 Not found')
+      callback(err.msg)
     }
   }
 
@@ -76,7 +79,7 @@ export default ({ config, db, io }) => {
           .without({ right: ['clovers', 'curationMarket'] })
           .map((doc) => {
             return doc('left').merge({
-              user: doc('right')
+              user: doc('right').default(null)
             })
           })
           .run(db, (err, data) => {
