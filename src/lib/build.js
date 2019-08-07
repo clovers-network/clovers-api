@@ -103,6 +103,12 @@ const tables = [
             '0x0000000000000000000000000000000000000000'
           ]).contains(doc('owner')).eq(false)
         }
+      ],
+      [
+        'contract',
+        (doc) => {
+          return doc('owner').eq('0x8a0011ccb1850e18a9d2d4b15bd7f9e9e423c11b')
+        }
       ]
     ]
   },
