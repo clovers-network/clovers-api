@@ -193,16 +193,20 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     const { user } = req.auth
     let name = req.body.name || ''
+    let image = req.body.image || null
     name = xss(name).substring(0, 34)
+    image = image && xss(image).substring(0, 64)
     load(req, id, async (err, dbUser) => {
       const modified = await provider.getBlockNumber()
       if (!dbUser.address) {
         dbUser = userTemplate(id.toLowerCase())
         dbUser.name = name
+        dbUser.image = image
         dbUser.created = modified
         dbUser.modified = modified
       } else {
         dbUser.name = name
+        dbUser.image = image
         dbUser.modified = modified
       }
 
