@@ -184,7 +184,7 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     debug(`getting activity for ${id}`)
 
-    const pageSize = 12
+    const pageSize = 6
     const asc = req.query.asc === 'true'
     const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
     const index = 'clover'
