@@ -124,16 +124,24 @@ export default ({ config, db, io }) => {
             createdAt: new Date()
           }
         }
-        r.table('logs').insert(log)
-          .run(db, (err) => {
-            if (err) {
-              debug('chat log not saved')
-              debug(err)
-            } else {
-              io.emit('newLog', log)
-            }
-            res.json({ ...chat, id: generated_keys[0] }).end()
-          })
+        r.table('clovers').get(chat.board).update({
+          commentCount: r.row('commentCount').add(1).default(0),
+          modified: blockNum
+        }).run(db, (err) => {
+          if (err) {
+            debug(err.message)
+          }
+          r.table('logs').insert(log)
+            .run(db, (err) => {
+              if (err) {
+                debug('chat log not saved')
+                debug(err)
+              } else {
+                io.emit('newLog', log)
+              }
+              res.json({ ...chat, id: generated_keys[0] }).end()
+            })
+        })
       })
   })
 

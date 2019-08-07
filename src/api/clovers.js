@@ -27,9 +27,6 @@ export default ({ config, db, io }) => {
         doc.eq(null),
         r.error('404 Not Found'),
         doc.merge({
-          commentCount: r.table('chats')
-            .getAll(doc('board'), { index: 'board' })
-            .count(),
           lastOrder: r.table('orders')
             .getAll(doc('board'), { index: 'market' })
             .orderBy(r.desc('created'), r.desc('transactionIndex'))
@@ -53,7 +50,7 @@ export default ({ config, db, io }) => {
     load,
 
     async index({ query }, res) {
-      const indexes = ['all', 'forsale', 'rft', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'public', 'contract']
+      const indexes = ['all', 'forsale', 'rft', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'public', 'contract', 'commented']
       const pageSize = 12
       const sort = query.sort || 'modified'
       const asc = query.asc === 'true'
@@ -68,8 +65,6 @@ export default ({ config, db, io }) => {
           .slice(start, start + pageSize)
           .map((doc) => {
             return doc.merge({
-              commentCount: r.table('chats')
-                .getAll(doc('board'), { index: 'board' }).count(),
               lastOrder: r.table('orders')
                 .getAll(doc('board'), { index: 'market' })
                 .orderBy(r.desc('created'), r.desc('transactionIndex'))
@@ -320,7 +315,7 @@ export default ({ config, db, io }) => {
         const oldName = clover.name
 
         if (changes[0]) {
-          // keep lastOrder, commentCount etc
+          // keep lastOrder etc
           clover = { ...clover, ...changes[0].new_val }
         }
 

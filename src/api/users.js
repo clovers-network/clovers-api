@@ -127,8 +127,6 @@ export default ({ config, db, io }) => {
         .slice(start, start + pageSize)
         .map((doc) => {
           return doc.merge({
-            commentCount: r.table('chats')
-              .getAll(doc('board'), { index: 'board' }).count(),
             lastOrder: r.table('orders')
               .getAll(doc('board'), { index: 'market' })
               .orderBy(r.desc('created'), r.desc('transactionIndex'))

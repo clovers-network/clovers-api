@@ -109,6 +109,12 @@ const tables = [
         (doc) => {
           return doc('owner').eq('0x8a0011ccb1850e18a9d2d4b15bd7f9e9e423c11b')
         }
+      ],
+      [
+        'commented',
+        (doc) => {
+          return doc('commentCount').gt(0)
+        }
       ]
     ]
   },
