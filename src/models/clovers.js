@@ -251,6 +251,7 @@ async function updateClover(log) {
 
 async function addNewClover(log) {
   debug('adding new Clover', log.data._tokenId)
+  let foundBy = log.userAddress
   let tokenId = log.data._tokenId
   let [
     cloverMoves,
@@ -278,6 +279,7 @@ async function addNewClover(log) {
     modified: Number(cloverBlock),
     // store price as hex, padded for sorting/filtering in DB
     originalPrice: padBigNum(price),
+    foundBy,
     price: padBigNum(price),
     commentCount: 0
   }

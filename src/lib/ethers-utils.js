@@ -4,7 +4,7 @@ import {
   ClubToken,
   CloversController,
   SimpleCloversMarket,
-  CurationMarket,
+  // CurationMarket,
   ClubTokenController
 } from 'clovers-contracts'
 var ethers = Object.assign(require('ethers'), require('ethers-contracts'))
@@ -15,7 +15,7 @@ export let iface = ethers.Interface
 export let web3mode = false
 ethers.apiToken = config.etherscanAPI
 ethers.apiAccessToken = config.infuraAPI
-var network = ethers.providers.networks.rinkeby
+var network = config.network
 var providers = require('ethers').providers
 
 var infuraProvider = new ethers.providers.InfuraProvider(network)
@@ -50,13 +50,15 @@ let simpleCloversMarketInstance = new ethers.Contract(
   provider
 )
 
-let curationMarketABI = CurationMarket.abi
-let curationMarketAddress = CurationMarket.networks[config.networkId].address
-let curationMarketInstance = new ethers.Contract(
-  curationMarketAddress,
-  curationMarketABI,
-  provider
-)
+console.log({simpleCloversMarketAddress})
+
+// let curationMarketABI = CurationMarket.abi
+// let curationMarketAddress = CurationMarket.networks[config.networkId].address
+// let curationMarketInstance = new ethers.Contract(
+//   curationMarketAddress,
+//   curationMarketABI,
+//   provider
+// )
 
 let clubTokenControllerABI = ClubTokenController.abi
 let clubTokenControllerAddress =
@@ -116,19 +118,19 @@ export let events = {
       // 'OwnershipTransferred'
     ]
   },
-  CurationMarket: {
-    abi: curationMarketABI,
-    address: curationMarketAddress,
-    instance: curationMarketInstance,
-    eventTypes: [
-      'Transfer',
-      // 'Mint',
-      // 'Burn',
-      'Buy',
-      'Sell'
-      // 'OwnershipTransferred'
-    ]
-  },
+  // CurationMarket: {
+  //   abi: curationMarketABI,
+  //   address: curationMarketAddress,
+  //   instance: curationMarketInstance,
+  //   eventTypes: [
+  //     'Transfer',
+  //     // 'Mint',
+  //     // 'Burn',
+  //     'Buy',
+  //     'Sell'
+  //     // 'OwnershipTransferred'
+  //   ]
+  // },
   Clovers: {
     abi: cloversABI,
     address: cloversAddress,
