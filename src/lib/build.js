@@ -142,6 +142,36 @@ const tables = [
     ]
   },
   {
+    name: 'albums',
+    index: 'id',
+    indexes: [
+      [
+        'name',
+        (doc) => {
+          return doc('name').downcase()
+        }
+      ],
+      [
+        'owner',
+        (doc) => {
+          return doc('owner')
+        }
+      ],
+      [
+        'dates',
+        (doc) => {
+          return [doc('id'), doc('modified')]
+        }
+      ],
+      [
+        'cloverCount',
+        (doc) => {
+          return doc('clovers').count()
+        }
+      ]
+    ]
+  },
+  {
     name: 'logs',
     indexes: [
       'name',
