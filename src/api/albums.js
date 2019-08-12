@@ -1,7 +1,7 @@
 const debug = require('debug')('app:api:chats')
 import resource from 'resource-router-middleware'
 import r from 'rethinkdb'
-import { toRes, commentTemplate } from '../lib/util'
+import { toRes, sanitizeClovers, albumTemplate } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -78,6 +78,72 @@ export default ({ config, db, io }) => {
     })
   )
 
+  router.post('/new', async (req, res) => {
+    const {albumName, clovers} = req.params
+    const userAddress = req.auth && req.auth.user
+    if (!userAddress) {
+      res.status(401).end()
+      return
+    }
+
+    const user = await r.table('users')
+      .get(userAddress.toLowerCase()).default({})
+      .pluck('address', 'name').run(db)
+
+    if (!user.address) {
+      res.status(400).end()
+      return
+    }
+
+    const albumExists = await r.table('albums')
+    .get(albumName).run(db)
+
+    if (albumExists) {
+      // album already named this
+      res.status(401).end()
+      return
+    }
+
+    const album = albumTemplate(user, albumName, albumName)
+    const blockNum = await provider.getBlockNumber().catch((err) => {
+      debug(err.toString())
+      return 0
+    })
+    // save it
+    r.table('albums')
+    .insert(album).run(db, async (err, { generated_keys }) => {
+      if (err) {
+        debug('db run error')
+        res.sendStatus(500).end()
+        return
+      }
+      // emit an event pls
+      const log = {
+        id: uuid(),
+        name: 'Album_Created',
+        removed: false,
+        blockNumber: blockNum,
+        userAddress: null, // necessary data below
+        data: {
+          userAddress: album.userAddress,
+          name: album.name,
+          board: album.clovers.length > 0 && album.clovers[0],
+          createdAt: new Date()
+        }
+      }
+      r.table('logs').insert(log)
+        .run(db, (err) => {
+          if (err) {
+            debug('album log not saved')
+            debug(err)
+          } else {
+            io.emit('newLog', log)
+          }
+          res.json({ ...album, id: generated_keys[0] }).end()
+        })
+    })
+  })
+
   router.post('/:id', async (req, res) => {
     const { albumName, clovers } = req.params
     const userAddress = req.auth && req.auth.user
@@ -90,59 +156,81 @@ export default ({ config, db, io }) => {
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
 
-    
+    const album = await r.table('albums')
+      .get(albumName).run(db)
 
+    if (album.id !== id) {
+      // album already named this
+      res.status(401).end()
+      return
+    }
 
-    if (!comment.length || !user.address) {
+    // album must exist and user must be owner
+    if (!album || !user.address) {
       res.status(400).end()
       return
     }
 
-    // generate the album
-    const album = commentTemplate(user, board.toLowerCase(), comment)
+    albumName = xss(albumName)
+    if (album.name !== albumName && album.userAddress !== user.address) {
+      // cant change name of album unless you are owner
+      res.status(401).end()
+      return
+    }
+
+    clovers = sanitizeClovers(clovers)
+    // if clovers are removed, must be admin
+    // if clovers are added it's ok
+    // TODO:
+
+
+    // must update something
+    if (album.name === albumName && album.clovers.join('') === clovers.join('')) {
+      res.status(400).end()
+      return
+    }
+    album.name = albumName
+    album.clovers = clovers
+
     const blockNum = await provider.getBlockNumber().catch((err) => {
       debug(err.toString())
       return 0
     })
-    // save it
-    r.table('chats')
-      .insert(album).run(db, async (err, { generated_keys }) => {
-        if (err) {
-          debug('db run error')
-          res.sendStatus(500).end()
-          return
+    // update it
+    r.table('albums').get(album.id).update({
+      name: album.name,
+      clovers: album.clovers,
+      modified: new Date()
+    }).run(db, async (err,  res) => {
+      if (err) {
+        debug('db run error')
+        res.sendStatus(500).end()
+        return
+      }
+      // emit an event pls
+      const log = {
+        id: uuid(),
+        name: 'Album_Updated',
+        removed: false,
+        blockNumber: blockNum,
+        userAddress: null, // necessary data below
+        data: {
+          userAddress: album.userAddress,
+          name: album.name,
+          board: album.clovers.length > 0 && album.clovers[0],
+          createdAt: new Date()
         }
-        // emit an event pls
-        const log = {
-          id: uuid(),
-          name: 'Comment_Added',
-          removed: false,
-          blockNumber: blockNum,
-          userAddress: null, // necessary data below
-          data: {
-            userAddress: album.userAddress,
-            userName: album.userName,
-            board: album.board,
-            createdAt: new Date()
-          }
-        }
-        r.table('clovers').get(album.board).update({
-          commentCount: r.row('commentCount').add(1).default(0),
-          modified: blockNum
-        }).run(db, (err) => {
+      }
+    
+      r.table('logs').insert(log)
+        .run(db, (err) => {
           if (err) {
-            debug(err.message)
+            debug('album log not saved')
+            debug(err)
+          } else {
+            io.emit('newLog', log)
           }
-          r.table('logs').insert(log)
-            .run(db, (err) => {
-              if (err) {
-                debug('album log not saved')
-                debug(err)
-              } else {
-                io.emit('newLog', log)
-              }
-              res.json({ ...album, id: generated_keys[0] }).end()
-            })
+          res.json({ ...album, id }).end()
         })
       })
   })
@@ -155,39 +243,17 @@ export default ({ config, db, io }) => {
       return
     }
 
-    const comment = await r.table('chats')
-      .get(id).default({}).without('clovers').run(db)
+    const album = await r.table('albums')
+      .get(id).run(db)
 
-    if (!comment.id) {
+    if (!album.id || album.userAddress !== userAddress.toLowerCase()) {
       res.status(404).end()
       return
     }
 
-    if (userAddress.toLowerCase() === comment.userAddress) {
-      await r.table('chats')
-      .get(id).update({
-        deleted: true,
-        comment: 'Deleted',
-        edited: r.now()
-      }).run(db)
-    } else {
-      const board = await r.table('clovers')
-      .get(comment.board).run(db)
+    await r.table('albums')
+      .get(id).delete().run(db)
 
-      if (
-        userAddress.toLowerCase() === board.owner ||
-        whitelist.includes(userAddress.toLowerCase())
-      ) {
-        await r.table('chats')
-        .get(id).update({
-          flagged: true,
-          edited: r.now()
-        }).run(db)
-      } else {
-        res.status(401).end()
-        return
-      }
-    }
     res.status(200).end()
   })
 
