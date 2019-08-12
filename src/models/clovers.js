@@ -256,12 +256,14 @@ async function addNewClover(log) {
   debug('adding new Clover', log.data._tokenId)
   let tokenId = log.data._tokenId
   let [
+    cloverKept,
     cloverMoves,
     cloverReward,
     cloverSymmetries,
     cloverBlock,
     price
   ] = await Promise.all([
+    events.Clovers.instance.getKeep(log.data._tokenId),
     events.Clovers.instance.getCloverMoves(log.data._tokenId),
     events.Clovers.instance.getReward(log.data._tokenId),
     events.Clovers.instance.getSymmetries(log.data._tokenId),
@@ -273,6 +275,7 @@ async function addNewClover(log) {
   let clover = {
     name: tokenId,
     board: tokenId,
+    kept: cloverKept,
     owner: log.data._to.toLowerCase(),
     moves: cloverMoves,
     reward: padBigNum(cloverReward),
