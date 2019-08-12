@@ -1,3 +1,4 @@
+const debug = require('debug')('app:util')
 import Reversi from 'clovers-reversi'
 import svg_to_png from 'svg-to-png'
 import fs from 'fs-extra'
@@ -131,9 +132,9 @@ export function toSVG(id, size = 400) {
     let grey = '#808080'
 
     let r = new Reversi()
-    let svgPath = path.resolve(
-      __dirname + '/../../public/svg/' + size + '/' + id + '.svg'
-    )
+    // let svgPath = path.resolve(
+    //   __dirname + '/../../public/svg/' + size + '/' + id + '.svg'
+    // )
 
     r.byteBoardPopulateBoard(id)
     r.calcWinners()

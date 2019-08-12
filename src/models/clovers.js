@@ -235,9 +235,6 @@ async function updateClover(log) {
     .get(log.data._tokenId)
     .do((doc) => {
       return doc.merge({
-        commentCount: r.table('chats')
-          .getAll(doc('board'), { index: 'board' })
-          .count(),
         lastOrder: r.table('orders')
           .getAll(doc('board'), { index: 'market' })
           .orderBy(r.desc('created'), r.desc('transactionIndex'))
@@ -284,13 +281,14 @@ async function addNewClover(log) {
     modified: Number(cloverBlock),
     // store price as hex, padded for sorting/filtering in DB
     originalPrice: padBigNum(price),
-    price: padBigNum(price)
+    price: padBigNum(price),
+    commentCount: 0
   }
   let command = r.table('clovers').insert(clover)
   await dodb(db, command)
 
   clover.user = await r.table('users').get(clover.owner).run(db)
-  debug('emit new clover info', clover)
+  debug('emit new clover info')
 
   io && io.emit('addClover', clover)
 

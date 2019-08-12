@@ -22,7 +22,7 @@ export default ({ config, db, io }) => {
         return r.branch(
           doc.hasFields('clovers'),
           doc,
-          doc.merge({ clovers: [] })
+          doc.merge({ clovers: [], address: id })
         )
       })
       .run(db, callback)
@@ -101,14 +101,23 @@ export default ({ config, db, io }) => {
   })
 
   router.get('/:id/clovers', async (req, res) => {
+    const indexes = ['forsale', 'Sym']
+    const map = {
+      forsale: ['ownerfilter', 'forsale'],
+      Sym: ['ownersym', true]
+    }
+
     const { id } = req.params
+    const { filter } = req.query
+
     const pageSize = 12
     const asc = req.query.asc === 'true'
     const sort = req.query.sort || 'modified'
     const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
-    const filter = req.query.filter === 'forsale'
-    const index = filter ? 'ownerfilter' : 'owner'
-    const search = filter ? [id.toLowerCase(), 'forsale'] : id.toLowerCase()
+    const index = indexes.includes(filter) ? map[filter][0] : 'owner'
+    const search = indexes.includes(filter) ? [id.toLowerCase(), map[filter][1]] : id.toLowerCase()
+
+    debug(index, search)
     debug('get user clovers', start)
 
     let [results, count] = await Promise.all([
@@ -118,8 +127,6 @@ export default ({ config, db, io }) => {
         .slice(start, start + pageSize)
         .map((doc) => {
           return doc.merge({
-            commentCount: r.table('chats')
-              .getAll(doc('board'), { index: 'board' }).count(),
             lastOrder: r.table('orders')
               .getAll(doc('board'), { index: 'market' })
               .orderBy(r.desc('created'), r.desc('transactionIndex'))
@@ -184,16 +191,20 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     const { user } = req.auth
     let name = req.body.name || ''
+    let image = req.body.image || null
     name = xss(name).substring(0, 34)
+    image = image && xss(image).substring(0, 64)
     load(req, id, async (err, dbUser) => {
       const modified = await provider.getBlockNumber()
       if (!dbUser.address) {
         dbUser = userTemplate(id.toLowerCase())
         dbUser.name = name
+        dbUser.image = image
         dbUser.created = modified
         dbUser.modified = modified
       } else {
         dbUser.name = name
+        dbUser.image = image
         dbUser.modified = modified
       }
 

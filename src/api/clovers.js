@@ -23,25 +23,25 @@ export default ({ config, db, io }) => {
     }
     const c = r.table('clovers')
     .get(id).do((doc) => {
-      return doc.merge({
-        commentCount: r.table('chats')
-          .getAll(doc('board'), { index: 'board' })
-          .count(),
-        lastOrder: r.table('orders')
-          .getAll(doc('board'), { index: 'market' })
-          .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          .limit(1).fold(null, (l, r) => r),
-        user: r.table('users').get(doc('owner'))
-          .without('clovers', 'curationMarket').default(null)
-      })
+      return r.branch(
+        doc.eq(null),
+        r.error('404 Not Found'),
+        doc.merge({
+          lastOrder: r.table('orders')
+            .getAll(doc('board'), { index: 'market' })
+            .orderBy(r.desc('created'), r.desc('transactionIndex'))
+            .limit(1).fold(null, (l, r) => r),
+          user: r.table('users').get(doc('owner'))
+            .without('clovers', 'curationMarket').default(null)
+        })
+      )
     })
     // .run(db, callback)
     try {
       const clover = await dodb(db, c)
       callback(null, clover)
     } catch (err) {
-      debug(err.toString())
-      callback('404 Not found')
+      callback(err.msg)
     }
   }
 
@@ -50,7 +50,7 @@ export default ({ config, db, io }) => {
     load,
 
     async index({ query }, res) {
-      const indexes = ['all', 'forsale', 'rft', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym']
+      const indexes = ['all', 'forsale', 'rft', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'public', 'contract', 'commented']
       const pageSize = 12
       const sort = query.sort || 'modified'
       const asc = query.asc === 'true'
@@ -65,8 +65,6 @@ export default ({ config, db, io }) => {
           .slice(start, start + pageSize)
           .map((doc) => {
             return doc.merge({
-              commentCount: r.table('chats')
-                .getAll(doc('board'), { index: 'board' }).count(),
               lastOrder: r.table('orders')
                 .getAll(doc('board'), { index: 'market' })
                 .orderBy(r.desc('created'), r.desc('transactionIndex'))
@@ -76,7 +74,7 @@ export default ({ config, db, io }) => {
           .without({ right: ['clovers', 'curationMarket'] })
           .map((doc) => {
             return doc('left').merge({
-              user: doc('right')
+              user: doc('right').default(null)
             })
           })
           .run(db, (err, data) => {
@@ -166,13 +164,19 @@ export default ({ config, db, io }) => {
   router.get('/svg/:id/:size?', async (req, res) => {
     try {
       let { id, size } = req.params
+
+      if (typeof id !== 'string') {
+        id = '0'
+      }
+      id = id.replace(/\s+/g, '')
+
       const svg = await toSVG(id, size || 400)
 
       res.setHeader('Content-Type', 'image/svg+xml')
       res.send(svg)
     } catch (err) {
       debug('No ID, or invalid', err)
-      res.sendStatus(404)
+      res.sendStatus(400)
     }
   })
 
@@ -180,7 +184,7 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     debug(`getting activity for ${id}`)
 
-    const pageSize = 12
+    const pageSize = 8
     const asc = req.query.asc === 'true'
     const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
     const index = 'clover'
@@ -267,7 +271,7 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     load(req, id, (err, clover) => {
       if (err || !clover) {
-        res.sendStatus(401).end()
+        res.sendStatus(500).end()
         return
       } else {
         syncClover(db, io, clover)
@@ -311,7 +315,7 @@ export default ({ config, db, io }) => {
         const oldName = clover.name
 
         if (changes[0]) {
-          // keep lastOrder, commentCount etc
+          // keep lastOrder etc
           clover = { ...clover, ...changes[0].new_val }
         }
 
