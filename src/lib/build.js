@@ -148,13 +148,13 @@ const tables = [
       [
         'name',
         (doc) => {
-          return doc('name').downcase()
+          return doc('name')
         }
       ],
       [
-        'owner',
+        'userAddress',
         (doc) => {
-          return doc('owner')
+          return doc('userAddress')
         }
       ],
       [
@@ -415,6 +415,41 @@ async function populateLogs() {
   await populateLog('SimpleCloversMarket')
 }
 
+async function getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs}){
+  return new Promise((resolve, reject) => {
+
+    var fromBlock = genesisBlock + limit * offset 
+    var toBlock = genesisBlock + limit * (offset + 1)
+    console.log({fromBlock, toBlock})
+    if (toBlock > latest) {
+      toBlock = 'latest'
+    }
+
+    provider
+    .getLogs({
+      address,
+      topics,
+      fromBlock,
+      toBlock
+    }).then((logs, err) => {
+      console.log({logs: logs.length})
+
+      if (err) {
+        reject(err)
+      } else {
+        if (logs.length > 0) {
+          previousLogs = previousLogs.concat(logs)
+        }
+        if (toBlock === 'latest') {
+          resolve(previousLogs)
+        } else {
+          getLogs({address, topics, genesisBlock, latest, limit, offset: offset + 1, previousLogs}).then(resolve)
+        }
+      }
+    }).catch(reject)
+  })
+}
+
 function populateLog(contract, key = 0) {
   return new Promise((resolve, reject) => {
     let eventTypes = events[contract].eventTypes
@@ -437,59 +472,58 @@ function populateLog(contract, key = 0) {
         throw new Error('no ' + contract + ' - ' + eventTypes[key])
       }
 
-      provider
-        .getLogs({
-          address: address.toLowerCase(),
-          topics: eventType().topics,
-          fromBlock: 0,
-          fromBlock: config.genesisBlock,
-          toBlock: 'latest'
+      getLogs({
+        address: address.toLowerCase(), 
+        topics: eventType().topics, 
+        genesisBlock: 4902500, //config.genesisBlock, 
+        latest: currBlock, 
+        limit: 500, 
+        offset: 0,
+        previousLogs: []
+      })
+      .then((logs) => {
+        console.log(eventType().name + ': ' + logs.length + ' logs')
+        logs = logs.filter(log => {
+          if (log.address.toLowerCase() !== address.toLowerCase()) {
+            console.log(log.address)
+            console.log('not my contract!!!!!')
+            return false
+          } else {
+            return true
+          }
         })
-        .then((logs, err) => {
-          if (err) return reject(err)
+        const userKeys = ['_to', 'owner', 'buyer', 'seller']
+        logs = logs.map((l) => {
+          try {
+            let userAddress = null
+            l.name = contract + '_' + eventType().name
+            l.data = transferCoder.parse(l.topics, l.data)
+            l.data = parseLogForStorage(l.data)
 
-          console.log(eventType().name + ': ' + logs.length + ' logs')
-          logs = logs.filter(log => {
-            if (log.address.toLowerCase() !== address.toLowerCase()) {
-              console.log(log.address)
-              console.log('not my contract!!!!!')
-              return false
-            } else {
-              return true
-            }
-          })
-          const userKeys = ['_to', 'owner', 'buyer', 'seller']
-          logs = logs.map((l) => {
-            try {
-              let userAddress = null
-              l.name = contract + '_' + eventType().name
-              l.data = transferCoder.parse(l.topics, l.data)
-              l.data = parseLogForStorage(l.data)
-
-              for (let k of Object.keys(l.data)) {
-                if (userKeys.includes(k)) {
-                  userAddress = l.data[k].toLowerCase()
-                }
+            for (let k of Object.keys(l.data)) {
+              if (userKeys.includes(k)) {
+                userAddress = l.data[k].toLowerCase()
               }
-              l.userAddress = userAddress
-            } catch (err) {
-              reject(err)
             }
-            return l
+            l.userAddress = userAddress
+          } catch (err) {
+            reject(err)
+          }
+          return l
+        })
+        return r.table('logs')
+          .insert(logs)
+          .run(db, (err, results) => {
+            if (err) return reject(err)
+            return populateLog(contract, key + 1)
+              .then(resolve)
+              .catch(reject)
           })
-          return r.table('logs')
-            .insert(logs)
-            .run(db, (err, results) => {
-              if (err) return reject(err)
-              return populateLog(contract, key + 1)
-                .then(resolve)
-                .catch(reject)
-            })
-        })
-        .catch(error => {
-          console.log('error!!!')
-          console.log(error)
-        })
+      })
+      .catch(error => {
+        console.log('error!!!')
+        console.log(error)
+      })
     }
   })
 }
@@ -525,6 +559,7 @@ function processLog(logs, i = 0) {
       resolve()
     } else {
       let log = logs[i]
+      console.log(`blockNumber ${log.blockNumber}`)
       handleEvent({ log, db })
         .then(() => {
           processLog(logs, i + 1)

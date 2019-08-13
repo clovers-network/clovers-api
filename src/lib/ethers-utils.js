@@ -1,4 +1,4 @@
-import config from '../config'
+import config from '../config.json'
 import {
   Clovers,
   ClubToken,
@@ -8,6 +8,7 @@ import {
   ClubTokenController
 } from 'clovers-contracts'
 var ethers = Object.assign(require('ethers'), require('ethers-contracts'))
+
 
 // const ZeroClientProvider = require('web3-provider-engine/zero.js')
 // import Web3 from 'web3'

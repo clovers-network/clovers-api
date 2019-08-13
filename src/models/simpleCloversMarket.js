@@ -41,7 +41,10 @@ export async function changeCloverPrice (db, io, _tokenId, log) {
 
   let command = r.table('clovers').get(_tokenId)
   let clover = await dodb(db, command)
-
+  if (!clover) {
+    console.log("no clover " + _tokenId)
+    return
+  }
   if (price.eq(0)) {
     debug('removed from market or sold (set to 0)')
     price = '0'

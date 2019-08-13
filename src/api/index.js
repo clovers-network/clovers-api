@@ -3,6 +3,7 @@ import { Router } from 'express'
 
 import clovers from './clovers'
 import orders from './orders'
+import albums from './albums'
 import users from './users'
 import chats from './chats'
 import logs from './logs'
@@ -15,6 +16,9 @@ export default ({ config, db, io }) => {
 
   // mount the orders resource
   api.use('/orders', orders({ config, db, io }))
+  
+  // mount
+  api.use('/albums', albums({ config, db, io }))
 
   // mount the users resource
   api.use('/users', users({ config, db, io }))

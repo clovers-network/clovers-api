@@ -145,7 +145,7 @@ export default ({ config, db, io }) => {
   })
 
   router.post('/:id', async (req, res) => {
-    const { albumName, clovers } = req.params
+    let { albumName, clovers } = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
       res.status(401).end()
@@ -155,23 +155,27 @@ export default ({ config, db, io }) => {
     const user = await r.table('users')
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
+        
+    // album must r
+    if (!user.address) {
+      res.status(400).end()
+      return
+    }
 
     const album = await r.table('albums')
-      .get(albumName).run(db)
+      .getAll(albumName, {index: 'name'}).run(db)
 
+    // check if album already exists with name but with different id
     if (album.id !== id) {
       // album already named this
       res.status(401).end()
       return
     }
 
-    // album must exist and user must be owner
-    if (!album || !user.address) {
-      res.status(400).end()
-      return
-    }
+ 
 
     albumName = xss(albumName)
+    // check if albumName was changed
     if (album.name !== albumName && album.userAddress !== user.address) {
       // cant change name of album unless you are owner
       res.status(401).end()
@@ -179,18 +183,24 @@ export default ({ config, db, io }) => {
     }
 
     clovers = sanitizeClovers(clovers)
-    // if clovers are removed, must be admin
-    // if clovers are added it's ok
-    // TODO:
 
+    // check if any clovers were removed... 
+    let cloversCopy = JSON.parse(JSON.stringify(album.clovers))
+    clovers.forEach(c => {
+      let i = cloversCopy.indexOf(c)
+      cloversCopy.splice(i, 1)
+    });
+    if(cloversCopy.length > 0 && album.userAddress !== user.address) {
+      // can't remove clovers unless you own the album
+      res.status(401).end()
+      return
+    }
 
     // must update something
     if (album.name === albumName && album.clovers.join('') === clovers.join('')) {
       res.status(400).end()
       return
     }
-    album.name = albumName
-    album.clovers = clovers
 
     const blockNum = await provider.getBlockNumber().catch((err) => {
       debug(err.toString())
@@ -198,8 +208,8 @@ export default ({ config, db, io }) => {
     })
     // update it
     r.table('albums').get(album.id).update({
-      name: album.name,
-      clovers: album.clovers,
+      name: albumName,
+      clovers: clovers,
       modified: new Date()
     }).run(db, async (err,  res) => {
       if (err) {
@@ -215,9 +225,9 @@ export default ({ config, db, io }) => {
         blockNumber: blockNum,
         userAddress: null, // necessary data below
         data: {
-          userAddress: album.userAddress,
-          name: album.name,
-          board: album.clovers.length > 0 && album.clovers[0],
+          userAddress: user.address,
+          name: albumName,
+          board: clovers.length > 0 && clovers[0],
           createdAt: new Date()
         }
       }
@@ -260,7 +270,7 @@ export default ({ config, db, io }) => {
   return router
 }
 
-export function commentListener (server, db) {
+export function albumListener (server, db) {
   const io = require('socket.io')(server, { path: '/albums' })
   let connections = 0
   io.on('connection', (socket) => {
