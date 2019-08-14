@@ -303,7 +303,7 @@ async function addNewClover(log) {
 async function oracleVerify ({ name, moves }, symmetries) {
   debug(name + ' is being verified')
   const options = {
-    gasPrice: 10000000000
+    gasPrice: 1000000000 // 1 GWEI
   }
   try {
     // dont verify clovers from the initial build

@@ -13,6 +13,7 @@ const whitelist = []
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
+    console.log({id})
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
@@ -23,8 +24,59 @@ export default ({ config, db, io }) => {
   let router = resource({
     load,
     id: 'id',
-    index (req, res) {
-      res.status(400).json({ error: 'Please provide an Album name' }).end()
+    async index ({query}, res) {
+      const indexes = ['all', 'name', 'userAddress', 'dates', 'cloverCount']
+      const pageSize = 12
+      const sort = query.sort || 'modified'
+      const asc = query.asc === 'true'
+      const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
+      const index = !query.filter || query.filter === '' || !indexes.includes(query.filter) ? 'all' : query.filter
+      debug('filter by', index, sort)
+
+      let [results, count] = await Promise.all([
+        r.table('albums')
+          .getAll(true, { index })
+          .orderBy(asc ? r.asc(sort) : r.desc(sort))
+          .slice(start, start + pageSize)
+          .run(db, (err, data) => {
+            if (err) throw new Error(err)
+            return data
+          }),
+        r.table('albums')
+          .getAll(true, { index })
+          .count().run(db, (err, data) => {
+            if (err) throw new Error(err)
+            return data
+          })
+      ]).catch((err) => {
+        debug('query error')
+        debug(err)
+        return res.status(500).end()
+      })
+
+      const currentPage = Math.max((parseInt(query.page) || 1), 1)
+      const hasNext = start + pageSize < count
+      let prevPage = currentPage - 1 || null
+      if (start >= count) {
+        prevPage = Math.ceil(count / pageSize)
+      }
+
+      const response = {
+        prevPage,
+        page: currentPage,
+        nextPage: hasNext ? currentPage + 1 : null,
+        allResults: count,
+        pageResults: results.length,
+        filterBy: index,
+        sort: asc ? 'ascending' : 'descending',
+        orderBy: sort,
+
+        results
+      }
+
+      const status = results.length ? 200 : 404
+
+      res.status(status).json(response).end()
     },
 
     async read ({ albumName, query }, res) {
@@ -145,6 +197,8 @@ export default ({ config, db, io }) => {
   })
 
   router.post('/:id', async (req, res) => {
+    console.log({req})
+
     let { albumName, clovers } = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {

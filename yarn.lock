@@ -1595,9 +1595,9 @@ clone@^2.0.0, clone@^2.1.1:
   version "2.1.1"
   resolved "https://registry.yarnpkg.com/clone/-/clone-2.1.1.tgz#d217d1e961118e3ac9a4b8bba3285553bf647cdb"
 
-"clovers-contracts@https://github.com/clovers-network/clovers-contracts#b8fb9e55e989cc905496f908e569c6f63f2be85e":
+"clovers-contracts@https://github.com/clovers-network/clovers-contracts#52c98bf28065ddf822428d94f17e9dc07b7992b0":
   version "1.0.19"
-  resolved "https://github.com/clovers-network/clovers-contracts#b8fb9e55e989cc905496f908e569c6f63f2be85e"
+  resolved "https://github.com/clovers-network/clovers-contracts#52c98bf28065ddf822428d94f17e9dc07b7992b0"
 
 clovers-reversi@^1.0.18:
   version "1.0.18"

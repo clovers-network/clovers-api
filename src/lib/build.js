@@ -6,8 +6,7 @@ import ethers from 'ethers'
 import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
 import uuid from 'uuid/v4'
-
-import { provider, events, web3, web3mode } from '../lib/ethers-utils'
+import { provider, events, web3, web3mode, Clovers } from '../lib/ethers-utils'
 
 const tables = [
   {
@@ -100,7 +99,7 @@ const tables = [
         (doc) => {
           return r.expr([
             // clovers and null address
-            '0x8a0011ccb1850e18a9d2d4b15bd7f9e9e423c11b',
+            Clovers.address.toLowerCase(),
             '0x0000000000000000000000000000000000000000'
           ]).contains(doc('owner')).eq(false)
         }
@@ -108,7 +107,7 @@ const tables = [
       [
         'contract',
         (doc) => {
-          return doc('owner').eq('0x8a0011ccb1850e18a9d2d4b15bd7f9e9e423c11b')
+          return doc('owner').eq(Clovers.address.toLowerCase())
         }
       ],
       [
@@ -168,6 +167,10 @@ const tables = [
         (doc) => {
           return doc('clovers').count()
         }
+      ],
+      [
+        'all',
+        () => true
       ]
     ]
   },
@@ -375,23 +378,25 @@ function createTables(i = 0) {
 
 // untested :)
 async function createIndexes (i = 0) {
+  console.log(`create index #${i}`)
   if (i >= tables.length) {
     return
   } else {
     let table = tables[i]
-    if (!table.indexes) return
-
-    console.log('createIndexes', table.name)
-    await asyncForEach(table.indexes, async (index) => {
-      const func = index.constructor === Array ? index[1] : undefined
-      const name = func ? index[0] : index
-      await r.table(table.name)
-        .indexCreate(name, func)
-        .run(db)
-      console.log('done', table.name)
-    })
-
-    createIndexes(i + 1)
+    if (!table.indexes) {
+      console.log(`table ${table.name} has no indexes`)
+    } else {
+      console.log('createIndexes', table.name)
+      await asyncForEach(table.indexes, async (index) => {
+        const func = index.constructor === Array ? index[1] : undefined
+        const name = func ? index[0] : index
+        await r.table(table.name)
+          .indexCreate(name, func)
+          .run(db)
+        console.log('done', table.name)
+      })
+    }
+    await createIndexes(i + 1)
   }
 }
 
