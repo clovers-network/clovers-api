@@ -36,6 +36,7 @@ app.use(compression())
 
 // connect to db
 initializeDb((db) => {
+  console.log(process.argv)
   if (process.argv.findIndex((c) => c === 'build') > -1) {
     build(db)
   } else {

@@ -3,6 +3,7 @@ import Reversi from 'clovers-reversi'
 import svg_to_png from 'svg-to-png'
 import fs from 'fs-extra'
 import path from 'path'
+import xss from 'xss'
 import BigNumber from 'bignumber.js'
 var utils = require('ethers').utils
 
@@ -19,6 +20,33 @@ export function userTemplate(address = null) {
     curationMarket: {}
   }
 }
+
+export function albumTemplate(user, name, clovers) {
+  if (!user) throw new Error('Must provide user object')
+  if (!name) throw new Error('Must provide album name')
+  return {
+    userAddress: user.address.toLowerCase(),
+    name: xss(name),
+    created: new Date(),
+    modified: new Date(),
+    clovers: sanitizeClovers(clovers)
+  }
+}
+
+export function sanitizeClovers(clovers) {
+  return clovers.map(c => {
+    c = xss(c)
+    if (!isHex(c) || c.length !== 34) {
+      throw new Error('Not a valid Clover')
+    }
+    return c
+  })
+}
+
+function isHex(h) {
+  var a = parseInt(h,16);
+  return (a.toString(16) ===h.toLowerCase())
+  }
 
 export function commentTemplate(user, board, comment = '') {
   if (!user) throw new Error('Must provide user object')

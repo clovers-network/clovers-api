@@ -1,14 +1,16 @@
 const debug = require('debug')('app:socketing')
 import { provider, events } from './lib/ethers-utils'
+import {network} from './config'
 import ethers from 'ethers'
 import * as clovers from './models/clovers'
 import * as clubToken from './models/clubToken'
 import * as cloversController from './models/cloversController'
 import * as clubTokenController from './models/clubTokenController'
-import * as curationMarket from './models/curationMarket'
+// import * as curationMarket from './models/curationMarket'
 import * as simpleCloversMarket from './models/simpleCloversMarket'
 import { parseLogForStorage } from './lib/util'
 import r from 'rethinkdb'
+import {Clovers} from 'clovers-contracts'
 
 let io, db
 
@@ -32,9 +34,9 @@ export var socketing = function ({ _io, _db }) {
   })
   beginListen('Clovers')
   beginListen('ClubToken')
-  beginListen('CloversController')
+  // beginListen('CloversController') // no events to listen to
   beginListen('SimpleCloversMarket')
-  beginListen('CurationMarket')
+  // beginListen('CurationMarket')
   beginListen('ClubTokenController')
 }
 
@@ -113,7 +115,7 @@ const ignoredTypes = ['ClubToken_Transfer','CurationMarket_Transfer']
 
 export var handleEvent = async ({ io, db, log }) => {
   if (io && !ignoredTypes.includes(log.name)) {
-    if (log.name !== 'Clovers_Transfer' || log.data._to !== '0x8A0011ccb1850e18A9D2D4b15bd7F9E9E423c11b') {
+    if (log.name !== 'Clovers_Transfer' || log.data._to.toLowerCase() !== Clovers.networks[network.chainId].address.toLowerCase()) {
       io.emit('newLog', log)
     }
   }
@@ -121,6 +123,7 @@ export var handleEvent = async ({ io, db, log }) => {
   let contract = foo[0]
   let name = foo[1]
   debug('handle ' + name + ' from ' + contract)
+  
   switch (contract) {
     case 'Clovers':
       if (typeof clovers['clovers' + name] === 'function') {
@@ -162,13 +165,13 @@ export var handleEvent = async ({ io, db, log }) => {
         throw new Error('Event ' + name + ' not found in ' + contract)
       }
       break
-    case 'CurationMarket':
-      if (typeof curationMarket['curationMarket' + name] === 'function') {
-        await curationMarket['curationMarket' + name]({ log, io, db })
-      } else {
-        throw new Error('Event ' + name + ' not found in ' + contract)
-      }
-      break
+    // case 'CurationMarket':
+    //   if (typeof curationMarket['curationMarket' + name] === 'function') {
+    //     await curationMarket['curationMarket' + name]({ log, io, db })
+    //   } else {
+    //     throw new Error('Event ' + name + ' not found in ' + contract)
+    //   }
+    //   break
     case 'CloversController':
       if (typeof cloversController['cloversController' + name] === 'function') {
         await cloversController['cloversController' + name]({ log, io, db })

@@ -39,7 +39,7 @@
   "dependencies": {
     "bignumber.js": "^7.2.1",
     "body-parser": "^1.13.3",
-    "clovers-contracts": "^1.0.17",
+    "clovers-contracts": "https://github.com/clovers-network/clovers-contracts#52c98bf28065ddf822428d94f17e9dc07b7992b0",
     "clovers-reversi": "^1.0.18",
     "compression": "^1.7.3",
     "cors": "^2.7.1",

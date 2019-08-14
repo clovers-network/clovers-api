@@ -5,8 +5,8 @@ import { handleEvent } from '../socketing'
 import ethers from 'ethers'
 import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
-
-import { provider, events, web3, web3mode } from '../lib/ethers-utils'
+import uuid from 'uuid/v4'
+import { provider, events, web3, web3mode, Clovers } from '../lib/ethers-utils'
 
 const tables = [
   {
@@ -99,7 +99,7 @@ const tables = [
         (doc) => {
           return r.expr([
             // clovers and null address
-            '0x8a0011ccb1850e18a9d2d4b15bd7f9e9e423c11b',
+            Clovers.address.toLowerCase(),
             '0x0000000000000000000000000000000000000000'
           ]).contains(doc('owner')).eq(false)
         }
@@ -107,7 +107,7 @@ const tables = [
       [
         'contract',
         (doc) => {
-          return doc('owner').eq('0x8a0011ccb1850e18a9d2d4b15bd7f9e9e423c11b')
+          return doc('owner').eq(Clovers.address.toLowerCase())
         }
       ],
       [
@@ -137,6 +137,40 @@ const tables = [
         (doc) => {
           return [doc('board'), doc('created')]
         }
+      ]
+    ]
+  },
+  {
+    name: 'albums',
+    index: 'id',
+    indexes: [
+      [
+        'name',
+        (doc) => {
+          return doc('name')
+        }
+      ],
+      [
+        'userAddress',
+        (doc) => {
+          return doc('userAddress')
+        }
+      ],
+      [
+        'dates',
+        (doc) => {
+          return [doc('id'), doc('modified')]
+        }
+      ],
+      [
+        'cloverCount',
+        (doc) => {
+          return doc('clovers').count()
+        }
+      ],
+      [
+        'all',
+        () => true
       ]
     ]
   },
@@ -239,19 +273,20 @@ function rebuildDatabases() {
 
   console.log('rebuildDatabases')
   createDB()
-    .then(createTables)
-    .then(createIndexes)
-    .then(populateLogs)
-    .then(processLogs)
-    .then(nameClovers)
-    .then(nameUsers)
-    .then(res => {
-      console.log('done!')
-      process.exit()
-    })
-    .catch(err => {
-      console.log(err)
-    })
+  .then(createTables)
+  .then(createIndexes)
+  .then(populateLogs)
+  .then(processLogs)
+  .then(nameClovers)
+  .then(nameUsers)
+  .then(moveChats)
+  .then(res => {
+    console.log('done!')
+    process.exit()
+  })
+  .catch(err => {
+    console.log(err)
+  })
 }
 //
 // function testEvent() {
@@ -306,15 +341,15 @@ function createDB() {
   return new Promise((resolve, reject) => {
     r.dbList().run(db, (err, res) => {
       if (err) return reject(err)
-      if (res.findIndex(a => a === 'clovers_v2') > -1) {
-        console.log('dbDrop clovers_v2')
-        r.dbDrop('clovers_v2').run(db, (err, res) => {
+      if (res.findIndex(a => a === 'clovers_v3') > -1) {
+        console.log('dbDrop clovers_v3')
+        r.dbDrop('clovers_v3').run(db, (err, res) => {
           if (err) return reject(err)
           createDB().then(resolve)
         })
       } else {
-        console.log('dbCreate clovers_v2')
-        r.dbCreate('clovers_v2').run(db, (err, res) => {
+        console.log('dbCreate clovers_v3')
+        r.dbCreate('clovers_v3').run(db, (err, res) => {
           if (err) return reject(err)
           resolve()
         })
@@ -343,23 +378,25 @@ function createTables(i = 0) {
 
 // untested :)
 async function createIndexes (i = 0) {
+  console.log(`create index #${i}`)
   if (i >= tables.length) {
-    resolve()
+    return
   } else {
     let table = tables[i]
-    if (!table.indexes) resolve()
-
-    console.log('createIndexes', table.name)
-    await asyncForEach(table.indexes, async (index) => {
-      const func = index.constructor === Array ? index[1] : undefined
-      const name = func ? index[0] : index
-      await r.table(table.name)
-        .indexCreate(index, func)
-        .run(db)
-      console.log('done', table.name)
-    })
-
-    createIndexes(i + 1)
+    if (!table.indexes) {
+      console.log(`table ${table.name} has no indexes`)
+    } else {
+      console.log('createIndexes', table.name)
+      await asyncForEach(table.indexes, async (index) => {
+        const func = index.constructor === Array ? index[1] : undefined
+        const name = func ? index[0] : index
+        await r.table(table.name)
+          .indexCreate(name, func)
+          .run(db)
+        console.log('done', table.name)
+      })
+    }
+    await createIndexes(i + 1)
   }
 }
 
@@ -377,11 +414,45 @@ async function populateLogs() {
   currBlock = blockNumber
   console.log('Current block number: ' + blockNumber)
   await populateLog('Clovers')
-  await populateLog('CloversController')
+  // await populateLog('CloversController') // dont actually watch for any events here
   await populateLog('ClubToken')
   await populateLog('ClubTokenController')
-  await populateLog('CurationMarket')
   await populateLog('SimpleCloversMarket')
+}
+
+async function getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs}){
+  return new Promise((resolve, reject) => {
+
+    var fromBlock = genesisBlock + limit * offset 
+    var toBlock = genesisBlock + limit * (offset + 1)
+    console.log({fromBlock, toBlock})
+    if (toBlock > latest) {
+      toBlock = 'latest'
+    }
+
+    provider
+    .getLogs({
+      address,
+      topics,
+      fromBlock,
+      toBlock
+    }).then((logs, err) => {
+      console.log({logs: logs.length})
+
+      if (err) {
+        reject(err)
+      } else {
+        if (logs.length > 0) {
+          previousLogs = previousLogs.concat(logs)
+        }
+        if (toBlock === 'latest') {
+          resolve(previousLogs)
+        } else {
+          getLogs({address, topics, genesisBlock, latest, limit, offset: offset + 1, previousLogs}).then(resolve)
+        }
+      }
+    }).catch(reject)
+  })
 }
 
 function populateLog(contract, key = 0) {
@@ -406,59 +477,58 @@ function populateLog(contract, key = 0) {
         throw new Error('no ' + contract + ' - ' + eventTypes[key])
       }
 
-      provider
-        .getLogs({
-          address: address.toLowerCase(),
-          topics: eventType().topics,
-          fromBlock: 0,
-          fromBlock: config.genesisBlock,
-          toBlock: 'latest'
+      getLogs({
+        address: address.toLowerCase(), 
+        topics: eventType().topics, 
+        genesisBlock: 4902500, //config.genesisBlock, 
+        latest: currBlock, 
+        limit: 500, 
+        offset: 0,
+        previousLogs: []
+      })
+      .then((logs) => {
+        console.log(eventType().name + ': ' + logs.length + ' logs')
+        logs = logs.filter(log => {
+          if (log.address.toLowerCase() !== address.toLowerCase()) {
+            console.log(log.address)
+            console.log('not my contract!!!!!')
+            return false
+          } else {
+            return true
+          }
         })
-        .then((logs, err) => {
-          if (err) return reject(err)
+        const userKeys = ['_to', 'owner', 'buyer', 'seller']
+        logs = logs.map((l) => {
+          try {
+            let userAddress = null
+            l.name = contract + '_' + eventType().name
+            l.data = transferCoder.parse(l.topics, l.data)
+            l.data = parseLogForStorage(l.data)
 
-          console.log(eventType().name + ': ' + logs.length + ' logs')
-          logs = logs.filter(log => {
-            if (log.address.toLowerCase() !== address.toLowerCase()) {
-              console.log(log.address)
-              console.log('not my contract!!!!!')
-              return false
-            } else {
-              return true
-            }
-          })
-          const userKeys = ['_to', 'owner', 'buyer', 'seller']
-          logs = logs.map((l) => {
-            try {
-              let userAddress = null
-              l.name = contract + '_' + eventType().name
-              l.data = transferCoder.parse(l.topics, l.data)
-              l.data = parseLogForStorage(l.data)
-
-              for (let k of Object.keys(log.data)) {
-                if (userKeys.includes(k)) {
-                  userAddress = log.data[k].toLowerCase()
-                }
+            for (let k of Object.keys(l.data)) {
+              if (userKeys.includes(k)) {
+                userAddress = l.data[k].toLowerCase()
               }
-              log.userAddress = userAddress
-            } catch (err) {
-              reject(err)
             }
-            return l
+            l.userAddress = userAddress
+          } catch (err) {
+            reject(err)
+          }
+          return l
+        })
+        return r.table('logs')
+          .insert(logs)
+          .run(db, (err, results) => {
+            if (err) return reject(err)
+            return populateLog(contract, key + 1)
+              .then(resolve)
+              .catch(reject)
           })
-          return r.table('logs')
-            .insert(logs)
-            .run(db, (err, results) => {
-              if (err) return reject(err)
-              return populateLog(contract, key + 1)
-                .then(resolve)
-                .catch(reject)
-            })
-        })
-        .catch(error => {
-          console.log('error!!!')
-          console.log(error)
-        })
+      })
+      .catch(error => {
+        console.log('error!!!')
+        console.log(error)
+      })
     }
   })
 }
@@ -494,6 +564,7 @@ function processLog(logs, i = 0) {
       resolve()
     } else {
       let log = logs[i]
+      console.log(`blockNumber ${log.blockNumber}`)
       handleEvent({ log, db })
         .then(() => {
           processLog(logs, i + 1)
@@ -505,100 +576,267 @@ function processLog(logs, i = 0) {
   })
 }
 
-function nameClovers() {
-  console.log('nameClovers')
-  return new Promise((resolve, reject) => {
-    r.table('logs')
-      .filter({ name: 'newCloverName' })
-      .orderBy('blockNumber')
-      .run(db, (err, logs) => {
-        if (err) return reject(err)
-        console.log('newCloverName:', logs.length)
-        if (!logs.length) resolve()
-        logs.toArray((err, result) => {
-          if (err) return reject(err)
-          nameClover(result)
-            .then(resolve)
-            .catch(reject)
+
+async function moveChats(){
+  console.log('move Chats!')
+  var v2_db = await new Promise((resolve, reject) => {
+    r.connect({ host: 'localhost', port: 28015, db: 'clovers_v2' }, (err, conn) => {
+      if (err) reject(err)
+      resolve(conn)
+    })
+  })
+
+  var chats = await new Promise((resolve, reject) => {
+    r.table('chats')
+    .filter((c) => true)
+    .orderBy('created')
+    .run(v2_db, (err, chats) => {
+      if (err) reject(err)
+      chats.toArray((err, result) => {
+        if (err) reject(err)
+        resolve(result)
+      })
+    })
+  })
+  console.log(`moving ${chats.length} chats`)
+  await asyncForEach(chats, async (chat) => {
+    return new Promise((resolve, reject) => { 
+        // save it
+      r.table('chats')
+      .insert(chat).run(db, async (err, { generated_keys }) => {
+        if (err) reject(err)
+        // emit an event pls
+        const log = {
+          id: uuid(),
+          name: 'Comment_Added',
+          removed: false,
+          blockNumber: 0,
+          userAddress: null, // necessary data below
+          data: {
+            userAddress: chat.userAddress,
+            userName: chat.userName,
+            board: chat.board,
+            createdAt: new Date()
+          }
+        }
+       
+        r.table('logs').insert(log)
+        .run(db, (err) => {
+          if (err) {
+            reject(err)
+          } else {
+            resolve()
+          }
         })
       })
+    })
   })
+  console.log("done w chats")
 }
 
-function nameClover(logs, key = 0) {
-  return new Promise((resolve, reject) => {
-    if (logs.length === key) resolve()
-    let log = logs[key]
-    r.table('clovers')
-      .get(log.data.board)
-      .run(db, (err, clover) => {
-        if (err) return reject(err)
-        if (!clover) {
-          console.log('clover ' + log.data.board + ' not found')
-          // return reject(new Error('clover ' + log.data.board + ' not found'))
-          nameClover(logs, key + 1)
-            .then(resolve)
-            .catch(reject)
-        } else {
-          clover.name = xss(log.data.name)
-          r.table('clovers')
-            .get(log.data.board)
-            .update(clover)
-            .run(db, (err, result) => {
-              if (err) return reject(err)
-              nameClover(logs, key + 1)
-                .then(resolve)
-                .catch(reject)
-            })
-        }
+async function nameClovers(){
+  console.log("rename Clovers!")
+  try {
+    var v2_db = await new Promise((resolve, reject) => {
+      r.connect({ host: 'localhost', port: 28015, db: 'clovers_v2' }, (err, conn) => {
+        if (err) reject(err)
+        resolve(conn)
       })
-  })
-}
-
-function nameUsers() {
-  console.log('nameUsers')
-  return new Promise((resolve, reject) => {
-    r.table('logs')
-      .filter({ name: 'newUserName' })
-      .orderBy('blockNumber')
-      .run(db, (err, logs) => {
-        if (err) return reject(err)
-        logs.toArray((err, result) => {
-          if (err) return reject(err)
-          nameUser(result)
-            .then(resolve)
-            .catch(reject)
+    })
+    var clovers = await new Promise((resolve, reject) => {
+      r.table('clovers')
+      .filter((c) => {
+        return c('name').match("^0x").not()
+      })
+      .pluck('board', 'name', 'commentCount')
+      .run(v2_db, (err, clovers) => {
+        if (err) reject(err)
+        clovers.toArray((err, result) => {
+          if (err) reject(err)
+          resolve(result)
         })
       })
-  })
+    })
+    console.log(`naming ${clovers.length} clovers`)
+    await asyncForEach(clovers, async (oldClover) => {
+      return new Promise((resolve, reject) => { 
+        r.table('clovers')
+        .get(oldClover.board)
+        .run(db, (err, newClover) => {
+          if (err) reject(err)
+          if (!newClover) {
+            console.log('newClover ' + oldClover.board + ' not found')
+            resolve()
+          } else {
+            console.log('naming ' + oldClover.name)
+            newClover.name = xss(oldClover.name)
+            newClover.commentCount = oldClover.commentCount
+            r.table('clovers')
+            .get(oldClover.board)
+            .update(newClover)
+            .run(db, (err, result) => {
+              if (err) reject(err)
+              resolve()
+            })
+          }
+        })
+      })
+    })
+  } catch (error) {
+    console.error(error)
+  }
+  console.log("done naming Clovers")
 }
 
-function nameUser(logs, key = 0) {
-  return new Promise((resolve, reject) => {
-    if (logs.length === key) resolve()
-    let log = logs[key]
-    r.table('users')
-      .get(log.data.player)
-      .run(db, (err, user) => {
-        if (err) return reject(err)
-        if (!user) {
-          console.log('user ' + log.data.player + ' not found')
-          // return reject(new Error('user ' + log.data.player + ' not found'))
-          nameUser(logs, key + 1)
-            .then(resolve)
-            .catch(reject)
-        } else {
-          user.name = xss(log.data.name)
-          r.table('users')
-            .get(log.data.player)
-            .update(user)
-            .run(db, (err, result) => {
-              if (err) return reject(err)
-              nameUser(logs, key + 1)
-                .then(resolve)
-                .catch(reject)
-            })
-        }
+
+async function nameUsers(){
+  console.log("name Users!")
+  try {
+    var v2_db = await new Promise((resolve, reject) => {
+      r.connect({ host: 'localhost', port: 28015, db: 'clovers_v2' }, (err, conn) => {
+        if (err) reject(err)
+        resolve(conn)
       })
-  })
+    })
+
+    var users = await new Promise((resolve, reject) => {
+      r.table('users')
+      .filter((u) => {
+        return u('name').ne("")
+      })
+      .pluck('address', 'name')
+      .run(v2_db, (err, users) => {
+        if (err) reject(err)
+        users.toArray((err, result) => {
+          if (err) reject(err)
+          resolve(result)
+        })
+      })
+    })
+    console.log(`naming ${users.length} users`)
+    await asyncForEach(users, async (oldUser) => {
+      return new Promise((resolve, reject) => { 
+        r.table('users')
+        .get(oldUser.address)
+        .run(db, (err, newUser) => {
+          if (err) reject(err)
+          if (!newUser) {
+            console.log('newUser ' + oldUser.address + ' not found')
+            resolve()
+          } else {
+            console.log('naming ' + oldUser.name)
+            newUser.name = xss(oldUser.name)
+            r.table('users')
+            .get(oldUser.address)
+            .update(newUser)
+            .run(db, (err, result) => {
+              if (err) reject(err)
+              resolve()
+            })
+          }
+        })
+      })
+    })
+  } catch (error) {
+    console.error(error)
+  }
+  console.log("done naming users")
 }
+
+// function nameClovers() {
+//   console.log('nameClovers')
+//   return new Promise((resolve, reject) => {
+//     r.table('logs')
+//       .filter({ name: 'newCloverName' })
+//       .orderBy('blockNumber')
+//       .run(db, (err, logs) => {
+//         if (err) return reject(err)
+//         console.log('newCloverName:', logs.length)
+//         if (!logs.length) resolve()
+//         logs.toArray((err, result) => {
+//           if (err) return reject(err)
+//           nameClover(result)
+//             .then(resolve)
+//             .catch(reject)
+//         })
+//       })
+//   })
+// }
+
+// function nameClover(logs, key = 0) {
+//   return new Promise((resolve, reject) => {
+//     if (logs.length === key) resolve()
+//     let log = logs[key]
+//     r.table('clovers')
+//       .get(log.data.board)
+//       .run(db, (err, clover) => {
+//         if (err) return reject(err)
+//         if (!clover) {
+//           console.log('clover ' + log.data.board + ' not found')
+//           // return reject(new Error('clover ' + log.data.board + ' not found'))
+//           nameClover(logs, key + 1)
+//             .then(resolve)
+//             .catch(reject)
+//         } else {
+//           clover.name = xss(log.data.name)
+//           r.table('clovers')
+//             .get(log.data.board)
+//             .update(clover)
+//             .run(db, (err, result) => {
+//               if (err) return reject(err)
+//               nameClover(logs, key + 1)
+//                 .then(resolve)
+//                 .catch(reject)
+//             })
+//         }
+//       })
+//   })
+// }
+
+// function nameUsers() {
+//   console.log('nameUsers')
+//   return new Promise((resolve, reject) => {
+//     r.table('logs')
+//       .filter({ name: 'newUserName' })
+//       .orderBy('blockNumber')
+//       .run(db, (err, logs) => {
+//         if (err) return reject(err)
+//         logs.toArray((err, result) => {
+//           if (err) return reject(err)
+//           nameUser(result)
+//             .then(resolve)
+//             .catch(reject)
+//         })
+//       })
+//   })
+// }
+
+// function nameUser(logs, key = 0) {
+//   return new Promise((resolve, reject) => {
+//     if (logs.length === key) resolve()
+//     let log = logs[key]
+//     r.table('users')
+//       .get(log.data.player)
+//       .run(db, (err, user) => {
+//         if (err) return reject(err)
+//         if (!user) {
+//           console.log('user ' + log.data.player + ' not found')
+//           // return reject(new Error('user ' + log.data.player + ' not found'))
+//           nameUser(logs, key + 1)
+//             .then(resolve)
+//             .catch(reject)
+//         } else {
+//           user.name = xss(log.data.name)
+//           r.table('users')
+//             .get(log.data.player)
+//             .update(user)
+//             .run(db, (err, result) => {
+//               if (err) return reject(err)
+//               nameUser(logs, key + 1)
+//                 .then(resolve)
+//                 .catch(reject)
+//             })
+//         }
+//       })
+//   })
+// }
