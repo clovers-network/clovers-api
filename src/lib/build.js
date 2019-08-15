@@ -6,8 +6,7 @@ import ethers from 'ethers'
 import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
 import uuid from 'uuid/v4'
-import { provider, events, web3, web3mode, Clovers } from '../lib/ethers-utils'
-
+import { provider, events, web3, web3mode } from '../lib/ethers-utils'
 const tables = [
   {
     name: 'clovers',
@@ -65,13 +64,13 @@ const tables = [
           return doc('price').ne('0')
         }
       ],
-      [
-        'rft',
-        (doc) => {
-          // curation market address
-          return doc('owner').eq('0x9b8e917d6a511d4a22dcfa668a46b508ac26731e')
-        }
-      ],
+      // [
+      //   'rft',
+      //   (doc) => {
+      //     // curation market address
+      //     return doc('owner').eq('0x9b8e917d6a511d4a22dcfa668a46b508ac26731e')
+      //   }
+      // ],
       [
         'ownerfilter',
         (doc) => {
@@ -99,7 +98,7 @@ const tables = [
         (doc) => {
           return r.expr([
             // clovers and null address
-            Clovers.address.toLowerCase(),
+            events.Clovers.address.toLowerCase(),
             '0x0000000000000000000000000000000000000000'
           ]).contains(doc('owner')).eq(false)
         }
@@ -107,7 +106,7 @@ const tables = [
       [
         'contract',
         (doc) => {
-          return doc('owner').eq(Clovers.address.toLowerCase())
+          return doc('owner').eq(events.Clovers.address.toLowerCase())
         }
       ],
       [
@@ -192,7 +191,7 @@ const tables = [
             'pub',
             // not going to Clovers Contract
             // else if
-            doc('data')('_to').ne('0x8A0011ccb1850e18A9D2D4b15bd7F9E9E423c11b'),
+            doc('data')('_to').downcase().ne(events.Clovers.address.toLowerCase()),
             'pub',
             // else
             'priv'
@@ -482,7 +481,7 @@ function populateLog(contract, key = 0) {
         topics: eventType().topics, 
         genesisBlock: 4902500, //config.genesisBlock, 
         latest: currBlock, 
-        limit: 500, 
+        limit: 100, 
         offset: 0,
         previousLogs: []
       })

@@ -14,6 +14,7 @@ function checkAddress (ctx, address) {
 }
 
 export function auth (wallet, signature) {
+  console.log('auth')
   try {
     const recovered = sigUtil.recoverTypedSignature({
       data: msgParams,

@@ -1,4 +1,4 @@
-const debug = require('debug')('app:api:chats')
+const debug = require('debug')('app:api:albums')
 import resource from 'resource-router-middleware'
 import r from 'rethinkdb'
 import { toRes, sanitizeClovers, albumTemplate } from '../lib/util'
@@ -13,18 +13,22 @@ const whitelist = []
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
-    console.log({id})
+    console.log('load album', id)
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
-    req.albumName = id
-    callback()
+    r.table('albums')
+    .get(id)
+    .default({})
+    .run(db, callback)
   }
 
   let router = resource({
     load,
     id: 'id',
+    // GET /
     async index ({query}, res) {
+      console.log('albums index')
       const indexes = ['all', 'name', 'userAddress', 'dates', 'cloverCount']
       const pageSize = 12
       const sort = query.sort || 'modified'
@@ -78,42 +82,28 @@ export default ({ config, db, io }) => {
 
       res.status(status).json(response).end()
     },
+    // GET
+    async read ({ id, query }, res) {
+      debug('???')
+      console.log('albums read')
 
-    async read ({ albumName, query }, res) {
-      const pageSize = 16
-      const before = query.before ? new Date(query.before) : new Date()
-
-      debug('get album by album name', albumName, before)
-
-      const [results, count] = await Promise.all([
-        r.table('albums').between(
-          [id, r.minval],
-          [id, before],
-          { index: 'dates' }
-        ).orderBy(r.desc('modified'))
-          .limit(pageSize)
-          .run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          }),
-        r.table('albums').getAll(albumName, { index: 'name' })
-          .count().run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          })
-      ]).catch((err) => {
+      const result = await new Promise((resolve, reject) => {
+        r.table('albums').get(id)
+        .run(db, (err, data) => {
+          if (err) reject(err)
+          resolve(data)
+          return
+        })
+      }).catch((err) => {
         debug('query error')
         debug(err)
         return res.status(500).end()
       })
+      console.log({result})
 
-      const response = {
-        before,
-
-        allResults: count,
-        pageResults: results.length,
-        results: results // .reverse()
-      }
+      // const response = {
+      //   result
+      // }
 
       // const status = results.length ? 200 : 404
       const status = 200
@@ -130,10 +120,13 @@ export default ({ config, db, io }) => {
     })
   )
 
-  router.post('/new', async (req, res) => {
+  router.post('new', async (req, res) => {
+    console.log('albums new')
+
     const {albumName, clovers} = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
+      console.log('no user')
       res.status(401).end()
       return
     }
@@ -197,7 +190,7 @@ export default ({ config, db, io }) => {
   })
 
   router.post('/:id', async (req, res) => {
-    console.log({req})
+    debug('albums id')
 
     let { albumName, clovers } = req.params
     const userAddress = req.auth && req.auth.user
@@ -300,6 +293,7 @@ export default ({ config, db, io }) => {
   })
 
   router.delete('/:id', async (req, res) => {
+    console.log('albums delete')
     const { id } = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {

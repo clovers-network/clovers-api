@@ -12,6 +12,7 @@ export default ({ config, db, io }) => {
    *  Errors terminate the request, success sets `req[id] = data`.
    */
   const load = (req, id, callback) => {
+    console.log('load')
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
