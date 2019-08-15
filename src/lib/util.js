@@ -29,24 +29,10 @@ export function albumTemplate(user, name, clovers) {
     name: xss(name),
     created: new Date(),
     modified: new Date(),
-    clovers: sanitizeClovers(clovers)
+    clovers
   }
 }
 
-export function sanitizeClovers(clovers) {
-  return clovers.map(c => {
-    c = xss(c)
-    if (!isHex(c) || c.length !== 34) {
-      throw new Error('Not a valid Clover')
-    }
-    return c
-  })
-}
-
-function isHex(h) {
-  var a = parseInt(h,16);
-  return (a.toString(16) ===h.toLowerCase())
-  }
 
 export function commentTemplate(user, board, comment = '') {
   if (!user) throw new Error('Must provide user object')

@@ -13,22 +13,23 @@ const whitelist = []
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
-    console.log('load album', id)
-    if (typeof id === 'string') {
-      id = id.toLowerCase()
-    }
     r.table('albums')
     .get(id)
     .default({})
+    .do((doc) => {
+      return doc.merge({
+        user: r.table('users').get(doc('userAddress'))
+        .without('clovers', 'curationMarket').default(null)
+      })
+    })
     .run(db, (res) => {
-      console.log({res})
       callback(res)
     })
   }
 
   let router = resource({
     load,
-    id: 'albums',
+    id: 'id',
     // GET /
     async index ({query}, res) {
       console.log('albums index')
@@ -45,6 +46,12 @@ export default ({ config, db, io }) => {
           .getAll(true, { index })
           .orderBy(asc ? r.asc(sort) : r.desc(sort))
           .slice(start, start + pageSize)
+          .map((doc) => {
+            return doc.merge({
+              user: r.table('users').get(doc('userAddress'))
+              .without('clovers', 'curationMarket').default(null)
+            })
+          })
           .run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -67,7 +74,7 @@ export default ({ config, db, io }) => {
       if (start >= count) {
         prevPage = Math.ceil(count / pageSize)
       }
-
+      console.log({results})
       const response = {
         prevPage,
         page: currentPage,
@@ -86,40 +93,43 @@ export default ({ config, db, io }) => {
       res.status(status).json(response).end()
     },
     // GET
-    async read ({id}, res) {
-      debug('???', id)
-      console.log({req})
-      console.log('albums read')
+    async read (req, res) {
+      const {id} = req.params
 
-      const result = await new Promise((resolve, reject) => {
-        r.table('albums').get(id)
-        .default({})
-        .run(db, (err, data) => {
-          if (err) reject(err)
-          console.log({data})
-          resolve(data)
-          return
+      const result = await r.table('albums').get(id)
+        .do((doc) => {
+          return doc.merge({
+            user: r.table('users').get(doc('userAddress'))
+            .without('clovers', 'curationMarket').default(null)
+          })
         })
-      }).catch((err) => {
-        debug('query error')
-        debug(err)
-        return res.status(500).end()
-      })
-      // console.log({result})
-
-      const response = {
-        result
-      }
-
-      // const status = results.length ? 200 : 404
-      const status = 200
-
-      res.status(status).end()//json(response).end()
+        .default({})
+        .run(db)
+        .catch((err) => {
+          debug('query error')
+          debug(err)
+          return res.status(500).end()
+        })
+        console.log(result)
+          
+        
+      const status = result ? 200 : 404
+      res.status(status).json(result).end()
     }
+  })
 
-    // read({ clover }, res) {
-    //   res.json(clover)
-    // }
+  router.get('/list/:index', async (req, res) => {
+    let {index} = req.params
+    index = index || 'all'
+    let result = await r.table('albums')
+      .getAll(true, { index })
+      .pluck('id', 'clovers', 'name')
+      .run(db)
+      .catch((err) => {
+        console.error(err)
+        res.result(500).end()
+      })
+      res.status(200).json(await result.toArray()).end()
   })
 
   // Authentication header required
@@ -130,15 +140,13 @@ export default ({ config, db, io }) => {
     })
   )
 
-  router.put('/:albumName', async (req, res) => {
-    console.log('albums new')
-    var {clovers} = req.body
-    var {albumName} = req.params
-    console.log({albumName, clovers})
-
+  // new album
+  router.post('/', async (req, res) => {
+    console.log(req.body)
+    var {clovers, albumName} = req.body
+    console.log({clovers, albumName})
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
-      console.log('no user')
       res.status(401).end()
       return
     }
@@ -146,22 +154,30 @@ export default ({ config, db, io }) => {
     const user = await r.table('users')
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
-    console.log({user})
     if (!user.address) {
-      res.status(400).end()
-      return
-    }
-
-    const albumExists = await r.table('albums')
-    .get(albumName).run(db)
-
-    if (albumExists) {
-      // album already named this
       res.status(401).end()
       return
     }
 
-    const album = albumTemplate(user, albumName, albumName)
+    const albumExists = await r.table('albums')
+    .getAll(albumName, {index: 'name'}).count().run(db).catch((err) => {
+      console.log({err})
+    })
+
+    if (albumExists > 0) {
+      // album already named this
+      res.status(400).send(`Album Exists`)
+      return
+    }
+
+    try {
+      await verifyClovers(clovers, db)
+    } catch(error) {
+      res.status(400).send(error.message)
+      return
+    }
+
+    const album = albumTemplate(user, albumName, clovers)
     const blockNum = await provider.getBlockNumber().catch((err) => {
       debug(err.toString())
       return 0
@@ -202,9 +218,9 @@ export default ({ config, db, io }) => {
   })
 
   router.put('/:id', async (req, res) => {
-    debug('albums id')
+    let { albumName, clovers } = req.body
+    const { id } = req.params
 
-    let { albumName, clovers } = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
       res.status(401).end()
@@ -214,34 +230,38 @@ export default ({ config, db, io }) => {
     const user = await r.table('users')
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
-        
-    // album must r
+
+      // album must r
     if (!user.address) {
       res.status(400).end()
       return
     }
 
-    const album = await r.table('albums')
-      .getAll(albumName, {index: 'name'}).run(db)
+    let albums = await r.table('albums').getAll(albumName, {index: 'name'}).pluck('id').run(db)
+    albums = await albums.toArray()
 
     // check if album already exists with name but with different id
-    if (album.id !== id) {
-      // album already named this
-      res.status(401).end()
+    if (albums.length > 0 && albums[0].id !== id) {
+      res.status(401).send('Different album with that name already exists')
       return
     }
 
- 
+    let album = await r.table('albums').get(id).run(db)
 
     albumName = xss(albumName)
     // check if albumName was changed
     if (album.name !== albumName && album.userAddress !== user.address) {
       // cant change name of album unless you are owner
-      res.status(401).end()
+      res.status(401).send('Only owner can change name')
       return
     }
 
-    clovers = sanitizeClovers(clovers)
+    try {
+      await verifyClovers(clovers, db)
+    } catch (error) {
+      res.status(500).send(error.message)
+      return
+    }
 
     // check if any clovers were removed... 
     let cloversCopy = JSON.parse(JSON.stringify(album.clovers))
@@ -251,13 +271,13 @@ export default ({ config, db, io }) => {
     });
     if(cloversCopy.length > 0 && album.userAddress !== user.address) {
       // can't remove clovers unless you own the album
-      res.status(401).end()
+      res.status(401).send('Only owner can remove clovers')
       return
     }
 
     // must update something
     if (album.name === albumName && album.clovers.join('') === clovers.join('')) {
-      res.status(400).end()
+      res.status(400).send('Must update something')
       return
     }
 
@@ -265,15 +285,18 @@ export default ({ config, db, io }) => {
       debug(err.toString())
       return 0
     })
+    album.name = albumName
+    album.clovers = clovers
+    album.modified = new Date()
     // update it
-    r.table('albums').get(album.id).update({
-      name: albumName,
-      clovers: clovers,
-      modified: new Date()
-    }).run(db, async (err,  res) => {
+    r.table('albums').get(id).update({
+      name: album.name,
+      clovers: album.clovers,
+      modified: album.modified
+    }).run(db, async (err,  _) => {
       if (err) {
-        debug('db run error')
-        res.sendStatus(500).end()
+        console.error('db run error')
+        res.status(500).end()
         return
       }
       // emit an event pls
@@ -297,15 +320,19 @@ export default ({ config, db, io }) => {
             debug('album log not saved')
             debug(err)
           } else {
-            io.emit('newLog', log)
+            try {
+              io.emit('newLog', log)
+            } catch (error) {
+              console.log('emit error?')
+            }
           }
-          res.json({ ...album, id }).end()
+          console.log({...album, id})
+          res.status(200).json({ ...album, id }).end()
         })
       })
   })
 
   router.delete('/:id', async (req, res) => {
-    console.log('albums delete')
     const { id } = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
@@ -316,7 +343,7 @@ export default ({ config, db, io }) => {
     const album = await r.table('albums')
       .get(id).run(db)
 
-    if (!album.id || album.userAddress !== userAddress.toLowerCase()) {
+    if (!album || !album.id || album.userAddress !== userAddress.toLowerCase()) {
       res.status(404).end()
       return
     }
@@ -366,4 +393,37 @@ export function albumListener (server, db) {
       }
     })
   })
+
+}
+
+async function verifyClovers(clovers, db) {
+  const regex = /\b(0x[0-9a-fA-F]+|[0-9]+)\b/g;
+  clovers.forEach(c => {
+    if (c.slice(0, 2) !== '0x') {
+      throw new Error(c + ' is not a valid format')
+    }
+    if (c.length !== 34) {
+      throw new Error(c + ' is not a valid Clover')
+    }
+    if (!c.match(regex)) {
+      throw new Error(c + ' is not hex')
+    }
+    if (clovers.filter(cc => cc.toLowerCase() === c.toLowerCase()).length !== 1) {
+      throw new Error(c + ' is included multiple times')
+    }
+
+  })
+
+  await asyncForEach(clovers, async (c) => {
+    var count = await r.table('clovers').getAll(c).count().run(db)
+    if (count !== 1) {
+      throw new Error(c + ' does not exist')
+    }
+  })
+}
+
+async function asyncForEach(array, callback) {
+  for (let index = 0; index < array.length; index++) {
+    await callback(array[index], index, array);
+  }
 }
