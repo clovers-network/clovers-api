@@ -79,6 +79,7 @@ export default ({ config, db, io }) => {
   )
 
   router.post('/:board', async (req, res) => {
+    console.log('posted to chats/:board')
     const { board } = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {

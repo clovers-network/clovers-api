@@ -20,12 +20,15 @@ export default ({ config, db, io }) => {
     r.table('albums')
     .get(id)
     .default({})
-    .run(db, callback)
+    .run(db, (res) => {
+      console.log({res})
+      callback(res)
+    })
   }
 
   let router = resource({
     load,
-    id: 'id',
+    id: 'albums',
     // GET /
     async index ({query}, res) {
       console.log('albums index')
@@ -83,14 +86,17 @@ export default ({ config, db, io }) => {
       res.status(status).json(response).end()
     },
     // GET
-    async read ({ id, query }, res) {
-      debug('???')
+    async read ({id}, res) {
+      debug('???', id)
+      console.log({req})
       console.log('albums read')
 
       const result = await new Promise((resolve, reject) => {
         r.table('albums').get(id)
+        .default({})
         .run(db, (err, data) => {
           if (err) reject(err)
+          console.log({data})
           resolve(data)
           return
         })
@@ -99,17 +105,21 @@ export default ({ config, db, io }) => {
         debug(err)
         return res.status(500).end()
       })
-      console.log({result})
+      // console.log({result})
 
-      // const response = {
-      //   result
-      // }
+      const response = {
+        result
+      }
 
       // const status = results.length ? 200 : 404
       const status = 200
 
-      res.status(status).json(response).end()
+      res.status(status).end()//json(response).end()
     }
+
+    // read({ clover }, res) {
+    //   res.json(clover)
+    // }
   })
 
   // Authentication header required
@@ -120,10 +130,12 @@ export default ({ config, db, io }) => {
     })
   )
 
-  router.post('new', async (req, res) => {
+  router.put('/:albumName', async (req, res) => {
     console.log('albums new')
+    var {clovers} = req.body
+    var {albumName} = req.params
+    console.log({albumName, clovers})
 
-    const {albumName, clovers} = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
       console.log('no user')
@@ -134,7 +146,7 @@ export default ({ config, db, io }) => {
     const user = await r.table('users')
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
-
+    console.log({user})
     if (!user.address) {
       res.status(400).end()
       return
@@ -189,7 +201,7 @@ export default ({ config, db, io }) => {
     })
   })
 
-  router.post('/:id', async (req, res) => {
+  router.put('/:id', async (req, res) => {
     debug('albums id')
 
     let { albumName, clovers } = req.params

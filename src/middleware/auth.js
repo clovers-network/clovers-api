@@ -8,6 +8,7 @@ const msgParams = [{
 }]
 
 function checkAddress (ctx, address) {
+  console.log('checkAddress')
   if (!eth.isAddress(address)) {
     ctx.throw(400, 'Invalid ETH address')
   }
