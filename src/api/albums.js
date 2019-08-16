@@ -1,7 +1,7 @@
 const debug = require('debug')('app:api:albums')
 import resource from 'resource-router-middleware'
 import r from 'rethinkdb'
-import { toRes, sanitizeClovers, albumTemplate } from '../lib/util'
+import { toRes, userTemplate, albumTemplate } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -32,7 +32,6 @@ export default ({ config, db, io }) => {
     id: 'id',
     // GET /
     async index ({query}, res) {
-      console.log('albums index')
       const indexes = ['all', 'name', 'userAddress', 'dates', 'cloverCount']
       const pageSize = 12
       const sort = query.sort || 'modified'
@@ -74,7 +73,6 @@ export default ({ config, db, io }) => {
       if (start >= count) {
         prevPage = Math.ceil(count / pageSize)
       }
-      console.log({results})
       const response = {
         prevPage,
         page: currentPage,
@@ -110,7 +108,6 @@ export default ({ config, db, io }) => {
           debug(err)
           return res.status(500).end()
         })
-        console.log(result)
           
         
       const status = result ? 200 : 404
@@ -142,9 +139,7 @@ export default ({ config, db, io }) => {
 
   // new album
   router.post('/', async (req, res) => {
-    console.log(req.body)
     var {clovers, albumName} = req.body
-    console.log({clovers, albumName})
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
       res.status(401).end()
@@ -161,7 +156,7 @@ export default ({ config, db, io }) => {
 
     const albumExists = await r.table('albums')
     .getAll(albumName, {index: 'name'}).count().run(db).catch((err) => {
-      console.log({err})
+      console.error({err})
     })
 
     if (albumExists > 0) {
@@ -232,15 +227,30 @@ export default ({ config, db, io }) => {
       return
     }
 
-    const user = await r.table('users')
+    let user = await r.table('users')
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
 
-      // album must r
+    // if user doesnt exist add them to db
     if (!user.address) {
-      console.error("no user with that address")
-      res.status(400).end()
-      return
+      const modified = await provider.getBlockNumber()
+      user = userTemplate(userAddress.toLowerCase())
+      user.created = modified
+      user.modified = modified
+
+      // db update
+      const{ changes } = await r.table('users')
+        .insert(user, { returnChanges: true })
+        .run(db)
+        .catch((err) => {
+            console.error(err)
+            res.sendStatus(500).end()
+            return
+        })
+        if (changes[0]) {
+          user = changes[0].new_val
+        }
+        io.emit('updateUser', user)
     }
 
     let albums = await r.table('albums').getAll(albumName, {index: 'name'}).pluck('id').run(db)
@@ -329,10 +339,9 @@ export default ({ config, db, io }) => {
             try {
               io.emit('newLog', log)
             } catch (error) {
-              console.log('emit error?')
+              console.error(error)
             }
           }
-          console.log({...album, id})
           res.status(200).json({ ...album, id }).end()
         })
       })
