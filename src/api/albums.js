@@ -123,7 +123,7 @@ export default ({ config, db, io }) => {
     index = index || 'all'
     let result = await r.table('albums')
       .getAll(true, { index })
-      .pluck('id', 'clovers', 'name')
+      .pluck('id', 'clovers', 'name', 'userAddress')
       .run(db)
       .catch((err) => {
         console.error(err)
@@ -219,10 +219,15 @@ export default ({ config, db, io }) => {
 
   router.put('/:id', async (req, res) => {
     let { albumName, clovers } = req.body
+    if (!albumName || !clovers) {
+      res.status(500).end()
+      return
+    }
     const { id } = req.params
 
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
+      console.error("no userAddress")
       res.status(401).end()
       return
     }
@@ -233,6 +238,7 @@ export default ({ config, db, io }) => {
 
       // album must r
     if (!user.address) {
+      console.error("no user with that address")
       res.status(400).end()
       return
     }
