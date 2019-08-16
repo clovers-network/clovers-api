@@ -193,6 +193,7 @@ export default ({ config, db, io }) => {
         blockNumber: blockNum,
         userAddress: null, // necessary data below
         data: {
+          id: generated_keys[0],
           userAddress: album.userAddress,
           name: album.name,
           board: album.clovers.length > 0 && album.clovers[0],
@@ -323,6 +324,7 @@ export default ({ config, db, io }) => {
         blockNumber: blockNum,
         userAddress: null, // necessary data below
         data: {
+          id,
           userAddress: user.address,
           name: albumName,
           board: clovers.length > 0 && clovers[0],
