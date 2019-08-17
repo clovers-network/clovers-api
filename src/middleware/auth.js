@@ -25,8 +25,9 @@ export function auth (wallet, signature) {
   } catch (err) {
     console.log('first sig recovery failed')
     try {
+      const hashed = eth.keccak256(msgParams[0].value)
       const recovered = sigUtil.recoverTypedSignature({
-        data: msgParams[0].value,
+        data: hashed,
         sig: signature
       })
       return wallet.toLowerCase() === recovered.toLowerCase()
