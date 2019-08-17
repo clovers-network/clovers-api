@@ -7,8 +7,8 @@ import {
   // CurationMarket,
   ClubTokenController
 } from 'clovers-contracts'
-var ethers = Object.assign(require('ethers'), require('ethers-contracts'))
 
+var ethers = Object.assign(require('ethers'), require('ethers-contracts'))
 
 // const ZeroClientProvider = require('web3-provider-engine/zero.js')
 // import Web3 from 'web3'
@@ -44,7 +44,7 @@ export let provider = providers.getDefaultProvider(network)
 
 let simpleCloversMarketABI = SimpleCloversMarket.abi
 let simpleCloversMarketAddress =
-  SimpleCloversMarket.networks[config.networkId].address
+  SimpleCloversMarket.networks[network.chainId].address
 let simpleCloversMarketInstance = new ethers.Contract(
   simpleCloversMarketAddress,
   simpleCloversMarketABI,
@@ -54,7 +54,7 @@ let simpleCloversMarketInstance = new ethers.Contract(
 console.log({simpleCloversMarketAddress})
 
 // let curationMarketABI = CurationMarket.abi
-// let curationMarketAddress = CurationMarket.networks[config.networkId].address
+// let curationMarketAddress = CurationMarket.networks[network.chainId].address
 // let curationMarketInstance = new ethers.Contract(
 //   curationMarketAddress,
 //   curationMarketABI,
@@ -63,7 +63,7 @@ console.log({simpleCloversMarketAddress})
 
 let clubTokenControllerABI = ClubTokenController.abi
 let clubTokenControllerAddress =
-  ClubTokenController.networks[config.networkId].address
+  ClubTokenController.networks[network.chainId].address
 let clubTokenControllerInstance = new ethers.Contract(
   clubTokenControllerAddress,
   clubTokenControllerABI,
@@ -71,13 +71,13 @@ let clubTokenControllerInstance = new ethers.Contract(
 )
 
 let cloversABI = Clovers.abi
-let cloversAddress = Clovers.networks[config.networkId].address
+let cloversAddress = Clovers.networks[network.chainId].address
 let cloversInstance = new ethers.Contract(cloversAddress, cloversABI, provider)
 // let _clovers = web3.eth.contract(cloversABI)
 // let cloversWeb3Instance = _clovers.at(cloversAddress)
 
 let clubTokenABI = ClubToken.abi
-let clubTokenAddress = ClubToken.networks[config.networkId].address
+let clubTokenAddress = ClubToken.networks[network.chainId].address
 let clubTokenInstance = new ethers.Contract(
   clubTokenAddress,
   clubTokenABI,
@@ -88,7 +88,7 @@ let clubTokenInstance = new ethers.Contract(
 
 let cloversControllerABI = CloversController.abi
 let cloversControllerAddress =
-  CloversController.networks[config.networkId].address
+  CloversController.networks[network.chainId].address
 let cloversControllerInstance = new ethers.Contract(
   cloversControllerAddress,
   cloversControllerABI,
