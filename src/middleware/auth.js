@@ -1,35 +1,47 @@
 import eth from 'ethjs'
 import sigUtil from 'eth-sig-util'
-
-const msgParams = [{
+// import utils from 'ethereumjs-util'
+var msgParams = [{
   type: 'string',
   name: 'Message',
-  value: 'To avoid bad things, sign below to authenticate with Clovers'
+  value: 'Please sign this message to authenticate with Clovers - '
 }]
 
-function checkAddress (ctx, address) {
-  console.log('checkAddress')
-  if (!eth.isAddress(address)) {
-    ctx.throw(400, 'Invalid ETH address')
-  }
-}
+// function checkAddress (ctx, address) {
+//   console.log('checkAddress')
+//   if (!eth.isAddress(address)) {
+//     ctx.throw(400, 'Invalid ETH address')
+//   }
+// }
 
 export function auth (wallet, signature) {
   console.log('auth')
   try {
+    var now = new Date()
+    msgParams[0].value += now.getMonth() + '/' + now.getFullYear()
     const recovered = sigUtil.recoverTypedSignature({
       data: msgParams,
       sig: signature
     })
-    return wallet.toLowerCase() === recovered.toLowerCase()
+    return wallet.toLowerCase() === recovered.toLowerCase() || new Error('try again')
   } catch (err) {
     console.log('first sig recovery failed')
     try {
-      const hashed = eth.keccak256(msgParams[0].value)
-      const recovered = sigUtil.recoverTypedSignature({
-        data: hashed,
-        sig: signature
-      })
+      var personal = { data: msgParams[0].value }
+      personal.sig = signature
+      const recovered = sigUtil.recoverPersonalSignature(personal)
+
+      // for web3.eth.sign //
+      // const hash = msg = utils.keccak256(msgParams[0].value)
+      // const sigParams = utils.fromRpcSig(signature)
+      // const hashBuffer = utils.toBuffer(hash)
+      // const result = utils.ecrecover(
+      //   hashBuffer,
+      //   sigParams.v,
+      //   sigParams.r,
+      //   sigParams.s
+      // )
+      // const recovered = utils.bufferToHex(utils.publicToAddress(result))
       return wallet.toLowerCase() === recovered.toLowerCase()
     } catch (err) {
       console.log('second sig recovery failed')

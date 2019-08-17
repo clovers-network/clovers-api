@@ -7,13 +7,10 @@
     "db": "rethinkdb",
     "dev": "DEBUG=app:* nodemon -w src --exec \"babel-node src --presets es2015,stage-0\"",
     "build": "babel src -s -D -d dist --presets es2015,stage-0",
-
     "start": "pm2 start ecosystem.config.js --env production",
     "prestart": "npm run -s build",
-
     "start-dev": "pm2 start ecosystem.config.js",
     "prestart-dev": "npm run -s prestart",
-
     "reload": "pm2 reload ecosystem.config.js",
     "prereload": "npm i && npm run -s build",
     "test": "eslint src",
