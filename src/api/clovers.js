@@ -138,10 +138,10 @@ export default ({ config, db, io }) => {
         nft.name = clover.name
         nft.description = 'This Clover ' + clover.board + ' was created with the moves: ' + reversi.byteMovesToStringMoves(...clover.moves[0])
 
-        nft.image = 'https://api2.clovers.network/clovers/svg/' + id
+        nft.image = 'https://api2.clovers.network/clovers/svg/' + clover.board
         nft.image_url = nft.image
 
-        nft.external_url = 'https://clovers.network/clovers/' + id
+        nft.external_url = 'https://clovers.network/clovers/' + clover.board
         nft.home_url = nft.external_url
 
         nft.background_color = game.blackScore > game.whiteScore ? '#ffffff' : (game.whiteScore > game.blackScore ? '#ffffff' : '#ffffff')
