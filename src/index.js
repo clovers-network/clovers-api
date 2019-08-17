@@ -21,7 +21,9 @@ const host = process.env.HOST || 'localhost'
 app.server = http.createServer(app)
 
 // logger
-app.use(morgan('dev'))
+if (process.env.NODE_ENV !== 'production') {
+  app.use(morgan('dev'))
+}
 
 // 3rd party middleware
 app.use(cors({
