@@ -23,7 +23,17 @@ export function auth (wallet, signature) {
     })
     return wallet.toLowerCase() === recovered.toLowerCase()
   } catch (err) {
-    console.log(err)
-    return false
+    console.log('first sig recovery failed')
+    try {
+      const recovered = sigUtil.recoverTypedSignature({
+        data: msgParams[0].value,
+        sig: signature
+      })
+      return wallet.toLowerCase() === recovered.toLowerCase()
+    } catch (err) {
+      console.log('second sig recovery failed')
+      console.log(err)
+      return false
+    }
   }
 }
