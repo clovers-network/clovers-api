@@ -121,6 +121,12 @@ export default ({ config, db, io }) => {
     let result = await r.table('albums')
       .getAll(true, { index })
       .pluck('id', 'clovers', 'name', 'userAddress')
+      .map((doc) => {
+        return doc.merge({
+          user: r.table('users').get(doc('userAddress'))
+          .without('clovers', 'curationMarket').default(null)
+        })
+      })
       .run(db)
       .catch((err) => {
         console.error(err)
