@@ -123,7 +123,8 @@ export default ({ config, db, io }) => {
             userName: chat.userName,
             board: chat.board,
             createdAt: new Date()
-          }
+          },
+          userAddresses: []
         }
         r.table('clovers').get(chat.board).update({
           commentCount: r.row('commentCount').add(1).default(0),

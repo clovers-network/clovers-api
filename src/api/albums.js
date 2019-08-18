@@ -204,7 +204,8 @@ export default ({ config, db, io }) => {
           name: album.name,
           board: album.clovers.length > 0 && album.clovers[0],
           createdAt: new Date()
-        }
+        },
+        userAddresses: []
       }
       r.table('logs').insert(log)
         .run(db, (err) => {
@@ -335,7 +336,8 @@ export default ({ config, db, io }) => {
           name: albumName,
           board: clovers.length > 0 && clovers[0],
           createdAt: new Date()
-        }
+        },
+        userAddresses: []
       }
     
       r.table('logs').insert(log)

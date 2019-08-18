@@ -177,7 +177,7 @@ const tables = [
     name: 'logs',
     indexes: [
       'name',
-      'userAddress',
+      'userAddresses',
       [
         'activity',
         (doc) => {
@@ -485,18 +485,17 @@ function populateLog(contract, key = 0) {
           return resolve()
         }
         console.log('populateLog - ' + contract + ' - ' + eventTypes[key])
-        let address = events[contract].address
-        let abi = events[contract].abi
-        let iface = new ethers.Interface(abi)
+        let address = events[contract].address.toLowerCase()
+        // let abi = events[contract].abi
+        // let iface = new ethers.Interface(abi)
 
         let eventType =
           events[contract].instance.interface.events[eventTypes[key]]
-        let transferCoder = iface.events[eventTypes[key]]
+        // let transferCoder = iface.events[eventTypes[key]]
         if (!eventType) {
           throw new Error('no ' + contract + ' - ' + eventTypes[key])
         }
 
-        var address = address.toLowerCase()
         var topics = eventType().topics
         var genesisBlock = config.genesisBlock[config.network.chainId]
 
@@ -518,7 +517,11 @@ function populateLog(contract, key = 0) {
           })
         }
 
+        logs = logs.slice(0, 50)
+        console.log(logs.length)
+
         console.log(eventType().name + ': ' + logs.length + ' logs')
+
         logs = logs.filter(log => {
           if (log.address.toLowerCase() !== address.toLowerCase()) {
             console.log(log.address)
@@ -528,29 +531,14 @@ function populateLog(contract, key = 0) {
             return true
           }
         })
-        const userKeys = ['_to', 'owner', 'buyer', 'seller']
-        logs = logs.map((l) => {
-          try {
-            let userAddress = null
-            l.name = contract + '_' + eventType().name
-            l.data = transferCoder.parse(l.topics, l.data)
-            l.data = parseLogForStorage(l.data)
 
-            for (let k of Object.keys(l.data)) {
-              if (userKeys.includes(k)) {
-                userAddress = l.data[k].toLowerCase()
-              }
-            }
-            l.userAddress = userAddress
-          } catch (err) {
-            reject(err)
-          }
-          return l
-        })
+        logs = logs.map(l => transformLog(l, contract, key))
+
         return r.table('logs')
-          .insert(logs)
+          .insert(logs, {  returnChanges: true, conflict: 'update' })
           .run(db, (err, results) => {
             if (err) return reject(err)
+            console.log(results)
             return populateLog(contract, key + 1)
               .then(resolve)
               .catch(reject)
@@ -561,6 +549,42 @@ function populateLog(contract, key = 0) {
       }
     }
   })
+}
+
+export function transformLog(l, contract, key) {
+
+  let address = events[contract].address.toLowerCase()
+
+  if (l.address.toLowerCase() !== address.toLowerCase()) {
+    console.error({l})
+    throw new Error('Why did I get a log from another address?')
+  }
+
+  let eventTypes = events[contract].eventTypes
+  let abi = events[contract].abi
+  let iface = new ethers.Interface(abi)
+  let transferCoder = iface.events[eventTypes[key]]
+  let eventType = events[contract].instance.interface.events[eventTypes[key]]
+
+  const userKeys = ['_to', '_from', 'owner', 'buyer', 'seller']
+  try {
+    let userAddresses = []
+    l.name = contract + '_' + eventType().name
+    l.data = transferCoder.parse(l.topics, l.data)
+    l.data = parseLogForStorage(l.data)
+    // if (l.transactionHash) {
+      // l.id = l.transactionHash + '-' + l.data.logIndex
+    // }
+    for (let k of Object.keys(l.data)) {
+      if (userKeys.includes(k)) {
+        userAddresses.push({id: k, address: l.data[k].toLowerCase()})
+      }
+    }
+    l.userAddresses = userAddresses
+  } catch (err) {
+    reject(err)
+  }
+  return l
 }
 
 function processLogs() {
@@ -695,7 +719,7 @@ async function nameClovers(){
         .run(db, (err, newClover) => {
           if (err) reject(err)
           if (!newClover) {
-            console.log('newClover ' + oldClover.board + ' not found')
+            console.log('newClover ' + oldClover.board + ' with name ' + oldClover.name + ' not found')
             resolve()
           } else {
             console.log('naming ' + oldClover.name)
@@ -751,7 +775,7 @@ async function nameUsers(){
         .run(db, (err, newUser) => {
           if (err) reject(err)
           if (!newUser) {
-            console.log('newUser ' + oldUser.address + ' not found')
+            console.log('newUser ' + oldUser.address + ' with old name ' + oldUser.name + ' not found')
             resolve()
           } else {
             console.log('naming ' + oldUser.name)

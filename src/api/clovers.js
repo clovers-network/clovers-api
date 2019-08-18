@@ -198,12 +198,14 @@ export default ({ config, db, io }) => {
         // include the users
         .map((doc) => {
           return doc.merge({
-            user: r.branch(
-              doc('userAddress').default(null).ne(null),
-              r.table('users').get(doc('userAddress')).default({})
-                .without('clovers', 'curationMarket'),
-              null
-            )
+            userAddresses: doc('userAddresses').map(u => {
+              return {
+                id: u('id'),
+                address: r.table('users')
+                  .get(u('address'))
+                  .default({address: u('address')})
+                  .without('clovers', 'curationMarket')}
+            })
           })
         })
         .run(db, (err, data) => {
@@ -325,7 +327,7 @@ export default ({ config, db, io }) => {
           name: 'CloverName_Changed',
           removed: false,
           blockNumber: modified,
-          userAddress: null,
+          userAddresses: {},
           data: {
             board: clover.board,
             owner: clover.owner,

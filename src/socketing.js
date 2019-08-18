@@ -9,6 +9,7 @@ import * as clubTokenController from './models/clubTokenController'
 // import * as curationMarket from './models/curationMarket'
 import * as simpleCloversMarket from './models/simpleCloversMarket'
 import { parseLogForStorage } from './lib/util'
+import { transformLog } from './lib/build'
 import r from 'rethinkdb'
 import {Clovers} from 'clovers-contracts'
 
@@ -49,66 +50,42 @@ async function beginListen (contract, key = 0) {
     debug(eventTypes[key] + ' doesnt exists')
     return
   }
-  // let listen = "on" + eventType().name.toLowerCase();
-  // events[contract].instance[listen] = (...log) => {
-  //   debug("!!!!!");
-  //   debug(log);
-  // };
-  // var address =
-  //   "0x000000000000000000000000" + events[contract].address.substring(2);
+ 
   let topics = eventType().topics
-  // topics.push(address);
   debug('make a listener on ' + contract + ' ' + eventType().name)
   provider.on(topics, (log) => {
-    let address = events[contract].address
 
     // filter out events from different contracts
-    if (log.address.toLowerCase() !== address.toLowerCase()) {
+    let address = events[contract].address.toLowerCase()
+    if (log.address.toLowerCase() !== address) {
       return
     }
-    let abi = events[contract].abi
-    let iface = new ethers.Interface(abi)
-
-    log.name = contract + '_' + eventType().name
-
-    // method below works better :)
-    // let event = events[contract].abi.find(a => a.name === eventType().name)
-    // let names = event.inputs.map(o => o.name)
-    // let types = event.inputs.map(o => o.type)
-    // log.data = iface.decodeParams(names, types, log.data)
-
-    try {
-      let transferCoder = iface.events[eventTypes[key]]
-      log.data = transferCoder.parse(log.topics, log.data)
-    } catch (err) {
-      debug(err)
-      return
-    }
-
-    log.data = parseLogForStorage(log.data)
-
-    const userKeys = ['_to', 'owner', 'buyer', 'seller']
-    let userAddress = null
-    for (let k of Object.keys(log.data)) {
-      if (userKeys.includes(k)) {
-        userAddress = log.data[k].toLowerCase()
-      }
-    }
-
-    log.userAddress = userAddress
+    log = transformLog(log, contract, key)
 
     r.table('logs')
       .insert(log)
-      .run(db, (err, results) => {
+      .run(db, async (err, results) => {
         debug((err ? 'ERROR ' : 'SUCCESS ') + 'saving ' + log.name)
         if (err) throw new Error(err)
-        // include user info
-        r.table('users').get(log.userAddress).run(db, (err, user) => {
-          log.user = user
-          handleEvent({ io, db, log })
-        })
+        log.userAddresses = await getUsers(log.userAddresses)
+        handleEvent({ io, db, log })
       })
   })
+}
+
+async function getUsers(userAddresses, key = 0, newUserAddresses = []) {
+  try {
+    if (key >= userAddresses.length) {
+      return newUserAddresses
+    }
+    const user = userAddresses[key]
+    const u = await r.table('users').get(user.address).run(db)
+    newUserAddresses.push({id: user.id, address: u})
+    return await getUsers(userAddresses, key + 1, newUserAddresses)
+  } catch (error) {
+    console.log(error)
+    return userAddresses
+  }
 }
 
 const ignoredTypes = ['ClubToken_Transfer','CurationMarket_Transfer']

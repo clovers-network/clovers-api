@@ -251,8 +251,10 @@ async function updateClover(log) {
 
 async function addNewClover(log) {
   debug('adding new Clover', log.data._tokenId)
-  let foundBy = log.userAddress
   let tokenId = log.data._tokenId
+  let hasFoundBy = log.userAddresses.filter(u => u.id === '_to')
+  let foundBy = cloverKept && hasFoundBy.length > 0 ? hasFoundBy[0].address : null
+
   let [
     cloverKept,
     cloverMoves,
@@ -271,6 +273,7 @@ async function addNewClover(log) {
   // var cloverURI = await events.Clovers.instance.tokenURI(log.data._tokenId)
 
   let clover = {
+    foundBy,
     name: tokenId,
     board: tokenId,
     kept: cloverKept,
@@ -282,7 +285,6 @@ async function addNewClover(log) {
     modified: Number(cloverBlock),
     // store price as hex, padded for sorting/filtering in DB
     originalPrice: padBigNum(price),
-    foundBy,
     price: padBigNum(price),
     commentCount: 0
   }
@@ -300,6 +302,9 @@ async function addNewClover(log) {
     if (process.argv.findIndex(c => c === 'build') > -1) return
 
     oracleVerify(clover, cloverSymmetries)
+  } else {
+    console.log('why is this conditional?')
+    console.log(log)
   }
 }
 
