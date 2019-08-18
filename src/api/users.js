@@ -12,7 +12,7 @@ export default ({ config, db, io }) => {
    *  Errors terminate the request, success sets `req[id] = data`.
    */
   const load = (req, id, callback) => {
-    console.log('load')
+    debug('load')
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
@@ -21,9 +21,9 @@ export default ({ config, db, io }) => {
       .default({})
       .do((doc) => {
         return r.branch(
-          doc.hasFields('clovers'),
+          doc.hasFields('modified'),
           doc,
-          doc.merge({ clovers: [], address: id })
+          r.error('404 Not Found')
         )
       })
       .run(db, callback)

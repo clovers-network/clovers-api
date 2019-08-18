@@ -13,7 +13,7 @@ export function userTemplate(address = null) {
   return {
     name: '',
     address: address.toLowerCase(),
-    clovers: [],
+    // clovers: [],
     created: 0,
     modified: 0,
     balance: '0',
