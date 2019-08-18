@@ -421,6 +421,23 @@ async function populateLogs() {
   await populateLog('SimpleCloversMarket')
 }
 
+async function testLogs({address, topics, genesisBlock}) {
+  return new Promise((resolve, reject) => {
+    provider.getLogs({
+      address,
+      topics,
+      fromBlock: genesisBlock,
+      toBlock: 'latest'
+    }).then((logs, err) => {
+      if (err) {
+        reject(err)
+      } else {
+        resolve(logs)
+      }
+    })
+  })
+}
+
 async function getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs}){
   return new Promise((resolve, reject) => {
 
@@ -457,37 +474,50 @@ async function getLogs({address, topics, genesisBlock, latest, limit, offset, pr
 }
 
 function populateLog(contract, key = 0) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     let eventTypes = events[contract].eventTypes
     if (key >= eventTypes.length) {
       resolve()
     } else {
-      if (!eventTypes[key]) {
-        console.log('dont watch this event' + eventTypes[key])
-        return resolve()
-      }
-      console.log('populateLog - ' + contract + ' - ' + eventTypes[key])
-      let address = events[contract].address
-      let abi = events[contract].abi
-      let iface = new ethers.Interface(abi)
+      try {
+        if (!eventTypes[key]) {
+          console.log('dont watch this event' + eventTypes[key])
+          return resolve()
+        }
+        console.log('populateLog - ' + contract + ' - ' + eventTypes[key])
+        let address = events[contract].address
+        let abi = events[contract].abi
+        let iface = new ethers.Interface(abi)
 
-      let eventType =
-        events[contract].instance.interface.events[eventTypes[key]]
-      let transferCoder = iface.events[eventTypes[key]]
-      if (!eventType) {
-        throw new Error('no ' + contract + ' - ' + eventTypes[key])
-      }
+        let eventType =
+          events[contract].instance.interface.events[eventTypes[key]]
+        let transferCoder = iface.events[eventTypes[key]]
+        if (!eventType) {
+          throw new Error('no ' + contract + ' - ' + eventTypes[key])
+        }
 
-      getLogs({
-        address: address.toLowerCase(), 
-        topics: eventType().topics, 
-        genesisBlock: config.genesisBlock[config.network.chainId], 
-        latest: currBlock, 
-        limit: 10, 
-        offset: 0,
-        previousLogs: []
-      })
-      .then((logs) => {
+        var address = address.toLowerCase()
+        var topics = eventType().topics
+        var genesisBlock = config.genesisBlock[config.network.chainId]
+
+        let logs = await testLogs({
+          address,
+          topics,
+          genesisBlock
+        })
+        console.log(logs.length)
+        if (logs.length === 1000) {
+          logs = await getLogs({
+            address: address.toLowerCase(), 
+            topics: eventType().topics, 
+            genesisBlock: config.genesisBlock[config.network.chainId], 
+            latest: currBlock, 
+            limit: 10, 
+            offset: 0,
+            previousLogs: []
+          })
+        }
+
         console.log(eventType().name + ': ' + logs.length + ' logs')
         logs = logs.filter(log => {
           if (log.address.toLowerCase() !== address.toLowerCase()) {
@@ -525,11 +555,10 @@ function populateLog(contract, key = 0) {
               .then(resolve)
               .catch(reject)
           })
-      })
-      .catch(error => {
+      } catch(error) {
         console.log('error!!!')
         console.log(error)
-      })
+      }
     }
   })
 }
