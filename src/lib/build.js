@@ -517,9 +517,6 @@ function populateLog(contract, key = 0) {
           })
         }
 
-        logs = logs.slice(0, 50)
-        console.log(logs.length)
-
         console.log(eventType().name + ': ' + logs.length + ' logs')
 
         logs = logs.filter(log => {
