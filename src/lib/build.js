@@ -338,17 +338,19 @@ function rebuildDatabases() {
 function createDB() {
   console.log('createDB')
   return new Promise((resolve, reject) => {
+    const chainId = config.network.chainId
+    const dbName = `clovers_chain_${chainId}`
     r.dbList().run(db, (err, res) => {
       if (err) return reject(err)
-      if (res.findIndex(a => a === 'clovers_v3') > -1) {
-        console.log('dbDrop clovers_v3')
-        r.dbDrop('clovers_v3').run(db, (err, res) => {
+      if (res.findIndex(a => a === dbName) > -1) {
+        console.log(`dbDrop ${dbName}`)
+        r.dbDrop(dbName).run(db, (err, res) => {
           if (err) return reject(err)
           createDB().then(resolve)
         })
       } else {
-        console.log('dbCreate clovers_v3')
-        r.dbCreate('clovers_v3').run(db, (err, res) => {
+        console.log(`dbCreate ${dbName}`)
+        r.dbCreate(dbName).run(db, (err, res) => {
           if (err) return reject(err)
           resolve()
         })
@@ -479,7 +481,7 @@ function populateLog(contract, key = 0) {
       getLogs({
         address: address.toLowerCase(), 
         topics: eventType().topics, 
-        genesisBlock: 4902500, //config.genesisBlock, 
+        genesisBlock: config.genesisBlock[config.network.chainId], 
         latest: currBlock, 
         limit: 100, 
         offset: 0,
@@ -578,8 +580,8 @@ function processLog(logs, i = 0) {
 
 async function moveChats(){
   console.log('move Chats!')
-  var v2_db = await new Promise((resolve, reject) => {
-    r.connect({ host: 'localhost', port: 28015, db: 'clovers_v2' }, (err, conn) => {
+  var v3_db = await new Promise((resolve, reject) => {
+    r.connect({ host: 'localhost', port: 28015, db: 'clovers_v3' }, (err, conn) => {
       if (err) reject(err)
       resolve(conn)
     })
@@ -589,7 +591,7 @@ async function moveChats(){
     r.table('chats')
     .filter((c) => true)
     .orderBy('created')
-    .run(v2_db, (err, chats) => {
+    .run(v3_db, (err, chats) => {
       if (err) reject(err)
       chats.toArray((err, result) => {
         if (err) reject(err)
@@ -636,8 +638,8 @@ async function moveChats(){
 async function nameClovers(){
   console.log("rename Clovers!")
   try {
-    var v2_db = await new Promise((resolve, reject) => {
-      r.connect({ host: 'localhost', port: 28015, db: 'clovers_v2' }, (err, conn) => {
+    var v3_db = await new Promise((resolve, reject) => {
+      r.connect({ host: 'localhost', port: 28015, db: 'clovers_v3' }, (err, conn) => {
         if (err) reject(err)
         resolve(conn)
       })
@@ -648,7 +650,7 @@ async function nameClovers(){
         return c('name').match("^0x").not()
       })
       .pluck('board', 'name', 'commentCount')
-      .run(v2_db, (err, clovers) => {
+      .run(v3_db, (err, clovers) => {
         if (err) reject(err)
         clovers.toArray((err, result) => {
           if (err) reject(err)
@@ -691,8 +693,8 @@ async function nameClovers(){
 async function nameUsers(){
   console.log("name Users!")
   try {
-    var v2_db = await new Promise((resolve, reject) => {
-      r.connect({ host: 'localhost', port: 28015, db: 'clovers_v2' }, (err, conn) => {
+    var v3_db = await new Promise((resolve, reject) => {
+      r.connect({ host: 'localhost', port: 28015, db: 'clovers_v3' }, (err, conn) => {
         if (err) reject(err)
         resolve(conn)
       })
@@ -704,7 +706,7 @@ async function nameUsers(){
         return u('name').ne("")
       })
       .pluck('address', 'name')
-      .run(v2_db, (err, users) => {
+      .run(v3_db, (err, users) => {
         if (err) reject(err)
         users.toArray((err, result) => {
           if (err) reject(err)
