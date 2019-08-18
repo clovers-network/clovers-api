@@ -169,7 +169,7 @@ export async function syncClover(_db, _io, clover) {
 async function updateUser(log, user_id, add) {
   user_id = user_id.toLowerCase()
   if (user_id === ZERO_ADDRESS.toLowerCase()) return
-  add = add == 'add'
+  add = add === 'add'
   let command = r.table('users').get(user_id)
   let user = await dodb(db, command)
   if (add) {
@@ -177,28 +177,28 @@ async function updateUser(log, user_id, add) {
       user = userTemplate(user_id)
       user.created = log.blockNumber
     }
-    let index = user.clovers.indexOf(log.data._tokenId)
-    if (index < 0) {
-      user.clovers.push(log.data._tokenId)
-      user.modified = log.blockNumber
-    } else {
-      debug('for some reason this clover was added to a user who already owned it')
-      debug(log)
-      debug(user_id)
-    }
+    // let index = user.clovers.indexOf(log.data._tokenId)
+    // if (index < 0) {
+    //   user.clovers.push(log.data._tokenId)
+    //   user.modified = log.blockNumber
+    // } else {
+    //   debug('for some reason this clover was added to a user who already owned it')
+    //   debug(log)
+    //   debug(user_id)
+    // }
   } else {
     if (user) {
-      let index = user.clovers.indexOf(log.data._tokenId)
-      if (index < 0) {
-        throw new Error(
-          'cant remove clover ' +
-            log.data._tokenId +
-            ' if user ' +
-            log.data._from +
-            ' doesnt own it'
-        )
-      }
-      user.clovers.splice(index, 1)
+      // let index = user.clovers.indexOf(log.data._tokenId)
+      // if (index < 0) {
+      //   throw new Error(
+      //     'cant remove clover ' +
+      //       log.data._tokenId +
+      //       ' if user ' +
+      //       log.data._from +
+      //       ' doesnt own it'
+      //   )
+      // }
+      // user.clovers.splice(index, 1)
       user.modified = log.blockNumber
     } else {
       // this should not happen
