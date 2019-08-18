@@ -16,16 +16,18 @@ export default ({ config, db, io }) => {
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
+    const defaultUser = userTemplate(id)
     r.table('users')
       .get(id)
-      .default({})
-      .do((doc) => {
-        return r.branch(
-          doc.hasFields('modified'),
-          doc,
-          r.error('404 Not Found')
-        )
-      })
+      .default(defaultUser)
+      // first time users shouldn't get 404's on their profile
+      // .do((doc) => {
+      //   return r.branch(
+      //     doc.hasFields('modified') || req.method !== 'GET',
+      //     doc,
+      //     r.error('404 Not Found')
+      //   )
+      // })
       .run(db, callback)
   }
 
@@ -83,9 +85,7 @@ export default ({ config, db, io }) => {
         results
       }
 
-      const status = results.length ? 200 : 404
-
-      res.status(status).json(response).end()
+      res.status(200).json(response).end()
 
       // let limit = parseInt(query.limit) || 100
       // let offset = parseInt(query.offset) || 0
@@ -197,7 +197,7 @@ export default ({ config, db, io }) => {
     image = image && xss(image).substring(0, 64)
     load(req, id, async (err, dbUser) => {
       const modified = await provider.getBlockNumber()
-      if (!dbUser.address) {
+      if (!dbUser.created) {
         dbUser = userTemplate(id.toLowerCase())
         dbUser.name = name
         dbUser.image = image

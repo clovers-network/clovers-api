@@ -668,7 +668,8 @@ async function moveChats(){
             userName: chat.userName,
             board: chat.board,
             createdAt: new Date()
-          }
+          },
+          userAddresses: []
         }
        
         r.table('logs').insert(log)

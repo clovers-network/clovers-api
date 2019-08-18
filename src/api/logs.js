@@ -30,14 +30,21 @@ export default ({ config, db, io }) => {
           // include the users
           .map((doc) => {
             return doc.merge({
-              userAddresses: doc('userAddresses').map(u => {
-                return {
-                  id: u('id'),
-                  address: r.table('users')
-                    .get(u('address'))
-                    .default({address: u('address')})
-                    .without('clovers', 'curationMarket')}
-              })
+              userAddresses:  r.branch(
+                doc.hasFields('userAddresses'),
+                doc('userAddresses').map(u => {
+                  return {
+                    id: u('id'),
+                    address: r.table('users')
+                      .get(u('address'))
+                      .default({address: u('address')})
+                      .without('clovers', 'curationMarket')
+                  }
+                }),
+                doc.hasFields('userAddress'),
+                doc('userAddress'),
+                []
+              )
             })
           })
           .run(db, (err, data) => {

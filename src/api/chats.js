@@ -1,7 +1,7 @@
 const debug = require('debug')('app:api:chats')
 import resource from 'resource-router-middleware'
 import r from 'rethinkdb'
-import { toRes, commentTemplate } from '../lib/util'
+import { toRes, commentTemplate, userTemplate } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -87,9 +87,14 @@ export default ({ config, db, io }) => {
       return
     }
 
-    const user = await r.table('users')
+    let user = await r.table('users')
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
+
+    if (!user.address) {
+      user = await  makeUser(userAddress)
+    }
+      
     const comment = xss(req.body.comment || '').trim()
 
     if (!comment.length || !user.address) {
@@ -190,6 +195,29 @@ export default ({ config, db, io }) => {
     }
     res.status(200).end()
   })
+
+
+  async function makeUser(userAddress) {
+    const modified = await provider.getBlockNumber()
+    var user = userTemplate(userAddress.toLowerCase())
+    user.created = modified
+    user.modified = modified
+
+    // db update
+    const{ changes } = await r.table('users')
+      .insert(user, { returnChanges: true })
+      .run(db)
+      .catch((err) => {
+          console.error(err)
+          res.sendStatus(500).end()
+          return
+      })
+      if (changes[0]) {
+        user = changes[0].new_val
+      }
+      io.emit('updateUser', user)
+      return user
+  }
 
   return router
 }

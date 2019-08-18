@@ -152,12 +152,13 @@ export default ({ config, db, io }) => {
       return
     }
 
-    const user = await r.table('users')
+    let user = await r.table('users')
       .get(userAddress.toLowerCase()).default({})
       .pluck('address', 'name').run(db)
+
+    // if user doesn't exist make them
     if (!user.address) {
-      res.status(401).end()
-      return
+      user = await makeUser(userAddress)
     }
 
     const albumExists = await r.table('albums')
@@ -218,6 +219,31 @@ export default ({ config, db, io }) => {
           res.json({ ...album, id: generated_keys[0] }).end()
         })
     })
+
+
+    async function makeUser(userAddress) {
+      const modified = await provider.getBlockNumber()
+      var user = userTemplate(userAddress.toLowerCase())
+      user.created = modified
+      user.modified = modified
+
+      // db update
+      const{ changes } = await r.table('users')
+        .insert(user, { returnChanges: true })
+        .run(db)
+        .catch((err) => {
+            console.error(err)
+            res.sendStatus(500).end()
+            return
+        })
+        if (changes[0]) {
+          user = changes[0].new_val
+        }
+        io.emit('updateUser', user)
+        return user
+    }
+
+    
   })
 
   router.put('/:id', async (req, res) => {
@@ -241,24 +267,7 @@ export default ({ config, db, io }) => {
 
     // if user doesnt exist add them to db
     if (!user.address) {
-      const modified = await provider.getBlockNumber()
-      user = userTemplate(userAddress.toLowerCase())
-      user.created = modified
-      user.modified = modified
-
-      // db update
-      const{ changes } = await r.table('users')
-        .insert(user, { returnChanges: true })
-        .run(db)
-        .catch((err) => {
-            console.error(err)
-            res.sendStatus(500).end()
-            return
-        })
-        if (changes[0]) {
-          user = changes[0].new_val
-        }
-        io.emit('updateUser', user)
+      user = await makeUser(userAddress)
     }
 
     let albums = await r.table('albums').getAll(albumName, {index: 'name'}).pluck('id').run(db)
