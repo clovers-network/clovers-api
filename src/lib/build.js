@@ -483,7 +483,7 @@ function populateLog(contract, key = 0) {
         topics: eventType().topics, 
         genesisBlock: config.genesisBlock[config.network.chainId], 
         latest: currBlock, 
-        limit: 100, 
+        limit: 10, 
         offset: 0,
         previousLogs: []
       })
