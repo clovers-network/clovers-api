@@ -21,6 +21,7 @@ export default ({ config, db, io }) => {
       .get(id)
       .default(defaultUser)
       .merge({
+        cloverCount: r.table('clovers').getAll(id, { index: 'owner' }).count(),
         albumCount: r.table('albums').getAll(id, { index: 'userAddress' }).count()
       })
       .run(db, callback)
