@@ -20,6 +20,9 @@ export default ({ config, db, io }) => {
     r.table('users')
       .get(id)
       .default(defaultUser)
+      .merge({
+        albumCount: r.table('albums').getAll(id, { index: 'userAddress' }).count()
+      })
       .run(db, callback)
   }
 
