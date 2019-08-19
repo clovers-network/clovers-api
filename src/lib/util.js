@@ -16,7 +16,8 @@ export function userTemplate(address = null) {
     created: 0,
     modified: 0,
     balance: '0',
-    curationMarket: {}
+    curationMarket: {},
+    albumCount: 0
   }
 }
 
