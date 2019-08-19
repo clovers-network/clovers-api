@@ -18,7 +18,7 @@ export function auth (wallet, signature) {
   console.log('auth')
   try {
     var now = new Date()
-    msgParams[0].value += now.getMonth() + '/' + now.getFullYear()
+    msgParams[0].value += (now.getMonth() + 1) + '/' + now.getFullYear()
     const recovered = sigUtil.recoverTypedSignature({
       data: msgParams,
       sig: signature
