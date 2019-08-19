@@ -20,14 +20,6 @@ export default ({ config, db, io }) => {
     r.table('users')
       .get(id)
       .default(defaultUser)
-      // first time users shouldn't get 404's on their profile
-      // .do((doc) => {
-      //   return r.branch(
-      //     doc.hasFields('modified') || req.method !== 'GET',
-      //     doc,
-      //     r.error('404 Not Found')
-      //   )
-      // })
       .run(db, callback)
   }
 
@@ -196,6 +188,7 @@ export default ({ config, db, io }) => {
     name = xss(name).substring(0, 34)
     image = image && xss(image).substring(0, 64)
     load(req, id, async (err, dbUser) => {
+      console.log({dbUser})
       const modified = await provider.getBlockNumber()
       if (!dbUser.created) {
         dbUser = userTemplate(id.toLowerCase())
