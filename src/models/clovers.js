@@ -311,7 +311,7 @@ async function addNewClover(log) {
 async function oracleVerify ({ name, moves }, symmetries) {
   debug(name + ' is being verified')
   const options = {
-    gasPrice: 5000000000 // 10 GWEI
+    gasPrice: 5000000000 // 5 GWEI
   }
   var doneish
   try {
@@ -332,9 +332,11 @@ async function oracleVerify ({ name, moves }, symmetries) {
   } catch (err) {
     debug(err)
     setTimeout(() => {
+      console.log('try again?')
       if (!doneish) {
+        console.log('still not done, try again')
         oracleVerify({ name, moves}, symmetries)
       }
-    }, 1000 * 60)
+    }, 1000 * 120)
   }
 }
