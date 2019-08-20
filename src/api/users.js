@@ -192,7 +192,6 @@ export default ({ config, db, io }) => {
     name = xss(name).substring(0, 34)
     image = image && xss(image).substring(0, 64)
     load(req, id, async (err, dbUser) => {
-      console.log({dbUser})
       const modified = await provider.getBlockNumber()
       if (!dbUser.created) {
         dbUser = userTemplate(id.toLowerCase())

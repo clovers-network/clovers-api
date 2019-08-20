@@ -83,7 +83,7 @@ async function getUsers(userAddresses, key = 0, newUserAddresses = []) {
     newUserAddresses.push({id: user.id, address: u})
     return await getUsers(userAddresses, key + 1, newUserAddresses)
   } catch (error) {
-    console.log(error)
+    debug({error})
     return userAddresses
   }
 }

@@ -303,7 +303,6 @@ async function addNewClover(log) {
 
     oracleVerify(clover, cloverSymmetries)
   } else {
-    console.log('why is this conditional?')
     console.log(log)
   }
 }
@@ -313,30 +312,34 @@ async function oracleVerify ({ name, moves }, symmetries) {
   const options = {
     gasPrice: 5000000000 // 5 GWEI
   }
-  var doneish
+  var doneish = false
   try {
     // dont verify clovers from the initial build
     if (isValid(name, moves, symmetries)) {
       debug(name + ' is valid, move to new owner')
       const tx = await wallet.CloversController.retrieveStake(name, options)
       debug('started tx:' + tx.hash)
-      doneish = await tx.wait()
+      await tx.wait()
+      doneish = true
       debug(name + ' moved to new owner')
     } else {
       debug(name + ' is not valid, please burn')
       const tx = await wallet.CloversController.challengeClover(name, options)
       debug('started tx:' + tx.hash)
-      doneish = await tx.wait()
+      await tx.wait()
+      doneish = true
       debug(name + ' has been burned')
     }
   } catch (err) {
     debug(err)
     setTimeout(() => {
-      console.log('try again?')
+      debug(name + ': waited 3 minutes')
       if (!doneish) {
-        console.log('still not done, try again')
+        debug(name + ': try again')
         oracleVerify({ name, moves}, symmetries)
+      } else {
+        debug(name + ': already succeeded')
       }
-    }, 1000 * 120)
+    }, 1000 * 60 * 3)
   }
 }
