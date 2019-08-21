@@ -24,16 +24,15 @@ var etherscanProvider = new ethers.providers.EtherscanProvider(network)
 
 export var jsonRpcProvider = new ethers.providers.JsonRpcProvider(
   'http://mainnet.infura.io/v3/e5b8088fe4df4a69a4b5f35c2561bbe0',
-  network
+  ethers.providers.networks.unspecified
 )
 
 var fallbackProvider = new ethers.providers.FallbackProvider([
-  jsonRpcProvider,
-  // infuraProvider,
-  // etherscanProvider
+  infuraProvider,
+  etherscanProvider
+  // jsonRpcProvider
 ])
-export let provider = jsonRpcProvider //providers.getDefaultProvider(network)
-console.log({provider})
+export let provider = providers.getDefaultProvider(network)
 // export let provider = fallbackProvider;
 // export let provider = jsonRpcProvider;
 
