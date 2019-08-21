@@ -52,28 +52,31 @@ export default ({ config, db, io }) => {
     async index({ query }, res) {
       const indexes = ['all', 'market', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'public', 'contract', 'commented']
       const pageSize = 12
-      const sort = query.sort || 'modified'
       const asc = query.asc === 'true'
+      const sort = query.sort === 'price' ? '-price' : '-modified'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
-      const index = !query.filter || query.filter === '' || !indexes.includes(query.filter) ? 'all' : query.filter
-      debug('filter by', index, sort)
+
+      const index = !query.filter || query.filter === '' || !indexes.includes(query.filter) ? `all${sort}` : query.filter + sort
 
       let [results, count] = await Promise.all([
         r.table('clovers')
-          .getAll(true, { index })
-          .orderBy(asc ? r.asc(sort) : r.desc(sort))
+          .between([true, r.minval], [true, r.maxval], { index })
+          .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
+          .coerceTo('array')
           .slice(start, start + pageSize)
-          .map((doc) => {
-            return doc.merge({
-              lastOrder: r.table('orders')
-                .getAll(doc('board'), { index: 'market' })
-                .orderBy(r.desc('created'), r.desc('transactionIndex'))
-                .limit(1).fold(null, (l, r) => r)
-            })
-          }).eqJoin('owner', r.table('users'), { ordered: true })
+          // .map((doc) => {
+          //   return doc.merge({
+          //     lastOrder: r.table('orders')
+          //       .getAll(doc('board'), { index: 'market' })
+          //       .orderBy(r.desc('created'), r.desc('transactionIndex'))
+          //       .limit(1).fold(null, (l, r) => r)
+          //   })
+          // })
+          .eqJoin('owner', r.table('users'), { ordered: true })
           .without({ right: ['clovers', 'curationMarket'] })
           .map((doc) => {
             return doc('left').merge({
+              lastOrder: null,
               user: doc('right').default(null)
             })
           })
@@ -82,7 +85,7 @@ export default ({ config, db, io }) => {
             return data
           }),
         r.table('clovers')
-          .getAll(true, { index })
+          .between([true, r.minval], [true, r.maxval], { index })
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -114,7 +117,6 @@ export default ({ config, db, io }) => {
       }
 
       const status = results.length ? 200 : 404
-
       res.status(status).json(response).end()
     },
 

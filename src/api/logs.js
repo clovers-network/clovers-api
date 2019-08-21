@@ -15,6 +15,7 @@ export default ({ config, db, io }) => {
     // load,
 
     async index ({ query }, res) {
+      const indexes = ['activity', 'clover', 'name', 'userAddresses']
       const pageSize = 24
       const asc = query.asc === 'true'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize

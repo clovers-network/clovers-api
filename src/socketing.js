@@ -16,6 +16,11 @@ import {Clovers} from 'clovers-contracts'
 let io, db
 
 export var socketing = function ({ _io, _db }) {
+
+  if (process.env.NODE_ENV !== 'production') {
+    return
+  }
+
   io = _io
   db = _db
   var connections = 0
@@ -50,7 +55,7 @@ async function beginListen (contract, key = 0) {
     debug(eventTypes[key] + ' doesnt exists')
     return
   }
- 
+
   let topics = eventType().topics
   debug('make a listener on ' + contract + ' ' + eventType().name)
   provider.on(topics, (log) => {
@@ -100,7 +105,7 @@ export var handleEvent = async ({ io, db, log }, skipOracle = false) => {
   let contract = foo[0]
   let name = foo[1]
   debug('handle ' + name + ' from ' + contract)
-  
+
   switch (contract) {
     case 'Clovers':
       if (typeof clovers['clovers' + name] === 'function') {
