@@ -4,15 +4,16 @@ import { events, wallet } from '../lib/ethers-utils'
 import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
+import { getLogs, transformLog, processLog } from '../lib/build.js'
 let db
 let io
 
-export const cloversTransfer = async ({ log, io: _io, db: _db }) => {
+export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = false) => {
   db = _db
   io = _io
   // update the users
   try {
-    await updateUsers(log)
+    await updateUsers(log, db)
   } catch (error) {
     debug('error while updating users')
     debug(error.message)
@@ -22,9 +23,9 @@ export const cloversTransfer = async ({ log, io: _io, db: _db }) => {
     // update the clover
     if (log.data._from === ZERO_ADDRESS) {
       debug('new clover minted!')
-      await addNewClover(log)
+      await addNewClover(log, skipOracle)
     } else {
-      await updateClover(log)
+      await updateClover(log, skipOracle)
     }
   } catch (error) {
     debug('error while adding/updating clovers')
@@ -120,7 +121,7 @@ export async function syncClover(_db, _io, clover) {
     log.data._from = clover.owner
     log.data._to = ZERO_ADDRESS
     // remove from current owner
-    await updateUser(log, clover.owner, 'remove')
+    await updateUser(log, clover.owner, 'remove', db)
     // move clover to ZERO_ADDRESS
     await updateClover(log)
     return
@@ -156,7 +157,7 @@ export async function syncClover(_db, _io, clover) {
       debug('owner is wrong')
       log.data._to = owner
       await updateClover(log)
-      await updateUser(log, owner, 'add')
+      await updateUser(log, owner, 'add', db)
     } else {
       debug('owner is ok')
     }
@@ -166,7 +167,61 @@ export async function syncClover(_db, _io, clover) {
   }
 }
 
-async function updateUser(log, user_id, add) {
+export async function syncContract(_db, _io, totalSupply, key = 1) {
+  try { 
+    if (key >= totalSupply) return
+    db = _db
+    io = _io
+
+    const index = totalSupply - key
+    let tokenId = await events.Clovers.instance.tokenByIndex(index)
+    // so mad idk why tokenId.toString(16) returns in decimal format
+    tokenId = '0x' + JSON.stringify(tokenId).slice(9, -3)
+
+    const exists = await r.table('clovers').get(tokenId).default(false).run(db)
+    console.log(tokenId, exists ? ' exists in db' : ' does not exist in db')
+    if (exists) {
+      await syncContract(db, io, totalSupply, key + 1)
+      return
+    }
+
+    let blockMinted = await events.Clovers.instance.getBlockMinted(tokenId)
+    blockMinted = parseInt(blockMinted.toString())
+
+    const eventType = events.Clovers.instance.interface.events.Transfer
+    const topics = eventType().topics
+    const address = events.Clovers.address.toLowerCase()
+    const genesisBlock = blockMinted
+    const latest = blockMinted
+    const limit = 1
+    const offset = 0
+    const previousLogs = []
+    let logs = await getLogs({address,topics, genesisBlock, latest, limit, offset, previousLogs})
+    logs = logs.map(l => transformLog(l, 'Clovers', 0))
+    logs = logs.filter(l => {
+      return l.data._tokenId === tokenId
+    })
+    console.log('# of logs', logs.length)
+    if (logs.length === 0) {
+      console.log({logs})
+      console.log({address,topics, genesisBlock, latest, limit, offset, previousLogs})
+      throw new Error('Log 404')
+    }
+    await r.table('logs').insert(logs, {  returnChanges: true, conflict: 'update' }).run(db)
+    const skipOracle = true
+    await processLog(logs, 0, db, skipOracle)
+
+    await syncContract(db, io, totalSupply, key + 1)
+    return 'done'
+  } catch (error) {
+    console.log(error)
+  }
+}
+
+async function updateUser(log, user_id, add, _db) {
+  if (_db) {
+    db = _db
+  }
   user_id = user_id.toLowerCase()
   if (user_id === ZERO_ADDRESS.toLowerCase()) return
   add = add === 'add'
@@ -211,12 +266,15 @@ async function updateUser(log, user_id, add) {
   io && io.emit('updateUser', user)
 }
 
-async function updateUsers(log) {
+async function updateUsers(log, _db) {
+  if (_db) {
+    db = _db
+  }
   debug('update users for clover ' + log.data._tokenId)
   debug('add to:' + log.data._to.toLowerCase())
   debug('remove from:' + log.data._from.toLowerCase())
-  await updateUser(log, log.data._to, 'add')
-  await updateUser(log, log.data._from, 'remove')
+  await updateUser(log, log.data._to, 'add', db)
+  await updateUser(log, log.data._from, 'remove', db)
 }
 
 async function updateClover(log) {
@@ -249,7 +307,7 @@ async function updateClover(log) {
     })
 }
 
-async function addNewClover(log) {
+async function addNewClover(log, skipOracle = false) {
   debug('adding new Clover', log.data._tokenId)
   let tokenId = log.data._tokenId
   let hasFoundBy = log.userAddresses.filter(u => u.id === '_to')
@@ -299,12 +357,15 @@ async function addNewClover(log) {
   // wait til afterwards so the clover shows up (even if it's just pending)
   if (log.data._to.toLowerCase() === events.Clovers.address.toLowerCase()) {
     // cancel if initial build
-    if (process.argv.findIndex(c => c === 'build') > -1) return
-
+    if (checkFlag('build') || skipOracle) return
     oracleVerify(clover, cloverSymmetries)
   } else {
     console.log(log)
   }
+}
+
+function checkFlag(flag) {
+  return process.argv.findIndex(c => c === flag) > -1
 }
 
 async function oracleVerify ({ name, moves }, symmetries) {

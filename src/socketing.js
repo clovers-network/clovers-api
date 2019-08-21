@@ -90,7 +90,7 @@ async function getUsers(userAddresses, key = 0, newUserAddresses = []) {
 
 const ignoredTypes = ['ClubToken_Transfer','CurationMarket_Transfer']
 
-export var handleEvent = async ({ io, db, log }) => {
+export var handleEvent = async ({ io, db, log }, skipOracle = false) => {
   if (io && !ignoredTypes.includes(log.name)) {
     if (log.name !== 'Clovers_Transfer' || log.data._to.toLowerCase() !== Clovers.networks[network.chainId].address.toLowerCase()) {
       io.emit('newLog', log)
@@ -104,7 +104,7 @@ export var handleEvent = async ({ io, db, log }) => {
   switch (contract) {
     case 'Clovers':
       if (typeof clovers['clovers' + name] === 'function') {
-        await clovers['clovers' + name]({ log, io, db })
+        await clovers['clovers' + name]({ log, io, db }, skipOracle)
       } else {
         throw new Error('Event ' + name + ' not found in ' + contract)
       }

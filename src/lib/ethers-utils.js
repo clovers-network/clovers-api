@@ -51,7 +51,6 @@ let simpleCloversMarketInstance = new ethers.Contract(
   provider
 )
 
-console.log({simpleCloversMarketAddress})
 
 // let curationMarketABI = CurationMarket.abi
 // let curationMarketAddress = CurationMarket.networks[network.chainId].address

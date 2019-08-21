@@ -5,14 +5,14 @@ import r from 'rethinkdb'
 import { dodb, toSVG } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
-import { syncClover } from '../models/clovers'
+import { syncClover, syncContract } from '../models/clovers'
 import xss from 'xss'
 import Reversi from 'clovers-reversi'
 import BigNumber from 'bignumber.js'
 import uuid from 'uuid/v4'
-import { provider } from '../lib/ethers-utils'
+import { provider, events } from '../lib/ethers-utils'
 
-const semiSecretToken = uuid()
+const semiSecretToken = process.env.SYNC_TOKEN
 console.log(`TOKEN ——— ${semiSecretToken}`)
 
 export default ({ config, db, io }) => {
@@ -253,6 +253,16 @@ export default ({ config, db, io }) => {
     const status = results.length ? 200 : 404
 
     res.status(status).json(response).end()
+  })
+
+
+  router.get('/sync/contract', async (req, res) => {
+    const { s } = req.query
+    if (s !== semiSecretToken) return res.sendStatus(401).end()
+    const totalSupply = await events.Clovers.instance.totalSupply()
+    console.log(db ? 'yes db' : 'no db')
+    await syncContract(db, io, totalSupply)
+    return res.sendStatus(200).end()
   })
 
   router.get('/sync/all', async (req, res) => {

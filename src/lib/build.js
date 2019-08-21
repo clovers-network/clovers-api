@@ -438,7 +438,7 @@ async function testLogs({address, topics, genesisBlock}) {
   })
 }
 
-async function getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs}){
+export async function getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs}){
   return new Promise((resolve, reject) => {
 
     var fromBlock = genesisBlock + limit * offset 
@@ -579,7 +579,7 @@ export function transformLog(l, contract, key) {
     }
     l.userAddresses = userAddresses
   } catch (err) {
-    reject(err)
+    console.error(err)
   }
   return l
 }
@@ -608,7 +608,10 @@ function processLogs() {
   })
 }
 
-function processLog(logs, i = 0) {
+export function processLog(logs, i = 0, _db, skipOracle = false) {
+  if (_db) {
+    db = _db
+  }
   console.log('processing log ' + i + '/' + logs.length)
   return new Promise((resolve, reject) => {
     if (i >= logs.length) {
@@ -616,9 +619,9 @@ function processLog(logs, i = 0) {
     } else {
       let log = logs[i]
       console.log(`blockNumber ${log.blockNumber}`)
-      handleEvent({ log, db })
+      handleEvent({ log, db}, skipOracle)
         .then(() => {
-          processLog(logs, i + 1)
+          processLog(logs, i + 1, db, skipOracle)
             .then(resolve)
             .catch(reject)
         })
