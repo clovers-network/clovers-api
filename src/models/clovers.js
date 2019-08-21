@@ -179,6 +179,7 @@ export async function syncContract(_db, _io, totalSupply, key = 1) {
     tokenId = '0x' + JSON.stringify(tokenId).slice(9, -3)
 
     const exists = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+    debug(`------------------------------------------------------------${key} / ${totalSupply}`)
     debug(`${tokenId}---------------------${(exists ? ' exists in db' : ' does not exist in db')}`)
     if (exists) {
       await syncContract(db, io, totalSupply, key + 1)
