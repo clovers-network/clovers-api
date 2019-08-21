@@ -179,7 +179,7 @@ export async function syncContract(_db, _io, totalSupply, key = 1) {
     tokenId = '0x' + JSON.stringify(tokenId).slice(9, -3)
 
     const exists = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
-    console.log(tokenId, exists ? ' exists in db' : ' does not exist in db')
+    debug(`${tokenId}---------------------${(exists ? ' exists in db' : ' does not exist in db')}`)
     if (exists) {
       await syncContract(db, io, totalSupply, key + 1)
       return
@@ -201,10 +201,10 @@ export async function syncContract(_db, _io, totalSupply, key = 1) {
     logs = logs.filter(l => {
       return l.data._tokenId === tokenId
     })
-    console.log('# of logs', logs.length)
+    debug('# of logs', logs.length)
     if (logs.length === 0) {
-      console.log({logs})
-      console.log({address,topics, genesisBlock, latest, limit, offset, previousLogs})
+      debug({logs})
+      debug({address,topics, genesisBlock, latest, limit, offset, previousLogs})
       throw new Error('Log 404')
     }
     await r.table('logs').insert(logs, {  returnChanges: true, conflict: 'update' }).run(db)
@@ -214,7 +214,7 @@ export async function syncContract(_db, _io, totalSupply, key = 1) {
     await syncContract(db, io, totalSupply, key + 1)
     return 'done'
   } catch (error) {
-    console.log(error)
+    debug(error)
   }
 }
 
