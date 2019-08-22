@@ -32,8 +32,8 @@ var fallbackProvider = new ethers.providers.FallbackProvider([
   infuraProvider,
   etherscanProvider
 ])
-// export let provider = providers.getDefaultProvider(network)
-export let provider = jsonRpcProvider // providers.getDefaultProvider(network)
+export let provider = providers.getDefaultProvider(network)
+// export let provider = jsonRpcProvider // providers.getDefaultProvider(network)
 // export let provider = fallbackProvider;
 // export let provider = jsonRpcProvider;
 
