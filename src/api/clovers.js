@@ -5,7 +5,7 @@ import r from 'rethinkdb'
 import { dodb, toSVG } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
-import { syncClover, syncContract } from '../models/clovers'
+import { syncClover, syncContract, syncOracle } from '../models/clovers'
 import xss from 'xss'
 import Reversi from 'clovers-reversi'
 import BigNumber from 'bignumber.js'
@@ -262,9 +262,19 @@ export default ({ config, db, io }) => {
     const { s } = req.query
     if (s !== semiSecretToken) return res.sendStatus(401).end()
     const totalSupply = await events.Clovers.instance.totalSupply()
-    console.log(db ? 'yes db' : 'no db')
     await syncContract(db, io, totalSupply)
     return res.sendStatus(200).end()
+  })
+
+  router.get('/sync/oracle', async (req, res) => {
+    const { s } = req.query
+    if (s !== semiSecretToken) return res.sendStatus(401).end()
+
+    debug('start oracle')
+    const totalSupply = await events.Clovers.balanceOf(events.Clovers.address)
+    await syncOracle(db, io, totalSupply)
+    return res.sendStatus(200).end()
+    // const allClovers = await events.Clovers.tokenOfOwnerByIndex(events.Clovers.address)
   })
 
   router.get('/sync/all', async (req, res) => {

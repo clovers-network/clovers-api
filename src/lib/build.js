@@ -559,15 +559,15 @@ export function transformLog(l, contract, key) {
 
   let eventTypes = events[contract].eventTypes
   let abi = events[contract].abi
-  let iface = new ethers.Interface(abi)
+  let iface = new ethers.utils.Interface(abi)
   let transferCoder = iface.events[eventTypes[key]]
   let eventType = events[contract].instance.interface.events[eventTypes[key]]
-
+  console.log({eventType})
   const userKeys = ['_to', '_from', 'owner', 'buyer', 'seller']
   try {
     let userAddresses = []
     l.name = contract + '_' + eventType().name
-    l.data = transferCoder.parse(l.topics, l.data)
+    l.data = transferCoder.decode(l.data, l.topics)
     l.data = parseLogForStorage(l.data)
     // if (l.transactionHash) {
       // l.id = l.transactionHash + '-' + l.data.logIndex

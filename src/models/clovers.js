@@ -167,6 +167,10 @@ export async function syncClover(_db, _io, clover) {
   }
 }
 
+export async function syncOracle(_du, _io, totalSupply, key = 0) {
+  
+}
+
 export async function syncContract(_db, _io, totalSupply, key = 1) {
   try { 
     if (key >= totalSupply) return
