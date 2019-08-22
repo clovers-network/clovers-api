@@ -167,6 +167,40 @@ export async function syncClover(_db, _io, clover) {
   }
 }
 
+export async function syncOracle(_db, _io, totalSupply, key = 1) {
+  db = _db
+  io = _io
+
+  if (key >= totalSupply) {
+    return
+  }
+  try {
+    const index = totalSupply - key
+    debug(index)
+    debug(events.Clovers.address)
+    let tokenId = await events.Clovers.instance.tokenOfOwnerByIndex(events.Clovers.address, index)
+    tokenId = '0x' + JSON.stringify(tokenId).slice(9, -3)
+    debug({tokenId})
+    const movesHash = await events.CloversController.instance.getMovesHash(tokenId)
+    debug({movesHash})
+    const commits = await events.CloversController.instance.commits(movesHash[0])
+    debug({commits})
+    debug(commits.collected)
+    if (!commits.collected) {
+      const clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+      if (!clover) {
+        await doSyncContract(db, tokenId)
+      }
+      const symmetries = await events.Clovers.instance.getSymmetries(tokenId)
+      await oracleVerify(clover, symmetries)
+    }
+    await syncOracle(db, io, totalSupply, key + 1)
+    return 'done'
+  } catch (error) {
+    debug(error)
+  }
+}
+
 export async function syncContract(_db, _io, totalSupply, key = 1) {
   try { 
     if (key >= totalSupply) return
@@ -185,38 +219,41 @@ export async function syncContract(_db, _io, totalSupply, key = 1) {
       await syncContract(db, io, totalSupply, key + 1)
       return
     }
-
-    let blockMinted = await events.Clovers.instance.getBlockMinted(tokenId)
-    blockMinted = parseInt(blockMinted.toString())
-
-    const eventType = events.Clovers.instance.interface.events.Transfer
-    const topics = eventType().topics
-    const address = events.Clovers.address.toLowerCase()
-    const genesisBlock = blockMinted
-    const latest = blockMinted
-    const limit = 1
-    const offset = 0
-    const previousLogs = []
-    let logs = await getLogs({address,topics, genesisBlock, latest, limit, offset, previousLogs})
-    logs = logs.map(l => transformLog(l, 'Clovers', 0))
-    logs = logs.filter(l => {
-      return l.data._tokenId === tokenId
-    })
-    debug('# of logs', logs.length)
-    if (logs.length === 0) {
-      debug({logs})
-      debug({address,topics, genesisBlock, latest, limit, offset, previousLogs})
-      throw new Error('Log 404')
-    }
-    await r.table('logs').insert(logs, {  returnChanges: true, conflict: 'update' }).run(db)
-    const skipOracle = true
-    await processLog(logs, 0, db, skipOracle)
+    await doSyncContract(db, tokenId)
 
     await syncContract(db, io, totalSupply, key + 1)
     return 'done'
   } catch (error) {
     debug(error)
   }
+}
+
+async function doSyncContract(db, tokenId) {
+  let blockMinted = await events.Clovers.instance.getBlockMinted(tokenId)
+  blockMinted = parseInt(blockMinted.toString())
+
+  const eventType = events.Clovers.instance.interface.events.Transfer
+  const topics = eventType().topics
+  const address = events.Clovers.address.toLowerCase()
+  const genesisBlock = blockMinted
+  const latest = blockMinted
+  const limit = 1
+  const offset = 0
+  const previousLogs = []
+  let logs = await getLogs({address,topics, genesisBlock, latest, limit, offset, previousLogs})
+  logs = logs.map(l => transformLog(l, 'Clovers', 0))
+  logs = logs.filter(l => {
+    return l.data._tokenId === tokenId
+  })
+  debug('# of logs', logs.length)
+  if (logs.length === 0) {
+    debug({logs})
+    debug({address,topics, genesisBlock, latest, limit, offset, previousLogs})
+    throw new Error('Log 404')
+  }
+  await r.table('logs').insert(logs, {  returnChanges: true, conflict: 'update' }).run(db)
+  const skipOracle = true
+  await processLog(logs, 0, db, skipOracle)
 }
 
 async function updateUser(log, user_id, add, _db) {
