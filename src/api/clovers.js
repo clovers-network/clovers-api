@@ -62,7 +62,6 @@ export default ({ config, db, io }) => {
         r.table('clovers')
           .between([true, r.minval], [true, r.maxval], { index })
           .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
-          .coerceTo('array')
           .slice(start, start + pageSize)
           // .map((doc) => {
           //   return doc.merge({
@@ -80,6 +79,7 @@ export default ({ config, db, io }) => {
               user: doc('right').default(null)
             })
           })
+          .coerceTo('array')
           .run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -194,8 +194,8 @@ export default ({ config, db, io }) => {
 
     let [results, count] = await Promise.all([
       r.table('logs')
-        .getAll(id, { index })
-        .orderBy(asc ? r.asc('blockNumber') : r.desc('blockNumber'))
+        .between([id, r.minval], [id, r.maxval], { index: 'clovers' })
+        .orderBy({ index: asc ? r.asc('clovers') : r.desc('clovers') })
         .slice(start, start + pageSize)
         // include the users
         .map((doc) => {
@@ -216,12 +216,13 @@ export default ({ config, db, io }) => {
             )
           })
         })
+        .coerceTo('array')
         .run(db, (err, data) => {
           if (err) throw new Error(err)
           return data
         }),
       r.table('logs')
-        .getAll(id, { index })
+        .between([id, r.minval], [id, r.maxval], { index: 'clovers' })
         .count().run(db, (err, data) => {
           if (err) throw new Error(err)
           return data

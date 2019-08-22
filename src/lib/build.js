@@ -13,6 +13,214 @@ const tables = [
     index: 'board',
     indexes: [
       [
+        'all-modified',
+        [
+          true,
+          r.row('modified')
+        ]
+      ],
+      [
+        'all-price',
+        [
+          true,
+          r.row('price')
+        ]
+      ],
+
+      [
+        'Sym-modified',
+        [
+          r.row('symmetries').values().reduce((a, c) => a.add(c)).gt(0),
+          r.row('modified')
+        ]
+      ],
+      [
+        'Sym-price',
+        [
+          r.row('symmetries').values().reduce((a, c) => a.add(c)).gt(0),
+          r.row('price')
+        ]
+      ],
+      [
+        'RotSym-modified',
+        [
+          r.row('symmetries')('RotSym').eq(1),
+          r.row('modified')
+        ]
+      ],
+      [
+        'RotSym-price',
+        [
+          r.row('symmetries')('RotSym').eq(1),
+          r.row('price')
+        ]
+      ],
+      [
+        'X0Sym-modified',
+        [
+          r.row('symmetries')('X0Sym').eq(1),
+          r.row('modified')
+        ]
+      ],
+      [
+        'X0Sym-price',
+        [
+          r.row('symmetries')('X0Sym').eq(1),
+          r.row('price')
+        ]
+      ],
+      [
+        'XYSym-modified',
+        [
+          r.row('symmetries')('XYSym').eq(1),
+          r.row('modified')
+        ]
+      ],
+      [
+        'XYSym-price',
+        [
+          r.row('symmetries')('XYSym').eq(1),
+          r.row('price')
+        ]
+      ],
+      [
+        'XnYSym-modified',
+        [
+          r.row('symmetries')('XnYSym').eq(1),
+          r.row('modified')
+        ]
+      ],
+      [
+        'XnYSym-price',
+        [
+          r.row('symmetries')('XnYSym').eq(1),
+          r.row('price')
+        ]
+      ],
+      [
+        'Y0Sym-modified',
+        [
+          r.row('symmetries')('Y0Sym').eq(1),
+          r.row('modified')
+        ]
+      ],
+      [
+        'Y0Sym-price',
+        [
+          r.row('symmetries')('Y0Sym').eq(1),
+          r.row('price')
+        ]
+      ],
+
+      [
+        'market-modified',
+        [
+          r.row('price').ne('0'),
+          r.row('modified')
+        ]
+      ],
+      [
+        'market-price',
+        [
+          r.row('price').ne('0'),
+          r.row('price')
+        ]
+      ],
+
+      [
+        'owner-modified',
+        [
+          r.row('owner').downcase(),
+          r.row('modified')
+        ]
+      ],
+      [
+        'owner-price',
+        [
+          r.row('owner').downcase(),
+          r.row('price')
+        ]
+      ],
+
+      [
+        'commented-modified',
+        [
+          r.row('commentCount').gt(0),
+          r.row('modified')
+        ]
+      ],
+      [
+        'commented-price',
+        [
+          r.row('commentCount').gt(0),
+          r.row('price')
+        ]
+      ],
+
+      [
+        'contract-modified',
+        [
+          r.row('owner').eq(events.Clovers.address.toLowerCase()),
+          r.row('modified')
+        ]
+      ],
+      [
+        'contract-price',
+        [
+          r.row('owner').eq(events.Clovers.address.toLowerCase()),
+          r.row('price')
+        ]
+      ],
+
+      [
+        'public-modified',
+        (doc) => {
+          return [
+            r.expr([
+              events.Clovers.address.toLowerCase(),
+              '0x0000000000000000000000000000000000000000'
+            ]).contains(doc('owner')).eq(false),
+            doc('modified')
+          ]
+        }
+      ],
+      [
+        'public-price',
+        (doc) => {
+          return [
+            r.expr([
+              events.Clovers.address.toLowerCase(),
+              '0x0000000000000000000000000000000000000000'
+            ]).contains(doc('owner')).eq(false),
+            doc('price')
+          ]
+        }
+      ],
+      [
+        'ownerfilter',
+        (doc) => {
+          return [
+            doc('owner').downcase(),
+            r.branch(
+              doc('price').ne('0'),
+              'forsale',
+              false
+            )
+          ]
+        }
+      ],
+      [
+        'ownersym',
+        (doc) => {
+          return [
+            doc('owner').downcase(),
+            doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
+          ]
+        }
+      ],
+
+      // old ones
+      [
         'Sym',
         (doc) => {
           return doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
@@ -71,28 +279,6 @@ const tables = [
       //     return doc('owner').eq('0x9b8e917d6a511d4a22dcfa668a46b508ac26731e')
       //   }
       // ],
-      [
-        'ownerfilter',
-        (doc) => {
-          return [
-            doc('owner').downcase(),
-            r.branch(
-              doc('price').ne('0'),
-              'forsale',
-              false
-            )
-          ]
-        }
-      ],
-      [
-        'ownersym',
-        (doc) => {
-          return [
-            doc('owner').downcase(),
-            doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
-          ]
-        }
-      ],
       [
         'public',
         (doc) => {
@@ -176,6 +362,66 @@ const tables = [
   {
     name: 'logs',
     indexes: [
+      // updated ones
+      [
+        'active',
+        (doc) => {
+          return [
+            r.branch(
+              // log.name is not in this list
+              // if
+              r.expr(['ClubToken_Transfer','CurationMarket_Transfer']).contains(doc('name')),
+              false,
+              // else if
+              doc('name').ne('Clovers_Transfer'),
+              true,
+              // not going to Clovers Contract
+              // else if
+              doc('data')('_to').downcase().ne(events.Clovers.address.toLowerCase()),
+              true,
+              // else
+              false
+            ),
+            doc('blockNumber')
+          ]
+        }
+      ],
+      [
+        'type',
+        (doc) => {
+          return [
+            r.branch(
+              r.expr(['ClubTokenController_Buy','ClubTokenController_Sell']).contains(doc('name')),
+              'Coin_Activity',
+              doc('name')
+            ),
+            doc('blockNumber')
+          ]
+        }
+      ],
+      [
+        'clovers',
+        (doc) => {
+          return [
+            r.branch(
+              doc.hasFields({ data: 'board' }),
+              doc('data')('board').downcase(),
+              r.branch(
+                doc.hasFields({ data: '_tokenId' }),
+                r.branch(
+                  doc('name').ne('CurationMarket_Transfer'),
+                  doc('data')('_tokenId').downcase(),
+                  null
+                ),
+                null
+              )
+            ),
+            doc('blockNumber')
+          ]
+        }
+      ],
+
+      // older
       'name',
       'userAddresses',
       [
@@ -441,7 +687,7 @@ async function testLogs({address, topics, genesisBlock}) {
 export async function getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs}){
   return new Promise((resolve, reject) => {
 
-    var fromBlock = genesisBlock + limit * offset 
+    var fromBlock = genesisBlock + limit * offset
     var toBlock = genesisBlock + limit * (offset + 1)
     console.log({fromBlock, toBlock})
     if (toBlock > latest) {
@@ -507,11 +753,11 @@ function populateLog(contract, key = 0) {
         console.log(logs.length)
         if (logs.length === 1000) {
           logs = await getLogs({
-            address: address.toLowerCase(), 
-            topics: eventType().topics, 
-            genesisBlock: config.genesisBlock[config.network.chainId], 
-            latest: currBlock, 
-            limit: 10, 
+            address: address.toLowerCase(),
+            topics: eventType().topics,
+            genesisBlock: config.genesisBlock[config.network.chainId],
+            latest: currBlock,
+            limit: 10,
             offset: 0,
             previousLogs: []
           })
@@ -654,7 +900,7 @@ async function moveChats(){
   })
   console.log(`moving ${chats.length} chats`)
   await asyncForEach(chats, async (chat) => {
-    return new Promise((resolve, reject) => { 
+    return new Promise((resolve, reject) => {
         // save it
       r.table('chats')
       .insert(chat).run(db, async (err, { generated_keys }) => {
@@ -674,7 +920,7 @@ async function moveChats(){
           },
           userAddresses: []
         }
-       
+
         r.table('logs').insert(log)
         .run(db, (err) => {
           if (err) {
@@ -714,7 +960,7 @@ async function nameClovers(){
     })
     console.log(`naming ${clovers.length} clovers`)
     await asyncForEach(clovers, async (oldClover) => {
-      return new Promise((resolve, reject) => { 
+      return new Promise((resolve, reject) => {
         r.table('clovers')
         .get(oldClover.board)
         .run(db, (err, newClover) => {
@@ -770,7 +1016,7 @@ async function nameUsers(){
     })
     console.log(`naming ${users.length} users`)
     await asyncForEach(users, async (oldUser) => {
-      return new Promise((resolve, reject) => { 
+      return new Promise((resolve, reject) => {
         r.table('users')
         .get(oldUser.address)
         .run(db, (err, newUser) => {

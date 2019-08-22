@@ -15,20 +15,21 @@ export default ({ config, db, io }) => {
     // load,
 
     async index ({ query }, res) {
-      const indexes = ['activity', 'clover', 'name', 'userAddresses']
+      const indexes = ['Comment_Added', 'CloverName_Changed', 'Clovers_Transfer', 'SimpleCloversMarket_updatePrice', 'Coin_Activity']
+
       const pageSize = 24
       const asc = query.asc === 'true'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
-      const filter = !query.filter || query.filter === '' ? ['pub'] : query.filter.split(',')
-      const index = filter[0] !== 'pub' ? 'name' : 'activity'
-      debug('filter by', ...filter)
+      const index = (query.filter && indexes.includes(query.filter)) ? 'type' : 'active' // 'activity'
+      const val = index === 'type' ? query.filter : true
+
+      debug('filter by', val)
 
       let [results, count] = await Promise.all([
         r.table('logs')
-          .getAll(...filter, { index })
-          .orderBy(asc ? r.asc('blockNumber') : r.desc('blockNumber'))
+          .between([val, r.minval], [val, r.maxval], { index })
+          .orderBy({ index: asc ? r.asc(index) : r.desc(index)})
           .slice(start, start + pageSize)
-          // include the users
           .map((doc) => {
             return doc.merge({
               userAddresses:  r.branch(
@@ -48,12 +49,13 @@ export default ({ config, db, io }) => {
               )
             })
           })
+          .coerceTo('array')
           .run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
           }),
         r.table('logs')
-          .getAll(...filter, { index })
+          .between([val, r.minval], [val, r.maxval], { index })
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -77,7 +79,6 @@ export default ({ config, db, io }) => {
         nextPage: hasNext ? currentPage + 1 : null,
         allResults: count,
         pageResults: results.length,
-        filterBy: filter,
         sort: asc ? 'ascending' : 'descending',
         orderBy: 'blockNumber',
 
