@@ -187,9 +187,14 @@ export async function syncOracle(_db, _io, totalSupply, key = 1) {
     debug({commits})
     debug(commits.collected)
     if (!commits.collected) {
-      const clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+      let clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
       if (!clover) {
         await doSyncContract(db, tokenId)
+      }
+      clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+      if (!clover) {
+        debug('still no clover')
+        return
       }
       const symmetries = await events.Clovers.instance.getSymmetries(tokenId)
       await oracleVerify(clover, symmetries)
