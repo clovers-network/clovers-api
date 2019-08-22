@@ -51,7 +51,7 @@ export const cloversOwnershipTransferred = async function({ log, io, _db }) {
 
 function isValid(tokenId, cloverMoves, cloverSymmetries) {
   let reversi = new Reversi()
-  if (cloversMoves.length === 1) {
+  if (cloverMoves.length === 1) {
     cloverMoves = cloverMoves[0]
   }
   debug('cloverMoves', cloverMoves[0], cloverMoves[1])
