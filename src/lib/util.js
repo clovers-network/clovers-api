@@ -5,6 +5,7 @@ import fs from 'fs-extra'
 import path from 'path'
 import xss from 'xss'
 import BigNumber from 'bignumber.js'
+import { bigNumberify } from 'ethers/utils';
 var utils = require('ethers').utils
 
 export const oneEthInWei = utils.parseEther('1').toString(10)
@@ -97,13 +98,15 @@ export async function getLowestPrice(
   )
 }
 
-export function parseLogForStorage(l) {
+export function parseLogForStorage(_l) {
+  let l = JSON.parse(JSON.stringify(_l))
   Object.keys(l).map((key, index) => {
-    if (l[key]._bn) {
+    if (typeof l[key] === 'object' && l[key]._hex) {
       if (key === '_tokenId') {
-        l[key] = '0x' + l[key]._bn.toString(16)
+        l[key] = l[key]._hex
       } else {
-        l[key] = l[key]._bn.toString(10)
+        let fuckBigNumberInEthersJS = new BigNumber(l[key]._hex)
+        l[key] =fuckBigNumberInEthersJS.toString(10)
       }
     }
   })

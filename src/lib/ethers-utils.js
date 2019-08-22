@@ -8,40 +8,18 @@ import {
   ClubTokenController
 } from 'clovers-contracts'
 
-var ethers = Object.assign(require('ethers'), require('ethers-contracts'))
+var ethers = require('ethers')
 
-// const ZeroClientProvider = require('web3-provider-engine/zero.js')
-// import Web3 from 'web3'
+
 export let iface = ethers.Interface
 export let web3mode = false
+
 ethers.apiToken = config.etherscanAPI
 ethers.apiAccessToken = config.infuraAPI
 var network = config.network
-var providers = require('ethers').providers
 
-var infuraProvider = new ethers.providers.InfuraProvider(network)
-var etherscanProvider = new ethers.providers.EtherscanProvider(network)
+export let provider = ethers.getDefaultProvider(network.name);
 
-export var jsonRpcProvider = new ethers.providers.JsonRpcProvider(
-  'https://mainnet.infura.io/v3/e5b8088fe4df4a69a4b5f35c2561bbe0',
-  network
-)
-
-var fallbackProvider = new ethers.providers.FallbackProvider([
-  jsonRpcProvider,
-  infuraProvider,
-  etherscanProvider
-])
-export let provider = providers.getDefaultProvider(network)
-// export let provider = jsonRpcProvider // providers.getDefaultProvider(network)
-// export let provider = fallbackProvider;
-// export let provider = jsonRpcProvider;
-
-// var web3Provider = ZeroClientProvider({
-//   getAccounts: function() {},
-//   rpcUrl: 'https://rinkeby.infura.io/v3/' + config.infuraKey
-// })
-// export var web3 = new Web3(web3Provider)
 
 let simpleCloversMarketABI = SimpleCloversMarket.abi
 let simpleCloversMarketAddress =
@@ -136,7 +114,6 @@ export let events = {
     abi: cloversABI,
     address: cloversAddress,
     instance: cloversInstance,
-    // web3instance: cloversWeb3Instance,
     eventTypes: [
       'Transfer'
       // 'Approval',
@@ -148,7 +125,6 @@ export let events = {
     abi: clubTokenABI,
     address: clubTokenAddress,
     instance: clubTokenInstance,
-    // web3instance: clubTokenWeb3Instance,
     eventTypes: [
       // 'Burn',
       // 'Mint',

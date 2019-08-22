@@ -794,30 +794,28 @@ function populateLog(contract, key = 0) {
   })
 }
 
-export function transformLog(l, contract, key) {
+export function transformLog(_l, contract, key) {
 
   let address = events[contract].address.toLowerCase()
 
-  if (l.address.toLowerCase() !== address.toLowerCase()) {
-    console.error({l})
+  if (_l.address.toLowerCase() !== address.toLowerCase()) {
+    console.error({_l})
     throw new Error('Why did I get a log from another address?')
   }
 
   let eventTypes = events[contract].eventTypes
   let abi = events[contract].abi
-  let iface = new ethers.Interface(abi)
+  let iface = events[contract].instance.interface
   let transferCoder = iface.events[eventTypes[key]]
-  let eventType = events[contract].instance.interface.events[eventTypes[key]]
-
+  let eventType = iface.events[eventTypes[key]]
   const userKeys = ['_to', '_from', 'owner', 'buyer', 'seller']
+  let l = JSON.parse(JSON.stringify(_l))
   try {
     let userAddresses = []
-    l.name = contract + '_' + eventType().name
-    l.data = transferCoder.parse(l.topics, l.data)
+    l.name = contract + '_' + eventType.name
+    l.data = (transferCoder.decode(l.data, l.topics))
     l.data = parseLogForStorage(l.data)
-    // if (l.transactionHash) {
-      // l.id = l.transactionHash + '-' + l.data.logIndex
-    // }
+
     for (let k of Object.keys(l.data)) {
       if (userKeys.includes(k)) {
         userAddresses.push({id: k, address: l.data[k].toLowerCase()})

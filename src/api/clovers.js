@@ -263,7 +263,6 @@ export default ({ config, db, io }) => {
     const { s } = req.query
     if (s !== semiSecretToken) return res.sendStatus(401).end()
     const totalSupply = await events.Clovers.instance.totalSupply()
-    console.log(db ? 'yes db' : 'no db')
     await syncContract(db, io, totalSupply)
     return res.sendStatus(200).end()
   })
