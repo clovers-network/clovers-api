@@ -179,7 +179,7 @@ export async function syncOracle(_db, _io, totalSupply, key = 1) {
     debug(index)
     debug(events.Clovers.address)
     let tokenId = await events.Clovers.instance.tokenOfOwnerByIndex(events.Clovers.address, index)
-    tokenId = '0x' + JSON.stringify(tokenId).slice(9, -3)
+    tokenId = JSON.stringify(tokenId).slice(9, -3)
     debug({tokenId})
     const movesHash = await events.CloversController.instance.getMovesHash(tokenId)
     debug({movesHash})
@@ -215,7 +215,7 @@ export async function syncContract(_db, _io, totalSupply, key = 1) {
     const index = totalSupply - key
     let tokenId = await events.Clovers.instance.tokenByIndex(index)
     // so mad idk why tokenId.toString(16) returns in decimal format
-    tokenId = '0x' + JSON.stringify(tokenId).slice(9, -3)
+    tokenId = JSON.stringify(tokenId).slice(9, -3)
 
     const exists = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
     debug(`------------------------------------------------------------${key} / ${totalSupply}`)
