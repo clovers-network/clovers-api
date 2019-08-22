@@ -106,7 +106,7 @@ export function parseLogForStorage(_l) {
         l[key] = l[key]._hex
       } else {
         let fuckBigNumberInEthersJS = new BigNumber(l[key]._hex)
-        l[key] =fuckBigNumberInEthersJS.toString(10)
+        l[key] = (fuckBigNumberInEthersJS.toString(10)).padStart(64, '0')
       }
     }
   })
