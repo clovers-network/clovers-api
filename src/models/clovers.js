@@ -51,8 +51,8 @@ export const cloversOwnershipTransferred = async function({ log, io, _db }) {
 
 function isValid(tokenId, cloverMoves, cloverSymmetries) {
   let reversi = new Reversi()
-  debug('cloverMoves', cloverMoves[0][0], cloverMoves[0][1])
-  reversi.playGameByteMoves(cloverMoves[0][0], cloverMoves[0][1])
+  debug('cloverMoves', cloverMoves[0], cloverMoves[1])
+  reversi.playGameByteMoves(cloverMoves[0], cloverMoves[1])
 
   // check if game had an error or isn't complete
   if (!reversi.complete || reversi.error) {
@@ -409,8 +409,11 @@ function checkFlag(flag) {
   return process.argv.findIndex(c => c === flag) > -1
 }
 
-async function oracleVerify ({ name, moves }, symmetries) {
+async function oracleVerify (clover, symmetries) {
+  console.log({clover})
+  let { name, moves } = clover
   debug(name + ' is being verified')
+  console.log({name}, {moves})
   const options = {
     gasPrice: 15000000000 // 15 GWEI
   }

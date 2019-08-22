@@ -862,6 +862,7 @@ export function processLog(logs, i = 0, _db, skipOracle = false) {
       resolve()
     } else {
       let log = logs[i]
+      console.log('process Log', log)
       console.log(`blockNumber ${log.blockNumber}`)
       handleEvent({ log, db}, skipOracle)
         .then(() => {

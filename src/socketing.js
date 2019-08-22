@@ -43,7 +43,7 @@ export var socketing = function ({ _io, _db }) {
   // beginListen('CloversController') // no events to listen to
   beginListen('SimpleCloversMarket')
   // beginListen('CurationMarket')
-  beginListen('ClubTokenController')
+   beginListen('ClubTokenController')
 }
 
 async function beginListen (contract, key = 0) {
