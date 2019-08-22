@@ -115,7 +115,7 @@ export let events = {
     address: cloversAddress,
     instance: cloversInstance,
     eventTypes: [
-      'Transfer'
+      // 'Transfer'
       // 'Approval',
       // 'ApprovalForAll',
       // 'OwnershipTransferred'

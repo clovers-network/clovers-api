@@ -134,6 +134,7 @@ export default ({ config, db, io }) => {
       } else {
         let reversi = new Reversi()
         let nft = {}
+        debug(clover)
         debug(clover.moves[0])
         debug(...clover.moves[0])
         let game = reversi.playGameByteMoves(...clover.moves[0])
