@@ -274,7 +274,7 @@ export default ({ config, db, io }) => {
 
     debug('start oracle')
     const totalSupply = await events.Clovers.instance.balanceOf(events.Clovers.address)
-    await syncOracle(db, io, totalSupply)
+    await syncOracle(db, io, totalSupply, 5)
     return res.sendStatus(200).end()
   })
 

@@ -418,7 +418,7 @@ async function oracleVerify (clover, symmetries) {
   debug(name + ' is being verified')
   console.log({name}, {moves})
   const options = {
-    gasPrice: 15000000000 // 15 GWEI
+    gasPrice: 12000000000 // 15 GWEI
   }
   var doneish = false
   try {
