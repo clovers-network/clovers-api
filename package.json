@@ -48,7 +48,7 @@
     "cors": "^2.7.1",
     "debug": "^4.1.0",
     "eth-sig-util": "^1.4.2",
-    "ethers": "^3.0.9",
+    "ethers": "^4.0.33",
     "ethers-contracts": "^2.2.1",
     "ethers-wallet": "^2.1.8",
     "ethjs": "^0.4.0",
