@@ -134,12 +134,12 @@ export default ({ config, db, io }) => {
       } else {
         let reversi = new Reversi()
         let nft = {}
-        debug(clover)
-        debug(clover.moves[0])
-        debug(...clover.moves[0])
-        let game = reversi.playGameByteMoves(...clover.moves[0])
+        if (clover.moves.length === 1) {
+          clover.moves = clover.moves[0]
+        }
+        let game = reversi.playGameByteMoves(...clover.moves)
         nft.name = clover.name
-        nft.description = 'This Clover ' + clover.board + ' was created with the moves: ' + reversi.byteMovesToStringMoves(...clover.moves[0])
+        nft.description = 'This Clover ' + clover.board + ' was created with the moves: ' + reversi.byteMovesToStringMoves(...clover.moves)
 
         nft.image = 'https://api2.clovers.network/clovers/svg/' + clover.board
         nft.image_url = nft.image
