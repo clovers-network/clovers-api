@@ -121,7 +121,7 @@ export function padBigNum (amount, format = 10) {
   if (amount.lt(0)) {
     console.log('negative number ' + amount.toString())
   }
-  return amount.toString(format)
+  return amount.toString(format).padStart(64, '0')
 }
 
 export function toRes(res, status = 200) {

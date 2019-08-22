@@ -35,7 +35,7 @@ export async function changeCloverPrice (db, io, _tokenId, log) {
   }
   price = typeof price == 'object' ? price : new BigNumber(price)
 
-  debug('changeCloverPrice', price)
+  debug('changeCloverPrice', price.toString(10))
 
   // price = BigInt(price.toString()).toString(16)
 
@@ -45,12 +45,14 @@ export async function changeCloverPrice (db, io, _tokenId, log) {
     console.log("no clover " + _tokenId)
     return
   }
+  debug(`Clover price changed from ${price}`)
   if (price.eq(0)) {
     debug('removed from market or sold (set to 0)')
     price = '0'
   } else {
     price = price.toString(10).padStart(64, '0')
   }
+  debug(`Clover price changed to ${price}`)
   clover.price = price
   clover.modified = log.blockNumber
   command = r.table('clovers')

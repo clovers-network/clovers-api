@@ -62,11 +62,19 @@ async function changeUserBalance(user_id, amount, add, log) {
     user.balance = await events.ClubToken.instance.balanceOf(user.address)
   }
   let balance = await events.ClubToken.instance.balanceOf(user.address)
-  debug('contract balance is ' + balance.toString())
+  debug('contract balance is ' + balance.toString(10))
 
   let _balance = new BigNumber(user.balance)
   _balance = add ? _balance.plus(amount) : _balance.minus(amount)
-  debug('db balance is ' + _balance.toString())
+  debug('db balance is ' + _balance.toString(10))
+
+  if (_balance.toString(10) !== balance.toString(10)) {
+    debug(`User balance discrepency between contract ${_balance.toString(10)} and db ${balance.toString(10)}`)
+    // await new Promise((resolve) => {
+    //   setTimeout(resolve, 5000)
+    // })
+    // let balance = await events.ClubToken.instance.balanceOf(user.address)
+  }
 
   user.balance = padBigNum(balance)
 
