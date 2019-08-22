@@ -176,19 +176,15 @@ export async function syncOracle(_db, _io, totalSupply, key = 1) {
   }
   try {
     const index = totalSupply - key
-    debug(index)
-    debug(events.Clovers.address)
+    debug(`------------------------------------------------------ syncing oracle ${index} / ${totalSupply}`)
     let tokenId = await events.Clovers.instance.tokenOfOwnerByIndex(events.Clovers.address, index)
-    tokenId = JSON.stringify(tokenId).slice(9, -3)
-    debug({tokenId})
+    tokenId = tokenId._hex
     const movesHash = await events.CloversController.instance.getMovesHash(tokenId)
-    debug({movesHash})
-    const commits = await events.CloversController.instance.commits(movesHash[0])
-    debug({commits})
-    debug(commits.collected)
+    const commits = await events.CloversController.instance.commits(movesHash)
     if (!commits.collected) {
       let clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
       if (!clover) {
+        console.log("dont have clover yet")
         await doSyncContract(db, tokenId)
       }
       clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
@@ -215,7 +211,7 @@ export async function syncContract(_db, _io, totalSupply, key = 1) {
     const index = totalSupply - key
     let tokenId = await events.Clovers.instance.tokenByIndex(index)
     // so mad idk why tokenId.toString(16) returns in decimal format
-    tokenId = JSON.stringify(tokenId).slice(9, -3)
+    tokenId = tokenId._hex
 
     const exists = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
     debug(`------------------------------------------------------------${key} / ${totalSupply}`)
@@ -238,7 +234,9 @@ async function doSyncContract(db, tokenId) {
   blockMinted = parseInt(blockMinted.toString())
 
   const eventType = events.Clovers.instance.interface.events.Transfer
-  const topics = eventType().topics
+
+  const topics = [eventType.topic]
+
   const address = events.Clovers.address.toLowerCase()
   const genesisBlock = blockMinted
   const latest = blockMinted
@@ -401,7 +399,7 @@ async function addNewClover(log, skipOracle = false) {
   if (log.data._to.toLowerCase() === events.Clovers.address.toLowerCase()) {
     // cancel if initial build
     if (checkFlag('build') || skipOracle) return
-    // oracleVerify(clover, cloverSymmetries)
+    oracleVerify(clover, cloverSymmetries)
   } else {
     console.log(log)
   }
