@@ -414,7 +414,7 @@ function checkFlag(flag) {
 async function oracleVerify ({ name, moves }, symmetries) {
   debug(name + ' is being verified')
   const options = {
-    gasPrice: 10000000000 // 10 GWEI
+    gasPrice: 15000000000 // 15 GWEI
   }
   var doneish = false
   try {
