@@ -363,8 +363,7 @@ async function addNewClover(log, skipOracle = false) {
   if (log.data._to.toLowerCase() === events.Clovers.address.toLowerCase()) {
     // cancel if initial build
     if (checkFlag('build') || skipOracle) return
-    //TODO: remove this comment
-    // oracleVerify(clover, cloverSymmetries)
+    oracleVerify(clover, cloverSymmetries)
   } else {
     console.log(log)
   }

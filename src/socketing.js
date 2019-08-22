@@ -55,16 +55,15 @@ async function beginListen (contract, key = 0) {
     debug(eventTypes[key] + ' doesnt exists')
     return
   }
-  console.log({eventType})
   const eventName = events[contract].eventTypes[key]
   if (!eventName) {
     debug('key ' + key + ' doesnt exists on contract events')
     debug(events[contract].eventTypes)
     return
   }
-  debug('make a listener on ' + contract + ' ' + eventType.name)
-  provider.on(eventName, (log) => {
-    console.log({log})
+  debug('make a listener on ' + contract + ' ' + eventName)
+  events[contract].instance.on(eventName, (...foo) => {
+    let log = foo[foo.length - 1]
     // filter out events from different contracts
     let address = events[contract].address.toLowerCase()
     if (log.address.toLowerCase() !== address) {
