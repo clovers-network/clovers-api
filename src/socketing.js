@@ -16,10 +16,10 @@ import {Clovers} from 'clovers-contracts'
 let io, db
 
 export var socketing = function ({ _io, _db }) {
-
-  if (process.env.NODE_ENV !== 'production') {
-    return
-  }
+  console.log('socketig')
+  // if (process.env.NODE_ENV !== 'production') {
+  //   return
+  // }
 
   io = _io
   db = _db
@@ -55,14 +55,20 @@ async function beginListen (contract, key = 0) {
     debug(eventTypes[key] + ' doesnt exists')
     return
   }
-
-  let topics = eventType().topics
-  debug('make a listener on ' + contract + ' ' + eventType().name)
-  provider.on(topics, (log) => {
-
+  console.log({eventType})
+  const eventName = events[contract].eventTypes[key]
+  if (!eventName) {
+    debug('key ' + key + ' doesnt exists on contract events')
+    debug(events[contract].eventTypes)
+    return
+  }
+  debug('make a listener on ' + contract + ' ' + eventType.name)
+  provider.on(eventName, (log) => {
+    console.log({log})
     // filter out events from different contracts
     let address = events[contract].address.toLowerCase()
     if (log.address.toLowerCase() !== address) {
+      console.log('heard event from wrong address')
       return
     }
     log = transformLog(log, contract, key)
