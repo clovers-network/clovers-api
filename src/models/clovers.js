@@ -414,39 +414,39 @@ function checkFlag(flag) {
 
 async function oracleVerify (clover, symmetries) {
   console.log({clover})
-  let { name, moves } = clover
-  debug(name + ' is being verified')
-  console.log({name}, {moves})
+  let { board, moves } = clover
+  debug(board + ' is being verified')
+  console.log({board}, {moves})
   const options = {
     gasPrice: 10000000000 // 10 GWEI
   }
   var doneish = false
   try {
     // dont verify clovers from the initial build
-    if (isValid(name, moves, symmetries)) {
-      debug(name + ' is valid, move to new owner')
-      const tx = await wallet.CloversController.retrieveStake(name, options)
+    if (isValid(board, moves, symmetries)) {
+      debug(board + ' is valid, move to new owner')
+      const tx = await wallet.CloversController.retrieveStake(board, options)
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
-      debug(name + ' moved to new owner')
+      debug(board + ' moved to new owner')
     } else {
-      debug(name + ' is not valid, please burn')
-      const tx = await wallet.CloversController.challengeClover(name, options)
+      debug(board + ' is not valid, please burn')
+      const tx = await wallet.CloversController.challengeClover(board, options)
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
-      debug(name + ' has been burned')
+      debug(board + ' has been burned')
     }
   } catch (err) {
     debug(err)
     setTimeout(() => {
-      debug(name + ': waited 3 minutes')
+      debug(board + ': waited 3 minutes')
       if (!doneish) {
-        debug(name + ': try again')
-        oracleVerify({ name, moves}, symmetries)
+        debug(board + ': try again')
+        oracleVerify({ board, moves}, symmetries)
       } else {
-        debug(name + ': already succeeded')
+        debug(board + ': already succeeded')
       }
     }, 1000 * 60 * 3)
   }
