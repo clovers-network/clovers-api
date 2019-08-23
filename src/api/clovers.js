@@ -50,7 +50,7 @@ export default ({ config, db, io }) => {
     load,
 
     async index({ query }, res) {
-      const indexes = ['all', 'market', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'public', 'contract', 'commented']
+      const indexes = ['all', 'market', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'NonSym', 'public', 'contract', 'commented', 'pending']
       const pageSize = 12
       const asc = query.asc === 'true'
       const sort = query.sort === 'price' ? '-price' : '-modified'

@@ -16,9 +16,9 @@ let io, db
 
 export var socketing = function ({ _io, _db }) {
   console.log('socketig')
-  // if (process.env.NODE_ENV !== 'production') {
-  //   return
-  // }
+  if (process.env.NODE_ENV !== 'production') {
+    return
+  }
 
   io = _io
   db = _db

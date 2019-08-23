@@ -7,6 +7,9 @@ import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
 import uuid from 'uuid/v4'
 import { provider, events, web3, web3mode } from '../lib/ethers-utils'
+
+const ZERO = '0000000000000000000000000000000000000000000000000000000000000000'
+
 const tables = [
   {
     name: 'clovers',
@@ -27,6 +30,43 @@ const tables = [
         ]
       ],
 
+      [
+        'pending-modified',
+        [
+          r.row('owner').eq(events.Clovers.address.toLowerCase()).and(
+            r.row('price').eq(ZERO).or(
+              r.row('price').eq('0')
+            )
+          ),
+          r.row('modified')
+        ]
+      ],
+      [
+        'pending-price',
+        [
+          r.row('owner').eq(events.Clovers.address.toLowerCase()).and(
+            r.row('price').eq(ZERO).or(
+              r.row('price').eq('0')
+            )
+          ),
+          r.row('price')
+        ]
+      ],
+
+      [
+        'NonSym-modified',
+        [
+          r.row('symmetries').values().reduce((a, c) => a.add(c)).eq(0),
+          r.row('modified')
+        ]
+      ],
+      [
+        'NonSym-price',
+        [
+          r.row('symmetries').values().reduce((a, c) => a.add(c)).eq(0),
+          r.row('price')
+        ]
+      ],
       [
         'Sym-modified',
         [
