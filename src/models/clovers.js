@@ -58,7 +58,7 @@ function isValid(tokenId, cloverMoves, cloverSymmetries) {
   reversi.playGameByteMoves(cloverMoves[0], cloverMoves[1])
 
   // check if game had an error or isn't complete
-  if (!reversi.complete || reversi.error) {
+  if (!reversi.complete || reversi.error || reversi.moves[0].toLowerCase() !== 'c4') {
     debug('not complete or has error', reversi)
     return false
   }
@@ -425,14 +425,14 @@ async function oracleVerify (clover, symmetries) {
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      const tx = await wallet.CloversController.retrieveStake(board, options)
+      // const tx = await wallet.CloversController.retrieveStake(board, options)
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      const tx = await wallet.CloversController.challengeClover(board, options)
+      // const tx = await wallet.CloversController.challengeClover(board, options)
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
