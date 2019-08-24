@@ -9,6 +9,7 @@ import uuid from 'uuid/v4'
 import { provider, events, web3, web3mode } from '../lib/ethers-utils'
 
 const ZERO = '0000000000000000000000000000000000000000000000000000000000000000'
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
 const tables = [
   {
@@ -18,14 +19,14 @@ const tables = [
       [
         'all-modified',
         [
-          true,
+          r.row('owner').ne(ZERO_ADDRESS),
           r.row('modified')
         ]
       ],
       [
         'all-price',
         [
-          true,
+          r.row('owner').ne(ZERO_ADDRESS),
           r.row('price')
         ]
       ],
@@ -56,14 +57,18 @@ const tables = [
       [
         'NonSym-modified',
         [
-          r.row('symmetries').values().reduce((a, c) => a.add(c)).eq(0),
+          r.row('symmetries').values().reduce((a, c) => a.add(c)).eq(0).and(
+            r.row('owner').ne(ZERO_ADDRESS)
+          ),
           r.row('modified')
         ]
       ],
       [
         'NonSym-price',
         [
-          r.row('symmetries').values().reduce((a, c) => a.add(c)).eq(0),
+          r.row('symmetries').values().reduce((a, c) => a.add(c)).eq(0).and(
+            r.row('owner').ne(ZERO_ADDRESS)
+          ),
           r.row('price')
         ]
       ],
