@@ -425,7 +425,7 @@ async function oracleVerify (clover, symmetries) {
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      // const tx = await wallet.CloversController.retrieveStake(board, options)
+      const tx = await wallet.CloversController.retrieveStake(board, options)
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
