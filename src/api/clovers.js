@@ -54,7 +54,7 @@ export default ({ config, db, io }) => {
 
     async index({ query }, res) {
       const indexes = ['all', 'market', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'NonSym', 'public', 'contract', 'commented', 'pending']
-      const pageSize = 12
+      const pageSize = 24
       const asc = query.asc === 'true'
       const sort = query.sort === 'price' ? '-price' : '-modified'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
@@ -115,6 +115,7 @@ export default ({ config, db, io }) => {
         filterBy: index,
         sort: asc ? 'ascending' : 'descending',
         orderBy: sort,
+        perPage: pageSize,
 
         results
       }
@@ -190,7 +191,7 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     debug(`getting activity for ${id}`)
 
-    const pageSize = 8
+    const pageSize = 12
     const asc = req.query.asc === 'true'
     const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
     const index = 'clover'
@@ -253,6 +254,7 @@ export default ({ config, db, io }) => {
       filterBy: id,
       sort: asc ? 'ascending' : 'descending',
       orderBy: 'blockNumber',
+      perPage: pageSize,
 
       results
     }
