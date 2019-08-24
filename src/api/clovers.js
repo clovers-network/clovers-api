@@ -271,10 +271,16 @@ export default ({ config, db, io }) => {
   router.get('/sync/oracle', async (req, res) => {
     const { s } = req.query
     if (s !== semiSecretToken) return res.sendStatus(401).end()
-
+    let { offset } = req.query
+    if (!offset) {
+      offset = 1
+    } else {
+      offset = parseInt(offset)
+    }
     debug('start oracle')
+    debug({offset})
     const totalSupply = await events.Clovers.instance.balanceOf(events.Clovers.address)
-    await syncOracle(db, io, totalSupply, 2761)
+    await syncOracle(db, io, totalSupply, offset)
     return res.sendStatus(200).end()
   })
 
