@@ -432,7 +432,7 @@ async function oracleVerify (clover, symmetries) {
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      // const tx = await wallet.CloversController.challengeClover(board, options)
+      const tx = await wallet.CloversController.challengeClover(board, options)
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
