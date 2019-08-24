@@ -26,6 +26,9 @@ export default ({ config, db, io }) => {
       return r.branch(
         doc.eq(null),
         r.error('404 Not Found'),
+        // hide NOBODY
+        doc('owner').eq('0x0000000000000000000000000000000000000000'),
+        r.error('404 Not Found'),
         doc.merge({
           lastOrder: r.table('orders')
             .getAll(doc('board'), { index: 'market' })
