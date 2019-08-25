@@ -5,6 +5,8 @@ import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 import { getLogs, transformLog, processLog } from '../lib/build.js'
+import Axios from 'axios';
+import { BigNumber } from 'ethers/utils';
 let db
 let io
 
@@ -417,22 +419,38 @@ async function oracleVerify (clover, symmetries) {
   let { board, moves } = clover
   debug(board + ' is being verified')
   console.log({board}, {moves})
-  const options = {
-    gasPrice: 10000000000 // 10 GWEI
-  }
+
   var doneish = false
+
+  let fast, average, safeLow
   try {
+    const gasPrices = await axios('https://ethgasstation.info/json/ethgasAPI.json')
+    const oneGwei = '1000000000'
+    fast = new BigNumber(gasPrices.fast).div(10).mul(oneGwei)
+    average = new BigNumber(gasPrices.average).div(10).mul(oneGwei)
+    safeLow = new BigNumber(gasPrices.safeLow).div(10).mul(oneGwei)
+  } catch (error) {
+    debug(error)
+    fast = 10000000000
+    average = 5000000000
+    safeLow = 1000000000
+  }
+  try {
+
+    const options = {
+      gasPrice: fast.toString(10)
+    }
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      const tx = await wallet.CloversController.retrieveStake(board, options)
+      const tx = await wallet.CloversController.retrieveStake(board, fast, average, safeLow, options)
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      const tx = await wallet.CloversController.challengeClover(board, options)
+      const tx = await wallet.CloversController.challengeClover(board, fast, average, safeLow, options)
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
