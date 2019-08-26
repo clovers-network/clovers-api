@@ -425,16 +425,16 @@ async function oracleVerify (clover, symmetries) {
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      // const tx = await wallet.CloversController.retrieveStake(board, options)
-      // debug('started tx:' + tx.hash)
-      // await tx.wait()
+      const tx = await wallet.CloversController.retrieveStake(board, options)
+      debug('started tx:' + tx.hash)
+      await tx.wait()
       doneish = true
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      // const tx = await wallet.CloversController.challengeClover(board, options)
-      // debug('started tx:' + tx.hash)
-      // await tx.wait()
+      const tx = await wallet.CloversController.challengeClover(board, options)
+      debug('started tx:' + tx.hash)
+      await tx.wait()
       doneish = true
       debug(board + ' has been burned')
     }
