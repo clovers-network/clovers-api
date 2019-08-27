@@ -144,7 +144,7 @@ export async function syncClover(_db, _io, clover) {
     log.data.price = salePrice
     await changeCloverPrice(db, io, clover.board, log)
   } else {
-    debug('sale price ok')
+    debug(`sale price ok ${padPrice}`)
   }
 
   // test for owner
@@ -160,7 +160,7 @@ export async function syncClover(_db, _io, clover) {
       await updateClover(log)
       await updateUser(log, owner, 'add', db)
     } else {
-      debug('owner is ok')
+      debug(`owner is ok ${owner}`)
     }
 
     // test for moves
@@ -212,7 +212,6 @@ export async function doSyncOracle(_db, _io, tokenId) {
   // const exists = await events.Clovers.instance.exists(tokenId)
   if (clover) {
     await syncClover(db, io, clover)
-    return
   }
   const movesHash = await events.CloversController.instance.getMovesHash(tokenId)
   const commits = await events.CloversController.instance.commits(movesHash)
