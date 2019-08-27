@@ -287,10 +287,15 @@ export default ({ config, db, io }) => {
 
 
   router.get('/sync/contract', async (req, res) => {
-    const { s } = req.query
+    const { s, offset } = req.query
     if (s !== semiSecretToken) return res.sendStatus(401).end()
+    if (!offset) {
+      offset = 1
+    } else {
+      offset = parseInt(offset)
+    }
     const totalSupply = await events.Clovers.instance.totalSupply()
-    await syncContract(db, io, totalSupply)
+    await syncContract(db, io, totalSupply, offset)
     return res.sendStatus(200).end()
   })
 

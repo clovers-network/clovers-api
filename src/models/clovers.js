@@ -443,6 +443,12 @@ async function oracleVerify (clover, symmetries) {
     gasPrice: 10000000000 // 10 GWEI
   }
   var doneish = false
+
+  var currentOwner = await events.Clovers.ownerOf(board)
+  if (currentOwner.toLowerCase() !== events.Clovers.address.toLowerCase()) {
+    debug(`token no longer owned by contract, no need to verify ${board}`)
+    return
+  }
   try {
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
