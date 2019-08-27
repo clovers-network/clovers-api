@@ -5,7 +5,7 @@ import r from 'rethinkdb'
 import { dodb, toSVG } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
-import { syncClover, syncContract, syncOracle } from '../models/clovers'
+import { syncClover, syncContract, syncOracle, syncPending } from '../models/clovers'
 import xss from 'xss'
 import Reversi from 'clovers-reversi'
 import BigNumber from 'bignumber.js'
@@ -262,6 +262,27 @@ export default ({ config, db, io }) => {
     const status = results.length ? 200 : 404
 
     res.status(status).json(response).end()
+  })
+
+  router.get('/sync/pending/:id', async (req, res) => {
+    const { s } = req.query
+    if (s !== semiSecretToken) return res.sendStatus(401).end()
+
+    const { id } = req.params
+    const clover = await r.table('clovers').get(id).default(false).run(db)
+    await syncPending(db, io, [clover])
+    return res.sendStatus(200).end()
+  })
+
+  router.get('/sync/pending', async (req, res) => {
+    const { s } = req.query
+    if (s !== semiSecretToken) return res.sendStatus(401).end()
+
+    let pending = await r.table('clovers').between([true, r.minval], [true, r.maxval], {index: 'pending-modified'})
+    .orderBy({ index: r.asc('pending-modified') }).default([]).run(db)
+    pending = await pending.toArray()
+    await syncPending(db, io, pending)
+    return res.sendStatus(200).end()
   })
 
 
