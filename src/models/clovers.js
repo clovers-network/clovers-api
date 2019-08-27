@@ -5,8 +5,13 @@ import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 import { getLogs, transformLog, processLog } from '../lib/build.js'
+<<<<<<< HEAD
 import Axios from 'axios';
 import { BigNumber } from 'ethers/utils';
+=======
+import clovers from '../api/clovers';
+import config from '../config.json'
+>>>>>>> master
 let db
 let io
 
@@ -141,15 +146,11 @@ export async function syncClover(_db, _io, clover) {
   let padPrice = salePrice.toString(10)
   if (padPrice !== '0') padPrice = padPrice.padStart(64, '0')
   if (padPrice !== clover.price) {
-  // if (salePrice.toString(10) !== clover.price.toString(10)) {
-  // let hexPrice = BigInt(salePrice.toString()).toString(16)
-  // hexPrice = hexPrice === '0' ? '0' : hexPrice.padStart(64, '0')
-  // if (hexPrice !== clover.price) {
     debug('sale price wrong')
     log.data.price = salePrice
     await changeCloverPrice(db, io, clover.board, log)
   } else {
-    debug('sale price ok')
+    debug(`sale price ok ${padPrice}`)
   }
 
   // test for owner
@@ -159,12 +160,28 @@ export async function syncClover(_db, _io, clover) {
       owner = owner[0]
     }
     if (owner.toLowerCase() !== clover.owner.toLowerCase()) {
+      debug(`owner seems to be ${clover.owner} but is actually ${owner}`)
       debug('owner is wrong')
       log.data._to = owner
       await updateClover(log)
       await updateUser(log, owner, 'add', db)
     } else {
-      debug('owner is ok')
+      debug(`owner is ok ${owner}`)
+    }
+
+    // test for moves
+    let moves = await events.Clovers.instance.getCloverMoves(clover.board)
+    if (moves.length === 1) {
+      moves = moves[0]
+    }
+    let cloverMoves = clover.moves.length === 1 ? clover.moves[0] : clover.moves
+    if (moves.join(",") !== cloverMoves.join(",")) {
+      debug(`moves don't match making an update to board`)
+      debug(`from ${cloverMoves.join(',')} to ${moves.join(',')}`)
+      clover.moves = moves
+      await r.table('clovers').get(clover.board).update({moves}).run(db)
+    } else {
+      debug('moves are ok')
     }
   } catch (err) {
     debug(err.toString())
@@ -184,24 +201,53 @@ export async function syncOracle(_db, _io, totalSupply, key = 1) {
     debug(`------------------------------------------------------ syncing oracle ${index} / ${totalSupply}`)
     let tokenId = await events.Clovers.instance.tokenOfOwnerByIndex(events.Clovers.address, index)
     tokenId = tokenId._hex
-    const movesHash = await events.CloversController.instance.getMovesHash(tokenId)
-    const commits = await events.CloversController.instance.commits(movesHash)
-    if (!commits.collected) {
-      let clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
-      if (!clover) {
-        console.log("dont have clover yet")
-        await doSyncContract(db, tokenId)
-      }
-      clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
-      if (!clover) {
-        debug('still no clover')
-        return
-      }
-      const symmetries = await events.Clovers.instance.getSymmetries(tokenId)
-      await oracleVerify(clover, symmetries)
-    }
+
+    await doSyncOracle(db, io, tokenId)
+    
     await syncOracle(db, io, totalSupply, key + 1)
     return 'done'
+  } catch (error) {
+    debug(error)
+  }
+}
+
+export async function doSyncOracle(_db, _io, tokenId) {
+  db = _db
+  io = _io
+  let clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+  // const exists = await events.Clovers.instance.exists(tokenId)
+  if (clover) {
+    await syncClover(db, io, clover)
+  }
+  const movesHash = await events.CloversController.instance.getMovesHash(tokenId)
+  const commits = await events.CloversController.instance.commits(movesHash)
+  console.log({commits})
+  if (!commits.collected) {
+    if (!clover) {
+      console.log("dont have clover yet")
+      await doSyncContract(db, tokenId)
+    }
+    clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+    if (!clover) {
+      debug('still no clover')
+      return
+    }
+    const symmetries = await events.Clovers.instance.getSymmetries(tokenId)
+    await oracleVerify(clover, symmetries)
+  } else {
+    debug(`${tokenId} already collected`)
+  }
+}
+
+export async function syncPending(_db, _io, pending, key = 0) {
+  try {
+    if (key >= pending.length) return
+    db = _db
+    io = _io
+    let clover = pending[key]
+    await doSyncOracle(db, io, clover.board)
+    await syncPending(db, io, pending, key + 1)
+
   } catch (error) {
     debug(error)
   }
@@ -238,6 +284,22 @@ async function doSyncContract(db, tokenId) {
   let blockMinted = await events.Clovers.instance.getBlockMinted(tokenId)
   blockMinted = parseInt(blockMinted.toString())
 
+  if (blockMinted === 0) {
+    // let logs = r.table('logs').getAll()
+    let dbLogs = await r.table('logs')
+      .filter({"name": "Clovers_Transfer"})
+      .filter((l) => l('data')('_tokenId').eq(tokenId))
+      .default([])
+      .run(db)
+    dbLogs = await dbLogs.toArray()
+    if (dbLogs.length > 0) {
+      debug(`found ${dbLogs.length} with this tokenID`)
+      blockMinted = dbLogs[0].blockNumber
+    } else {
+      debug(`using genesis as log`)
+      blockMinted = config.genesisBlock[config.networkId]
+    }
+  }
   const eventType = events.Clovers.instance.interface.events.Transfer
 
   const topics = [eventType.topic]
@@ -248,12 +310,14 @@ async function doSyncContract(db, tokenId) {
   const limit = 1
   const offset = 0
   const previousLogs = []
-  let logs = await getLogs({address,topics, genesisBlock, latest, limit, offset, previousLogs})
+  // debug({address, topics, genesisBlock, latest, limit, offset, previousLogs})
+  let logs = await getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs})
+  console.log(`# of logs before filter ${logs.length}`)
   logs = logs.map(l => transformLog(l, 'Clovers', 0))
   logs = logs.filter(l => {
     return l.data._tokenId === tokenId
   })
-  debug('# of logs', logs.length)
+  debug('# of logs after filter', logs.length)
   if (logs.length === 0) {
     debug({logs})
     debug({address,topics, genesisBlock, latest, limit, offset, previousLogs})
@@ -278,28 +342,8 @@ async function updateUser(log, user_id, add, _db) {
       user = userTemplate(user_id)
       user.created = log.blockNumber
     }
-    // let index = user.clovers.indexOf(log.data._tokenId)
-    // if (index < 0) {
-    //   user.clovers.push(log.data._tokenId)
-    //   user.modified = log.blockNumber
-    // } else {
-    //   debug('for some reason this clover was added to a user who already owned it')
-    //   debug(log)
-    //   debug(user_id)
-    // }
   } else {
     if (user) {
-      // let index = user.clovers.indexOf(log.data._tokenId)
-      // if (index < 0) {
-      //   throw new Error(
-      //     'cant remove clover ' +
-      //       log.data._tokenId +
-      //       ' if user ' +
-      //       log.data._from +
-      //       ' doesnt own it'
-      //   )
-      // }
-      // user.clovers.splice(index, 1)
       user.modified = log.blockNumber
     } else {
       // this should not happen
@@ -422,6 +466,11 @@ async function oracleVerify (clover, symmetries) {
 
   var doneish = false
 
+  var currentOwner = await events.Clovers.instance.ownerOf(board)
+  if (currentOwner.toLowerCase() !== events.Clovers.address.toLowerCase()) {
+    debug(`token no longer owned by contract, no need to verify ${board}`)
+    return
+  }
   let fast, average, safeLow
   try {
     const gasPrices = await axios('https://ethgasstation.info/json/ethgasAPI.json')

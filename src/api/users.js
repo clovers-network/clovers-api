@@ -37,7 +37,7 @@ export default ({ config, db, io }) => {
 
     /** GET / - List all entities */
     async index({ query }, res) {
-      const pageSize = 12
+      const pageSize = 24
       const asc = query.asc === 'true'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
       debug('get users')
@@ -77,6 +77,7 @@ export default ({ config, db, io }) => {
         filterBy: null,
         sort: asc ? 'ascending' : 'descending',
         orderBy: 'modified',
+        perPage: pageSize,
 
         results
       }
@@ -167,6 +168,7 @@ export default ({ config, db, io }) => {
       filterBy: id.toLowerCase(),
       sort: asc ? 'ascending' : 'descending',
       orderBy: 'modified',
+      perPage: pageSize,
 
       results
     }

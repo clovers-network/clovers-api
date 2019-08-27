@@ -5,7 +5,7 @@ import r from 'rethinkdb'
 import { dodb, toSVG } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
-import { syncClover, syncContract, syncOracle } from '../models/clovers'
+import { syncClover, syncContract, syncOracle, syncPending } from '../models/clovers'
 import xss from 'xss'
 import Reversi from 'clovers-reversi'
 import BigNumber from 'bignumber.js'
@@ -25,6 +25,9 @@ export default ({ config, db, io }) => {
     .get(id).do((doc) => {
       return r.branch(
         doc.eq(null),
+        r.error('404 Not Found'),
+        // hide NOBODY
+        doc('owner').eq('0x0000000000000000000000000000000000000000'),
         r.error('404 Not Found'),
         doc.merge({
           lastOrder: r.table('orders')
@@ -50,8 +53,8 @@ export default ({ config, db, io }) => {
     load,
 
     async index({ query }, res) {
-      const indexes = ['all', 'market', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'public', 'contract', 'commented']
-      const pageSize = 12
+      const indexes = ['all', 'market', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'NonSym', 'public', 'contract', 'commented', 'pending']
+      const pageSize = 24
       const asc = query.asc === 'true'
       const sort = query.sort === 'price' ? '-price' : '-modified'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
@@ -112,6 +115,7 @@ export default ({ config, db, io }) => {
         filterBy: index,
         sort: asc ? 'ascending' : 'descending',
         orderBy: sort,
+        perPage: pageSize,
 
         results
       }
@@ -187,7 +191,7 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     debug(`getting activity for ${id}`)
 
-    const pageSize = 8
+    const pageSize = 12
     const asc = req.query.asc === 'true'
     const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
     const index = 'clover'
@@ -250,6 +254,7 @@ export default ({ config, db, io }) => {
       filterBy: id,
       sort: asc ? 'ascending' : 'descending',
       orderBy: 'blockNumber',
+      perPage: pageSize,
 
       results
     }
@@ -259,12 +264,38 @@ export default ({ config, db, io }) => {
     res.status(status).json(response).end()
   })
 
-
-  router.get('/sync/contract', async (req, res) => {
+  router.get('/sync/pending/:id', async (req, res) => {
     const { s } = req.query
     if (s !== semiSecretToken) return res.sendStatus(401).end()
+
+    const { id } = req.params
+    const clover = await r.table('clovers').get(id).default(false).run(db)
+    await syncPending(db, io, [clover])
+    return res.sendStatus(200).end()
+  })
+
+  router.get('/sync/pending', async (req, res) => {
+    const { s } = req.query
+    if (s !== semiSecretToken) return res.sendStatus(401).end()
+
+    let pending = await r.table('clovers').between([true, r.minval], [true, r.maxval], {index: 'pending-modified'})
+    .orderBy({ index: r.asc('pending-modified') }).default([]).run(db)
+    pending = await pending.toArray()
+    await syncPending(db, io, pending)
+    return res.sendStatus(200).end()
+  })
+
+
+  router.get('/sync/contract', async (req, res) => {
+    let { s, offset } = req.query
+    // if (s !== semiSecretToken) return res.sendStatus(401).end()
+    if (!offset) {
+      offset = 1
+    } else {
+      offset = parseInt(offset)
+    }
     const totalSupply = await events.Clovers.instance.totalSupply()
-    await syncContract(db, io, totalSupply)
+    await syncContract(db, io, totalSupply, offset)
     return res.sendStatus(200).end()
   })
 
