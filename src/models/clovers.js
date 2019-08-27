@@ -6,6 +6,7 @@ import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 import { getLogs, transformLog, processLog } from '../lib/build.js'
 import clovers from '../api/clovers';
+import config from '../config.json'
 let db
 let io
 
@@ -278,6 +279,22 @@ async function doSyncContract(db, tokenId) {
   let blockMinted = await events.Clovers.instance.getBlockMinted(tokenId)
   blockMinted = parseInt(blockMinted.toString())
 
+  if (blockMinted === 0) {
+    // let logs = r.table('logs').getAll()
+    let dbLogs = await r.table('logs')
+      .filter({"name": "Clovers_Transfer"})
+      .filter((l) => l('data')('_tokenId').eq(tokenId))
+      .default([])
+      .run(db)
+    dbLogs = await dbLogs.toArray()
+    if (dbLogs.length > 0) {
+      debug(`found ${dbLogs.length} with this tokenID`)
+      blockMinted = dbLogs[0].blockNumber
+    } else {
+      debug(`using genesis as log`)
+      blockMinted = config.genesisBlock[config.networkId]
+    }
+  }
   const eventType = events.Clovers.instance.interface.events.Transfer
 
   const topics = [eventType.topic]
@@ -288,12 +305,14 @@ async function doSyncContract(db, tokenId) {
   const limit = 1
   const offset = 0
   const previousLogs = []
-  let logs = await getLogs({address,topics, genesisBlock, latest, limit, offset, previousLogs})
+  // debug({address, topics, genesisBlock, latest, limit, offset, previousLogs})
+  let logs = await getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs})
+  console.log(`# of logs before filter ${logs.length}`)
   logs = logs.map(l => transformLog(l, 'Clovers', 0))
   logs = logs.filter(l => {
     return l.data._tokenId === tokenId
   })
-  debug('# of logs', logs.length)
+  debug('# of logs after filter', logs.length)
   if (logs.length === 0) {
     debug({logs})
     debug({address,topics, genesisBlock, latest, limit, offset, previousLogs})
