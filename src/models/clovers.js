@@ -444,7 +444,7 @@ async function oracleVerify (clover, symmetries) {
   }
   var doneish = false
 
-  var currentOwner = await events.Clovers.ownerOf(board)
+  var currentOwner = await events.Clovers.instance.ownerOf(board)
   if (currentOwner.toLowerCase() !== events.Clovers.address.toLowerCase()) {
     debug(`token no longer owned by contract, no need to verify ${board}`)
     return
