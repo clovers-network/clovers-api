@@ -287,7 +287,7 @@ export default ({ config, db, io }) => {
 
 
   router.get('/sync/contract', async (req, res) => {
-    const { s, offset } = req.query
+    let { s, offset } = req.query
     if (s !== semiSecretToken) return res.sendStatus(401).end()
     if (!offset) {
       offset = 1
