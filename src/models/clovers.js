@@ -9,10 +9,8 @@ import Axios from 'axios';
 import { BigNumber, parseEther, formatEther } from 'ethers/utils';
 import clovers from '../api/clovers';
 import config from '../config.json'
-import {parseEther, formatEther} from 'ethers/utils'
 let db
 let io
-
 export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = false) => {
   db = _db
   io = _io
@@ -508,14 +506,24 @@ async function oracleVerify (clover, symmetries) {
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      const tx = await wallet.CloversController.retrieveStake(board, fast, average, safeLow, options)
+      let tx
+      if (typeof wallet.CloversController['retrieveStake(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+        tx = await wallet.CloversController.retrieveStake(board, fast, average, safeLow, options)
+      } else {
+        tx = await wallet.CloversController.retrieveStake(board, options)
+      }
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      const tx = await wallet.CloversController.challengeClover(board, fast, average, safeLow, options)
+      let tx
+      if (typeof wallet.CloversController['challengeClover(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+        tx = await wallet.CloversController.challengeClover(board, fast, average, safeLow, options)
+      } else {
+        tx = await wallet.CloversController.challengeClover(board, options)
+      }
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
