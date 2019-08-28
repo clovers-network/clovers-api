@@ -517,8 +517,10 @@ async function oracleVerify (clover, symmetries) {
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
       if (typeof wallet.CloversController['retrieveStake(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+        console.log('retrieve stake xists')
         tx = await wallet.CloversController.retrieveStake(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
+        console.log('use legacy')
         tx = await wallet.CloversController.retrieveStake(board, options)
       }
       debug('started tx:' + tx.hash)
@@ -528,8 +530,10 @@ async function oracleVerify (clover, symmetries) {
     } else {
       debug(board + ' is not valid, please burn')
       if (typeof wallet.CloversController['challengeClover(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+        console.log('challenge clover exists')
         tx = await wallet.CloversController.challengeClover(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
+        console.log('use legacy')
         tx = await wallet.CloversController.challengeClover(board, options)
       }
       debug('started tx:' + tx.hash)
