@@ -5,12 +5,13 @@ import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 import { getLogs, transformLog, processLog } from '../lib/build.js'
+import axios from 'axios';
+import { BigNumber, parseEther, formatEther } from 'ethers/utils';
 import clovers from '../api/clovers';
 import config from '../config.json'
-import {parseEther, formatEther} from 'ethers/utils'
+const oneGwei = '1000000000'
 let db
 let io
-
 export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = false) => {
   db = _db
   io = _io
@@ -235,10 +236,14 @@ export async function doSyncOracle(_db, _io, tokenId) {
   }
 
   const salePrice = await events.SimpleCloversMarket.instance.sellPrice(tokenId)
-  if (salePrice.eq(parseEther('3')) && clover.owner === events.Clovers.address) {
+  if (salePrice.eq(parseEther('3')) && clover.owner.toLowerCase() === events.Clovers.address.toLowerCase()) {
     const flatFee = parseEther('10')
     debug(`contract clover sale price wrong, changing from ${formatEther(salePrice.toString(10))} to ${formatEther(flatFee.toString(10))}`)
-    await events.CloversController.instance.fixSalePrice(tokenId, flatFee)
+    if (typeof events.CloversController.instance['fixSalePrice(uint256,uint256)'] !== 'undefined') {
+      await events.CloversController.instance.fixSalePrice(tokenId, flatFee)
+    } else {
+      console.log(`CloversController Contract not updated yet`)
+    }
   } else {
     debug(`sale price ok ${formatEther(salePrice)} or not for sale by contract but ${clover.owner}`)
   }
@@ -469,9 +474,7 @@ async function oracleVerify (clover, symmetries) {
   let { board, moves } = clover
   debug(board + ' is being verified')
   console.log({board}, {moves})
-  const options = {
-    gasPrice: 10000000000 // 10 GWEI
-  }
+
   var doneish = false
 
   var currentOwner = await events.Clovers.instance.ownerOf(board)
@@ -479,24 +482,63 @@ async function oracleVerify (clover, symmetries) {
     debug(`token no longer owned by contract, no need to verify ${board}`)
     return
   }
+
+  var movesHash = await events.CloversController.instance.getMovesHash(board)
+  var commits = await events.CloversController.instance.commits(movesHash)
+  if (commits.collected) {
+    debug(`token has already been collected, no need to verify ${board}`)
+    return
+  }
+
+  let fast, average, safeLow
   try {
+    const gasPricesResponse = await axios('https://ethgasstation.info/json/ethgasAPI.json')
+    const gasPrices = gasPricesResponse.data
+    console.log({gasPrices})
+    fast = new BigNumber(gasPrices.fast).div(10).mul(oneGwei)
+    average = new BigNumber(gasPrices.average).div(10).mul(oneGwei)
+    safeLow = new BigNumber(gasPrices.safeLow).div(10).mul(oneGwei)
+  } catch (error) {
+    debug(error)
+    fast = (new BigNumber(10)).mul(oneGwei)
+    average = (new BigNumber(5)).mul(oneGwei)
+    safeLow = (new BigNumber(1)).mul(oneGwei)
+  }
+
+  console.log({fast: formatEther(fast), average: formatEther(average), safeLow: formatEther(safeLow)})
+  let tx
+  try {
+
+    const options = {
+      gasPrice: fast.toString(10)
+    }
+    console.log({fast: fast.toString(10), gasPriceEth: formatEther(fast)})
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      const tx = await wallet.CloversController.retrieveStake(board, options)
+      if (typeof wallet.CloversController['retrieveStake(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+        tx = await wallet.CloversController.retrieveStake(board, fast, average, safeLow, options)
+      } else {
+        tx = await wallet.CloversController.retrieveStake(board, options)
+      }
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      const tx = await wallet.CloversController.challengeClover(board, options)
+      if (typeof wallet.CloversController['challengeClover(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+        tx = await wallet.CloversController.challengeClover(board, fast, average, safeLow, options)
+      } else {
+        tx = await wallet.CloversController.challengeClover(board, options)
+      }
       debug('started tx:' + tx.hash)
       await tx.wait()
       doneish = true
       debug(board + ' has been burned')
     }
   } catch (err) {
+    debug(`error on clover ${board} with tx ${tx}`)
     debug(err)
     setTimeout(() => {
       debug(board + ': waited 3 minutes')
