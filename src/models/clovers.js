@@ -510,7 +510,7 @@ async function oracleVerify (clover, symmetries) {
   try {
     console.log(fast.toString(16), fast.toString(10))
     const options = {
-      gasPrice: '0x' + fast.toString(16)
+      gasPrice: fast.toString(10)
     }
     console.log({fast: fast.toString(10), gasPriceEth: formatEther(fast)})
     // dont verify clovers from the initial build
