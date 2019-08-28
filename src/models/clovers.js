@@ -510,8 +510,9 @@ async function oracleVerify (clover, symmetries) {
   try {
 
     const options = {
-      gasPrice: fast.toString(10)
+      gasPrice: '0x' + fast.toString(16)
     }
+    console.log({options})
     console.log({fast: fast.toString(10), gasPriceEth: formatEther(fast)})
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
@@ -521,6 +522,7 @@ async function oracleVerify (clover, symmetries) {
         tx = await wallet.CloversController.retrieveStake(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
         console.log('use legacy')
+        console.log()
         tx = await wallet.CloversController.retrieveStake(board, options)
       }
       debug('started tx:' + tx.hash)
