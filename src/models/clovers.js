@@ -508,11 +508,10 @@ async function oracleVerify (clover, symmetries) {
   console.log({fast: formatEther(fast), average: formatEther(average), safeLow: formatEther(safeLow)})
   let tx
   try {
-
+    console.log(fast.toString(16), fast.toString(10))
     const options = {
       gasPrice: '0x' + fast.toString(16)
     }
-    console.log({options})
     console.log({fast: fast.toString(10), gasPriceEth: formatEther(fast)})
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
