@@ -508,7 +508,7 @@ async function oracleVerify (clover, symmetries) {
   console.log({fast: formatEther(fast), average: formatEther(average), safeLow: formatEther(safeLow)})
   let tx
   try {
-    console.log(fast.toString(16), fast.toString(10))
+    console.log(fast.toString(16), fast.toString(10), fast.toHexString())
     const options = {
       gasPrice: fast.toString(10)
     }
