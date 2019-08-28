@@ -5,10 +5,11 @@ import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 import { getLogs, transformLog, processLog } from '../lib/build.js'
-import Axios from 'axios';
+import axios from 'axios';
 import { BigNumber, parseEther, formatEther } from 'ethers/utils';
 import clovers from '../api/clovers';
 import config from '../config.json'
+const oneGwei = '1000000000'
 let db
 let io
 export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = false) => {
@@ -478,8 +479,8 @@ async function oracleVerify (clover, symmetries) {
     return
   }
 
-  var movesHash = await events.Clovers.instance.getMovesHash(board)
-  var commits = await events.Clovers.instance.getCommits(movesHash)
+  var movesHash = await events.CloversController.instance.getMovesHash(board)
+  var commits = await events.CloversController.instance.commits(movesHash)
   if (commits.collected) {
     debug(`token has already been collected, no need to verify ${board}`)
     return
@@ -487,8 +488,9 @@ async function oracleVerify (clover, symmetries) {
 
   let fast, average, safeLow
   try {
-    const gasPrices = await axios('https://ethgasstation.info/json/ethgasAPI.json')
-    const oneGwei = '1000000000'
+    const gasPricesResponse = await axios('https://ethgasstation.info/json/ethgasAPI.json')
+    const gasPrices = gasPricesResponse.data
+    console.log({gasPrices})
     fast = new BigNumber(gasPrices.fast).div(10).mul(oneGwei)
     average = new BigNumber(gasPrices.average).div(10).mul(oneGwei)
     safeLow = new BigNumber(gasPrices.safeLow).div(10).mul(oneGwei)
@@ -498,35 +500,38 @@ async function oracleVerify (clover, symmetries) {
     average = (new BigNumber(5)).mul(oneGwei)
     safeLow = (new BigNumber(1)).mul(oneGwei)
   }
+
+  console.log({fast: formatEther(fast), average: formatEther(average), safeLow: formatEther(safeLow)})
+  let tx
   try {
 
     const options = {
       gasPrice: fast.toString(10)
     }
-    console.log({gasPrice: gasPrice.toString(10), gasPriceEth: formatEther(gasPrice)})
+    console.log({fast: fast.toString(10), gasPriceEth: formatEther(fast)})
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      let tx
       if (typeof wallet.CloversController['retrieveStake(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
         tx = await wallet.CloversController.retrieveStake(board, fast, average, safeLow, options)
       } else {
-        tx = await wallet.CloversController.retrieveStake(board, options)
+        console.log('wants to verify')
+        // tx = await wallet.CloversController.retrieveStake(board, options)
       }
-      debug('started tx:' + tx.hash)
-      await tx.wait()
+      // debug('started tx:' + tx.hash)
+      // await tx.wait()
       doneish = true
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      let tx
       if (typeof wallet.CloversController['challengeClover(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
         tx = await wallet.CloversController.challengeClover(board, fast, average, safeLow, options)
       } else {
-        tx = await wallet.CloversController.challengeClover(board, options)
+        console.log('wants to challenge')
+        // tx = await wallet.CloversController.challengeClover(board, options)
       }
-      debug('started tx:' + tx.hash)
-      await tx.wait()
+      // debug('started tx:' + tx.hash)
+      // await tx.wait()
       doneish = true
       debug(board + ' has been burned')
     }
