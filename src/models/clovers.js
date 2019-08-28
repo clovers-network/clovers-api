@@ -239,7 +239,11 @@ export async function doSyncOracle(_db, _io, tokenId) {
   if (salePrice.eq(parseEther('3')) && clover.owner.toLowerCase() === events.Clovers.address.toLowerCase()) {
     const flatFee = parseEther('10')
     debug(`contract clover sale price wrong, changing from ${formatEther(salePrice.toString(10))} to ${formatEther(flatFee.toString(10))}`)
-    await events.CloversController.instance.fixSalePrice(tokenId, flatFee)
+    if (typeof events.CloversController.instance['fixSalePrice(uint256,uint256)'] !== 'undefined') {
+      await events.CloversController.instance.fixSalePrice(tokenId, flatFee)
+    } else {
+      console.log(`CloversController Contract not updated yet`)
+    }
   } else {
     debug(`sale price ok ${formatEther(salePrice)} or not for sale by contract but ${clover.owner}`)
   }
@@ -515,11 +519,10 @@ async function oracleVerify (clover, symmetries) {
       if (typeof wallet.CloversController['retrieveStake(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
         tx = await wallet.CloversController.retrieveStake(board, fast, average, safeLow, options)
       } else {
-        console.log('wants to verify')
-        // tx = await wallet.CloversController.retrieveStake(board, options)
+        tx = await wallet.CloversController.retrieveStake(board, options)
       }
-      // debug('started tx:' + tx.hash)
-      // await tx.wait()
+      debug('started tx:' + tx.hash)
+      await tx.wait()
       doneish = true
       debug(board + ' moved to new owner')
     } else {
@@ -527,11 +530,10 @@ async function oracleVerify (clover, symmetries) {
       if (typeof wallet.CloversController['challengeClover(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
         tx = await wallet.CloversController.challengeClover(board, fast, average, safeLow, options)
       } else {
-        console.log('wants to challenge')
-        // tx = await wallet.CloversController.challengeClover(board, options)
+        tx = await wallet.CloversController.challengeClover(board, options)
       }
-      // debug('started tx:' + tx.hash)
-      // await tx.wait()
+      debug('started tx:' + tx.hash)
+      await tx.wait()
       doneish = true
       debug(board + ' has been burned')
     }
