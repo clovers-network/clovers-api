@@ -233,22 +233,11 @@ export async function doSyncOracle(_db, _io, tokenId) {
     const symmetries = await events.Clovers.instance.getSymmetries(tokenId)
     await oracleVerify(clover, symmetries)
   } else {
-    debug(`${tokenId} already collected, checking price`)
-    const salePrice = await events.SimpleCloversMarket.instance.sellPrice(
-      tokenId
-    )
-
-    if (salePrice.eq(parseEther('3')) && clover.owner === events.Clovers.address) {
-      const flatFee = parseEther('10')
-      debug(`contract clover sale price wrong, changing from ${formatEther(salePrice.toString(10))} to ${formatEther(flatFee.toString(10))}`)
-      await events.CloversController.instance.fixSalePrice(tokenId, flatFee)
-    } else {
-      debug(`sale price ok ${formatEther(salePrice)} or not for sale by contract but ${clover.owner}`)
-    }
+    debug(`${tokenId} already collected`)
   }
 
   const salePrice = await events.SimpleCloversMarket.instance.sellPrice(tokenId)
-  if (salePrice.eq(parseEther('3')) && clover.owner === events.Clovers.address) {
+  if (salePrice.eq(parseEther('3')) && clover.owner.toLowerCase() === events.Clovers.address.toLowerCase()) {
     const flatFee = parseEther('10')
     debug(`contract clover sale price wrong, changing from ${formatEther(salePrice.toString(10))} to ${formatEther(flatFee.toString(10))}`)
     await events.CloversController.instance.fixSalePrice(tokenId, flatFee)
