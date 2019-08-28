@@ -494,15 +494,16 @@ async function oracleVerify (clover, symmetries) {
     safeLow = new BigNumber(gasPrices.safeLow).div(10).mul(oneGwei)
   } catch (error) {
     debug(error)
-    fast = 10000000000
-    average = 5000000000
-    safeLow = 1000000000
+    fast = (new BigNumber(10)).mul(oneGwei)
+    average = (new BigNumber(5)).mul(oneGwei)
+    safeLow = (new BigNumber(1)).mul(oneGwei)
   }
   try {
 
     const options = {
       gasPrice: fast.toString(10)
     }
+    console.log({gasPrice: gasPrice.toString(10), gasPriceEth: formatEther(gasPrice)})
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
