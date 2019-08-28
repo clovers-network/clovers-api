@@ -517,7 +517,7 @@ async function oracleVerify (clover, symmetries) {
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
       if (typeof wallet.CloversController['retrieveStake(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
-        tx = await wallet.CloversController.retrieveStake(board, fast, average, safeLow, options)
+        tx = await wallet.CloversController.retrieveStake(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
         tx = await wallet.CloversController.retrieveStake(board, options)
       }
@@ -528,7 +528,7 @@ async function oracleVerify (clover, symmetries) {
     } else {
       debug(board + ' is not valid, please burn')
       if (typeof wallet.CloversController['challengeClover(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
-        tx = await wallet.CloversController.challengeClover(board, fast, average, safeLow, options)
+        tx = await wallet.CloversController.challengeClover(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
         tx = await wallet.CloversController.challengeClover(board, options)
       }
