@@ -5,13 +5,10 @@ import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 import { getLogs, transformLog, processLog } from '../lib/build.js'
-<<<<<<< HEAD
 import Axios from 'axios';
-import { BigNumber } from 'ethers/utils';
-=======
+import { BigNumber, parseEther, formatEther } from 'ethers/utils';
 import clovers from '../api/clovers';
 import config from '../config.json'
->>>>>>> master
 let db
 let io
 
@@ -235,7 +232,18 @@ export async function doSyncOracle(_db, _io, tokenId) {
     const symmetries = await events.Clovers.instance.getSymmetries(tokenId)
     await oracleVerify(clover, symmetries)
   } else {
-    debug(`${tokenId} already collected`)
+    debug(`${tokenId} already collected, checking price`)
+    const salePrice = await events.SimpleCloversMarket.instance.sellPrice(
+      tokenId
+    )
+
+    if (salePrice.eq(parseEther('3')) && clover.owner === events.Clovers.address) {
+      const flatFee = parseEther('10')
+      debug(`contract clover sale price wrong, changing from ${formatEther(salePrice.toString(10))} to ${formatEther(flatFee.toString(10))}`)
+      await events.CloversController.instance.fixSalePrice(tokenId, flatFee)
+    } else {
+      debug(`sale price ok ${formatEther(salePrice)} or not for sale by contract but ${clover.owner}`)
+    }
   }
 }
 
@@ -471,6 +479,14 @@ async function oracleVerify (clover, symmetries) {
     debug(`token no longer owned by contract, no need to verify ${board}`)
     return
   }
+
+  var movesHash = await events.Clovers.instance.getMovesHash(board)
+  var commits = await events.Clovers.instance.getCommits(movesHash)
+  if (commits.collected) {
+    debug(`token has already been collected, no need to verify ${board}`)
+    return
+  }
+
   let fast, average, safeLow
   try {
     const gasPrices = await axios('https://ethgasstation.info/json/ethgasAPI.json')
@@ -506,6 +522,7 @@ async function oracleVerify (clover, symmetries) {
       debug(board + ' has been burned')
     }
   } catch (err) {
+    debug(`error on clover ${board} with tx ${tx}`)
     debug(err)
     setTimeout(() => {
       debug(board + ': waited 3 minutes')
