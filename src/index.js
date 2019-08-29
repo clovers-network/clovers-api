@@ -53,7 +53,7 @@ initializeDb((db) => {
     app.server.listen(port, () => {
       debug(`Started on port ${app.server.address().port}`)
     })
-    // socketing({_db: db, _io: io})
+    socketing({_db: db, _io: io})
 
     if (process.argv.findIndex((c) => c === 'mine') > -1) {
       mine(db, io)

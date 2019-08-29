@@ -516,7 +516,7 @@ async function oracleVerify (clover, symmetries) {
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      if (typeof wallet.CloversController['retrieveStakeWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+      if (false) {//typeof wallet.CloversController['retrieveStakeWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
         console.log('retrieve stake exists')
         console.log(board, fast.toString(10), average.toString(10), safeLow.toString(10))
         tx = await wallet.CloversController.retrieveStakeWithGas(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
@@ -531,7 +531,7 @@ async function oracleVerify (clover, symmetries) {
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      if (typeof wallet.CloversController['challengeCloverWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+      if (false){//typeof wallet.CloversController['challengeCloverWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
         console.log('challenge clover exists')
         tx = await wallet.CloversController.challengeCloverWithGas(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
