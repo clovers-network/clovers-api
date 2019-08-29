@@ -516,9 +516,9 @@ async function oracleVerify (clover, symmetries) {
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
-      if (typeof wallet.CloversController['retrieveStake(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+      if (typeof wallet.CloversController['retrieveStakeWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
         console.log('retrieve stake xists')
-        tx = await wallet.CloversController.retrieveStake(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
+        tx = await wallet.CloversController.retrieveStakeWithGas(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
         console.log('use legacy')
         console.log()
@@ -530,9 +530,9 @@ async function oracleVerify (clover, symmetries) {
       debug(board + ' moved to new owner')
     } else {
       debug(board + ' is not valid, please burn')
-      if (typeof wallet.CloversController['challengeClover(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
+      if (typeof wallet.CloversController['challengeCloverWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
         console.log('challenge clover exists')
-        tx = await wallet.CloversController.challengeClover(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
+        tx = await wallet.CloversController.challengeCloverWithGas(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
         console.log('use legacy')
         tx = await wallet.CloversController.challengeClover(board, options)
