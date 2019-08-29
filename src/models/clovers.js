@@ -517,7 +517,8 @@ async function oracleVerify (clover, symmetries) {
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
       if (typeof wallet.CloversController['retrieveStakeWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
-        console.log('retrieve stake xists')
+        console.log('retrieve stake exists')
+        console.log(board, fast.toString(10), average.toString(10), safeLow.toString(10))
         tx = await wallet.CloversController.retrieveStakeWithGas(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
         console.log('use legacy')
