@@ -2,6 +2,11 @@
 # yarn lockfile v1
 
 
+"@gnosis.pm/util-contracts@^2.0.1":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@gnosis.pm/util-contracts/-/util-contracts-2.0.1.tgz#20ba5dcfaf4a7456ad22c720f8c9b464b85e8b59"
+  integrity sha512-Z1R15atpbTr/+ac4o9qW3kbNHSPnCaWsPxn62xsr9aRAjif1qbGkT8jFghBYtEN14lmJXOw0vfMsNj2UDOHrTA==
+
 "@pm2/agent@^0.5.11":
   version "0.5.13"
   resolved "https://registry.yarnpkg.com/@pm2/agent/-/agent-0.5.13.tgz#e3778413a01ace791527d66b50ff8c3b7b87bcdc"
@@ -1600,10 +1605,12 @@ clone@^2.0.0, clone@^2.1.1:
   version "2.1.1"
   resolved "https://registry.yarnpkg.com/clone/-/clone-2.1.1.tgz#d217d1e961118e3ac9a4b8bba3285553bf647cdb"
 
-clovers-contracts@1.0.20:
-  version "1.0.20"
-  resolved "https://registry.yarnpkg.com/clovers-contracts/-/clovers-contracts-1.0.20.tgz#d53146dc4038c75a53f773264dda637240054b5c"
-  integrity sha512-OlV1yJn3+A6BJpw8lnVQgJLbn7jh0VeuijPg9WKRqn3Cynm0cJoQDhO+84YwLdo3FQasx2NspvRtuovE0XfaCA==
+clovers-contracts@1.0.21:
+  version "1.0.21"
+  resolved "https://registry.yarnpkg.com/clovers-contracts/-/clovers-contracts-1.0.21.tgz#ca794be52feea461bcc4b5226010fa9faf916045"
+  integrity sha512-Pp9tZU0jlP1qK+242/WWPZatpSnJyDuME6Whyr/d0Jso7wJRCE5dP0BBZvU1kSk+CBEG5HzTxX+Z3HKYUYJw+w==
+  dependencies:
+    "@gnosis.pm/util-contracts" "^2.0.1"
 
 clovers-reversi@1.0.21:
   version "1.0.21"
