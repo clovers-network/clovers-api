@@ -6,27 +6,18 @@ import orders from './orders'
 import albums from './albums'
 import users from './users'
 import chats from './chats'
+import search from './search'
 import logs from './logs'
 
 export default ({ config, db, io }) => {
   let api = Router()
 
-  // mount the clovers resource
   api.use('/clovers', clovers({ config, db, io }))
-
-  // mount the orders resource
   api.use('/orders', orders({ config, db, io }))
-  
-  // mount
   api.use('/albums', albums({ config, db, io }))
-
-  // mount the users resource
   api.use('/users', users({ config, db, io }))
-
-  // mount
   api.use('/chats', chats({ config, db, io }))
-
-  // mount the logs resource
+  api.use('/search', search({ config, db, io }))
   api.use('/logs', logs({ config, db, io }))
 
   // perhaps expose some API metadata at the root

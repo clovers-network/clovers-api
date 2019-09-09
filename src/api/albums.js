@@ -9,7 +9,7 @@ import uuid from 'uuid/v4'
 import { provider } from '../lib/ethers-utils'
 
 // addresses that can moderate comments :)
-const whitelist = []
+// const whitelist = []
 
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
@@ -30,8 +30,40 @@ export default ({ config, db, io }) => {
   let router = resource({
     load,
     id: 'id',
+
     // GET /
-    async index ({query}, res) {
+    async index ({ query }, res) {
+      // see ./search.js
+      const { s } = query
+      if (s) {
+        debug('search albums')
+
+        let results = await r.table('albums').filter((doc) => {
+          return doc('name').match(`(?i)${s}`)
+        }).coerceTo('array').run(db, (err, data) => {
+          if (err) throw new Error(err)
+          return data
+        })
+
+        return res.status(200).json(results).end()
+      }
+
+      const { clover } = query
+      if (clover) {
+        debug('albums by clover')
+
+        let results = await r.table('albums').getAll(clover.toLowerCase(), { index: 'clovers' })
+          .pluck('id', 'clovers', 'name', 'userAddress').coerceTo('array')
+          .orderBy(r.desc('name'))
+          .run(db, (err, data) => {
+            if (err) throw new Error(err)
+            return data
+          })
+        return res.status(200).json(results).end()
+      }
+
+      debug('get albums')
+
       const indexes = ['all', 'name', 'userAddress', 'dates', 'cloverCount']
       const pageSize = 12
       const sort = query.sort || 'modified'
@@ -92,7 +124,7 @@ export default ({ config, db, io }) => {
     },
     // GET
     async read (req, res) {
-      const {id} = req.params
+      const { id } = req.params
 
       const result = await r.table('albums').get(id)
         .do((doc) => {
@@ -108,15 +140,15 @@ export default ({ config, db, io }) => {
           debug(err)
           return res.status(500).end()
         })
-          
-        
+
+
       const status = result ? 200 : 404
       res.status(status).json(result).end()
     }
   })
 
   router.get('/list/:index', async (req, res) => {
-    let {index} = req.params
+    let { index } = req.params
     index = index || 'all'
     let result = await r.table('albums')
       .getAll(true, { index })
@@ -126,13 +158,11 @@ export default ({ config, db, io }) => {
           user: r.table('users').get(doc('userAddress'))
           .without('clovers', 'curationMarket').default(null)
         })
-      })
-      .run(db)
-      .catch((err) => {
+      }).coerceTo('array').run(db).catch((err) => {
         console.error(err)
         res.result(500).end()
       })
-      res.status(200).json(await result.toArray()).end()
+      res.status(200).json(result).end()
   })
 
   // Authentication header required
@@ -145,11 +175,10 @@ export default ({ config, db, io }) => {
 
   // new album
   router.post('/', async (req, res) => {
-    var {clovers, albumName} = req.body
+    var { clovers, albumName } = req.body
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
-      res.status(401).end()
-      return
+      return res.status(401).end()
     }
 
     let user = await r.table('users')
@@ -161,15 +190,19 @@ export default ({ config, db, io }) => {
       user = await makeUser(userAddress)
     }
 
+    if (!albumName) {
+      return res.status(400).send('No album name provided')
+    }
+
     const albumExists = await r.table('albums')
-    .getAll(albumName, {index: 'name'}).count().run(db).catch((err) => {
-      console.error({err})
+    .getAll(albumName.toLowerCase(), { index: 'name' }).count().run(db).catch((err, data) => {
+      if (err) console.error({err})
+      return data
     })
 
     if (albumExists > 0) {
       // album already named this
-      res.status(400).send(`Album Exists`)
-      return
+      return res.status(400).send(`Album Exists`)
     }
 
     try {
@@ -228,7 +261,7 @@ export default ({ config, db, io }) => {
       user.modified = modified
 
       // db update
-      const{ changes } = await r.table('users')
+      const { changes } = await r.table('users')
         .insert(user, { returnChanges: true })
         .run(db)
         .catch((err) => {
@@ -242,15 +275,12 @@ export default ({ config, db, io }) => {
         io.emit('updateUser', user)
         return user
     }
-
-    
   })
 
   router.put('/:id', async (req, res) => {
     let { albumName, clovers } = req.body
     if (!albumName || !clovers) {
-      res.status(500).end()
-      return
+      return res.status(500).end()
     }
     const { id } = req.params
 
@@ -270,13 +300,11 @@ export default ({ config, db, io }) => {
       user = await makeUser(userAddress)
     }
 
-    let albums = await r.table('albums').getAll(albumName, {index: 'name'}).pluck('id').run(db)
-    albums = await albums.toArray()
+    let albums = await r.table('albums').getAll(albumName.toLowerCase(), { index: 'name' }).pluck('id').coerceTo('array').run(db)
 
     // check if album already exists with name but with different id
     if (albums.length > 0 && albums[0].id !== id) {
-      res.status(401).send('Different album with that name already exists')
-      return
+      return res.status(401).send('Different album with that name already exists')
     }
 
     let album = await r.table('albums').get(id).run(db)
@@ -285,33 +313,29 @@ export default ({ config, db, io }) => {
     // check if albumName was changed
     if (album.name !== albumName && album.userAddress !== user.address) {
       // cant change name of album unless you are owner
-      res.status(401).send('Only owner can change name')
-      return
+      return res.status(401).send('Only owner can change name')
     }
 
     try {
       await verifyClovers(clovers, db)
     } catch (error) {
-      res.status(500).send(error.message)
-      return
+      return res.status(500).send(error.message)
     }
 
-    // check if any clovers were removed... 
+    // check if any clovers were removed...
     let cloversCopy = JSON.parse(JSON.stringify(album.clovers))
     clovers.forEach(c => {
       let i = cloversCopy.indexOf(c)
       cloversCopy.splice(i, 1)
     });
-    if(cloversCopy.length > 0 && album.userAddress !== user.address) {
+    if (cloversCopy.length > 0 && album.userAddress !== user.address) {
       // can't remove clovers unless you own the album
-      res.status(401).send('Only owner can remove clovers')
-      return
+      return res.status(401).send('Only owner can remove clovers')
     }
 
     // must update something
     if (album.name === albumName && album.clovers.join('') === clovers.join('')) {
-      res.status(400).send('Must update something')
-      return
+      return res.status(400).send('Must update something')
     }
 
     const blockNum = await provider.getBlockNumber().catch((err) => {
@@ -348,7 +372,7 @@ export default ({ config, db, io }) => {
         },
         userAddresses: []
       }
-    
+
       r.table('logs').insert(log)
         .run(db, (err) => {
           if (err) {
@@ -370,16 +394,14 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
-      res.status(401).end()
-      return
+      return res.status(401).end()
     }
 
     const album = await r.table('albums')
       .get(id).run(db)
 
     if (!album || !album.id || album.userAddress !== userAddress.toLowerCase()) {
-      res.status(404).end()
-      return
+      return res.status(404).end()
     }
 
     await r.table('albums')

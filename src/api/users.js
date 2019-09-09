@@ -37,20 +37,56 @@ export default ({ config, db, io }) => {
 
     /** GET / - List all entities */
     async index({ query }, res) {
+      // const indexes = ['all']
+
+      // see ./search.js!
+      const { s } = query
+      if (s) {
+        debug('search users')
+
+        let results = await r.table('users').filter((doc) => {
+          return doc('name').match(`(?i)${s}`)
+        }).map((doc) => {
+          return doc.merge({
+            cloverCount: r.table('clovers').getAll(doc('address'), { index: 'owner' }).count(),
+            albumCount: r.table('albums').getAll(doc('address'), { index: 'userAddress' }).count()
+          })
+        }).coerceTo('array').run(db, (err, data) => {
+          if (err) throw new Error(err)
+          return data
+        })
+
+        res.status(200).json(results).end()
+        return
+      }
+
+      debug('get users')
+
       const pageSize = 24
       const asc = query.asc === 'true'
+      const sort = query.sort === 'modified' ? '-modified' : '-balance'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
-      debug('get users')
+
+      const index = `all${sort}`
 
       let [results, count] = await Promise.all([
         r.table('users')
-          .orderBy(asc ? r.asc('modified') : r.desc('modified'))
+          .between([true, r.minval], [true, r.maxval], { index })
+          .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
           .slice(start, start + pageSize)
+          .map((doc) => {
+            return doc.merge({
+              cloverCount: r.table('clovers').getAll(doc('address'), { index: 'owner' }).count(),
+              albumCount: r.table('albums').getAll(doc('address'), { index: 'userAddress' }).count()
+            })
+          })
+          .coerceTo('array')
           .run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
           }),
         r.table('users')
+          .between([true, r.minval], [true, r.maxval], { index })
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -76,7 +112,7 @@ export default ({ config, db, io }) => {
         pageResults: results.length,
         filterBy: null,
         sort: asc ? 'ascending' : 'descending',
-        orderBy: 'modified',
+        orderBy: sort.substr(1),
         perPage: pageSize,
 
         results
@@ -169,6 +205,59 @@ export default ({ config, db, io }) => {
       sort: asc ? 'ascending' : 'descending',
       orderBy: 'modified',
       perPage: pageSize,
+
+      results
+    }
+
+    const status = results.length ? 200 : 404
+
+    res.status(status).json(response).end()
+  })
+
+  router.get('/:id/albums', async ({ params, query }, res) => {
+    const { id } = params
+    const pageSize = 12
+    const index = 'userAddress'
+    const asc = query.asc === 'true'
+    const sort = query.sort || 'modified'
+    const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
+
+    let [results, count] = await Promise.all([
+      r.table('albums')
+        .getAll(id, { index })
+        .orderBy(asc ? r.asc(sort) : r.desc(sort))
+        .slice(start, start + pageSize)
+        .run(db, (err, data) => {
+          if (err) throw new Error(err)
+          return data
+        }),
+      r.table('albums')
+        .getAll(id, { index })
+        .count().run(db, (err, data) => {
+          if (err) throw new Error(err)
+          return data
+        })
+    ]).catch((err) => {
+      debug('query error')
+      debug(err)
+      return res.status(500).end()
+    })
+
+    const currentPage = Math.max((parseInt(query.page) || 1), 1)
+    const hasNext = start + pageSize < count
+    let prevPage = currentPage - 1 || null
+    if (start >= count) {
+      prevPage = Math.ceil(count / pageSize)
+    }
+    const response = {
+      prevPage,
+      page: currentPage,
+      nextPage: hasNext ? currentPage + 1 : null,
+      allResults: count,
+      pageResults: results.length,
+      filterBy: index,
+      sort: asc ? 'ascending' : 'descending',
+      orderBy: sort,
 
       results
     }

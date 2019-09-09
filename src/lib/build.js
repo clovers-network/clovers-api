@@ -378,7 +378,7 @@ const tables = [
       [
         'name',
         (doc) => {
-          return doc('name')
+          return doc('name').downcase()
         }
       ],
       [
@@ -401,7 +401,9 @@ const tables = [
       ],
       [
         'all',
-        () => true
+        (doc) => {
+          return doc('clovers').count().gt(0)
+        }
       ]
     ]
   },

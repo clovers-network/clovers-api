@@ -15,10 +15,13 @@ import {Clovers} from 'clovers-contracts'
 let io, db
 
 export var socketing = function ({ _io, _db }) {
-  console.log('socketig')
-  // if (process.env.NODE_ENV !== 'production') {
-  //   return
-  // }
+  debug('socketing?')
+  if (process.env.HOME !== '/home/billy') {
+    debug('do not socket')
+    return
+  }
+
+  debug('yes')
 
   io = _io
   db = _db

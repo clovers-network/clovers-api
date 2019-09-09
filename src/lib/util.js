@@ -16,7 +16,7 @@ export function userTemplate(address = null) {
     address: address.toLowerCase(),
     created: 0,
     modified: 0,
-    balance: '0',
+    balance: ''.padStart(64, '0'),
     curationMarket: {},
     albumCount: 0
   }
