@@ -37,7 +37,7 @@ export default ({ config, db, io }) => {
 
     /** GET / - List all entities */
     async index({ query }, res) {
-      // const indexes = ['all']
+      const filters = ['clovers', 'albums']
 
       // see ./search.js!
       const { s } = query
@@ -58,6 +58,51 @@ export default ({ config, db, io }) => {
 
         res.status(200).json(results).end()
         return
+      }
+
+      const { filter } = query
+
+      if (filter && filters.includes(filter)) {
+        debug('leaderboards...')
+        const order = filter === 'clovers' ? 'cloverCount' : 'albumCount'
+        let [results, count] = await Promise.all([
+          r.table('users')
+            .map((doc) => {
+              return doc.merge({
+                cloverCount: r.table('clovers').getAll(doc('address'), { index: 'owner' }).count(),
+                albumCount: r.table('albums').getAll(doc('address'), { index: 'userAddress' }).count()
+              })
+            })
+            .orderBy(r.desc(order))
+            .slice(0, 24)
+            .coerceTo('array')
+            .run(db, (err, data) => {
+              if (err) throw err
+              return data
+            }),
+          r.table('users').count().run(db, (err, data) => {
+            if (err) throw err
+            return data
+          })
+        ]).catch((err) => {
+          debug('filter error')
+          debug(err)
+          return res.status(500).end()
+        })
+
+        const response = {
+          prevPage: null,
+          page: 1,
+          nextPage: 2,
+          allResults: count,
+          pageResults: results.length,
+          sort: 'descending',
+          perPage: 24,
+
+          results
+        }
+
+        return res.status(200).json(response).end()
       }
 
       debug('get users')

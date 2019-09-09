@@ -202,7 +202,7 @@ export default ({ config, db, io }) => {
 
     if (albumExists > 0) {
       // album already named this
-      return res.status(400).send(`Album Exists`)
+      return res.status(400).send(`Album already exists`)
     }
 
     try {
