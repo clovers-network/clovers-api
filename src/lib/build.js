@@ -159,16 +159,40 @@ const tables = [
       ],
 
       [
+        'multi-modified',
+        [
+          r.branch(
+            r.row('owner').eq(ZERO_ADDRESS),
+            false,
+            r.row('symmetries').values().reduce((a, c) => a.add(c))
+          ),
+          r.row('modified')
+        ]
+      ],
+
+      [
+        'multi-price',
+        [
+          r.branch(
+            r.row('owner').eq(ZERO_ADDRESS),
+            false,
+            r.row('symmetries').values().reduce((a, c) => a.add(c))
+          ),
+          r.row('price')
+        ]
+      ],
+
+      [
         'market-modified',
         [
-          r.row('price').ne('0'),
+          r.row('price').coerceTo('number').ne(0),
           r.row('modified')
         ]
       ],
       [
         'market-price',
         [
-          r.row('price').ne('0'),
+          r.row('price').coerceTo('number').ne(0),
           r.row('price')
         ]
       ],

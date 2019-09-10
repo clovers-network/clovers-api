@@ -114,7 +114,7 @@ export default ({ config, db, io }) => {
         pageResults: results.length,
         filterBy: index,
         sort: asc ? 'ascending' : 'descending',
-        orderBy: sort,
+        orderBy: sort.substr(1),
         perPage: pageSize,
 
         results
