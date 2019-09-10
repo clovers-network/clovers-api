@@ -9,9 +9,12 @@ import axios from 'axios';
 import { BigNumber, parseEther, formatEther } from 'ethers/utils';
 import clovers from '../api/clovers';
 import config from '../config.json'
+
+const nonAtomic = { nonAtomic: true }
 const oneGwei = '1000000000'
 let db
 let io
+
 export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = false) => {
   db = _db
   io = _io
@@ -29,7 +32,7 @@ export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = fa
       debug('new clover minted!')
       await addNewClover(log, skipOracle)
     } else {
-      await updateClover(log, skipOracle)
+      await updateClover(log)
     }
   } catch (error) {
     debug('error while adding/updating clovers')
@@ -37,23 +40,23 @@ export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = fa
     debug(error.stack)
   }
 }
-export const cloversApproval = async function({ log, io, _db }) {
+export const cloversApproval = async function ({ log, io, _db }) {
   // db = _db
   // io = _io
   debug(log.name + ' does not affect the database')
 }
-export const cloversApprovalForAll = async function({ log, io, _db }) {
+export const cloversApprovalForAll = async function ({ log, io, _db }) {
   // db = _db
   // io = _io
   debug(log.name + ' does not affect the database')
 }
-export const cloversOwnershipTransferred = async function({ log, io, _db }) {
+export const cloversOwnershipTransferred = async function ({ log, io, _db }) {
   // db = _db
   // io = _io
   debug(log.name + ' does not affect the database')
 }
 
-function isValid(tokenId, cloverMoves, cloverSymmetries) {
+function isValid (tokenId, cloverMoves, cloverSymmetries) {
   let reversi = new Reversi()
   if (cloverMoves.length === 1) {
     cloverMoves = cloverMoves[0]
@@ -111,7 +114,7 @@ function isValid(tokenId, cloverMoves, cloverSymmetries) {
   return true
 }
 
-export async function syncClover(_db, _io, clover) {
+export async function syncClover (_db, _io, clover) {
   db = _db
   io = _io
   debug('checking clover')
@@ -176,7 +179,7 @@ export async function syncClover(_db, _io, clover) {
       debug(`moves don't match making an update to board`)
       debug(`from ${cloverMoves.join(',')} to ${moves.join(',')}`)
       clover.moves = moves
-      await r.table('clovers').get(clover.board).update({moves}).run(db)
+      await r.table('clovers').get(clover.board).update({ moves }).run(db)
     } else {
       debug('moves are ok')
     }
@@ -186,7 +189,7 @@ export async function syncClover(_db, _io, clover) {
   }
 }
 
-export async function syncOracle(_db, _io, totalSupply, key = 1) {
+export async function syncOracle (_db, _io, totalSupply, key = 1) {
   db = _db
   io = _io
 
@@ -200,7 +203,7 @@ export async function syncOracle(_db, _io, totalSupply, key = 1) {
     tokenId = tokenId._hex
 
     await doSyncOracle(db, io, tokenId)
-    
+
     await syncOracle(db, io, totalSupply, key + 1)
     return 'done'
   } catch (error) {
@@ -208,7 +211,7 @@ export async function syncOracle(_db, _io, totalSupply, key = 1) {
   }
 }
 
-export async function doSyncOracle(_db, _io, tokenId) {
+export async function doSyncOracle (_db, _io, tokenId) {
   db = _db
   io = _io
   let clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
@@ -250,7 +253,7 @@ export async function doSyncOracle(_db, _io, tokenId) {
 
 }
 
-export async function syncPending(_db, _io, pending, key = 0) {
+export async function syncPending (_db, _io, pending, key = 0) {
   try {
     if (key >= pending.length) return
     db = _db
@@ -264,8 +267,8 @@ export async function syncPending(_db, _io, pending, key = 0) {
   }
 }
 
-export async function syncContract(_db, _io, totalSupply, key = 1) {
-  try { 
+export async function syncContract (_db, _io, totalSupply, key = 1) {
+  try {
     if (key >= totalSupply) return
     db = _db
     io = _io
@@ -291,14 +294,14 @@ export async function syncContract(_db, _io, totalSupply, key = 1) {
   }
 }
 
-async function doSyncContract(db, tokenId) {
+async function doSyncContract (db, tokenId) {
   let blockMinted = await events.Clovers.instance.getBlockMinted(tokenId)
   blockMinted = parseInt(blockMinted.toString())
 
   if (blockMinted === 0) {
     // let logs = r.table('logs').getAll()
     let dbLogs = await r.table('logs')
-      .filter({"name": "Clovers_Transfer"})
+      .filter({ name: 'Clovers_Transfer' })
       .filter((l) => l('data')('_tokenId').eq(tokenId))
       .default([])
       .run(db)
@@ -334,17 +337,23 @@ async function doSyncContract(db, tokenId) {
     debug({address,topics, genesisBlock, latest, limit, offset, previousLogs})
     throw new Error('Log 404')
   }
-  await r.table('logs').insert(logs, {  returnChanges: true, conflict: 'update' }).run(db)
+  await r.table('logs').insert(logs, { returnChanges: true, conflict: 'update' }).run(db)
   const skipOracle = true
   await processLog(logs, 0, db, skipOracle)
 }
 
-async function updateUser(log, user_id, add, _db) {
+async function updateUser (log, user_id, add, _db) {
   if (_db) {
     db = _db
   }
   user_id = user_id.toLowerCase()
-  if (user_id === ZERO_ADDRESS.toLowerCase()) return
+  if (user_id === ZERO_ADDRESS.toLowerCase()) {
+    debug('just update zero address')
+    await r.table('users').get(user_id).update({
+      cloverCount: r.table('clovers').getAll(r.row('address'), { index: 'owner' }).count()
+    }, nonAtomic).run(db)
+    return
+  }
   add = add === 'add'
   let command = r.table('users').get(user_id)
   let user = await dodb(db, command)
@@ -365,9 +374,15 @@ async function updateUser(log, user_id, add, _db) {
     .insert(user, { returnChanges: true, conflict: 'update' })
   await dodb(db, command)
   io && io.emit('updateUser', user)
+
+  // update counts
+  debug('update user\'s clover counts')
+  await r.table('users').get(user.address).update({
+    cloverCount: r.table('clovers').getAll(r.row('address'), { index: 'owner' }).count()
+  }, nonAtomic).run(db)
 }
 
-async function updateUsers(log, _db) {
+async function updateUsers (log, _db) {
   if (_db) {
     db = _db
   }
@@ -378,15 +393,14 @@ async function updateUsers(log, _db) {
   await updateUser(log, log.data._from, 'remove', db)
 }
 
-async function updateClover(log) {
+async function updateClover (log) {
   let command = r.table('clovers')
     .get(log.data._tokenId)
   let clover = await dodb(db, command)
   if (!clover) throw new Error('clover ' + log.data._tokenId + ' not found')
   clover.owner = log.data._to.toLowerCase()
   clover.modified = log.blockNumber
-  command = r.table('clovers')
-    .insert(clover, { returnChanges: true, conflict: 'update' })
+  command = r.table('clovers').insert(clover, { returnChanges: true, conflict: 'update' })
   await dodb(db, command)
 
   // get clover again, with comments and orders
@@ -406,9 +420,13 @@ async function updateClover(log) {
       io && io.emit('updateClover', result)
       debug(io ? 'emit updateClover' : 'do not emit updateClover')
     })
+
+  debug('update users after updateClover()')
+  await updateUser(log, log.data._to)
+  await updateUser(log, log.data._from)
 }
 
-async function addNewClover(log, skipOracle = false) {
+async function addNewClover (log, skipOracle = false) {
   debug('adding new Clover', log.data._tokenId)
   let tokenId = log.data._tokenId
   let hasFoundBy = log.userAddresses.filter(u => u.id === '_to')
@@ -465,15 +483,15 @@ async function addNewClover(log, skipOracle = false) {
   }
 }
 
-function checkFlag(flag) {
+function checkFlag (flag) {
   return process.argv.findIndex(c => c === flag) > -1
 }
 
 async function oracleVerify (clover, symmetries) {
-  console.log({clover})
+  // console.log({clover})
   let { board, moves } = clover
   debug(board + ' is being verified')
-  console.log({board}, {moves})
+  // console.log({board}, {moves})
 
   var doneish = false
 
@@ -494,7 +512,7 @@ async function oracleVerify (clover, symmetries) {
   try {
     const gasPricesResponse = await axios('https://ethgasstation.info/json/ethgasAPI.json')
     const gasPrices = gasPricesResponse.data
-    console.log({gasPrices})
+    // console.log({gasPrices})
     fast = new BigNumber(gasPrices.fast).div(10).mul(oneGwei)
     average = new BigNumber(gasPrices.average).div(10).mul(oneGwei)
     safeLow = new BigNumber(gasPrices.safeLow).div(10).mul(oneGwei)
@@ -505,24 +523,23 @@ async function oracleVerify (clover, symmetries) {
     safeLow = (new BigNumber(1)).mul(oneGwei)
   }
 
-  console.log({fast: formatEther(fast), average: formatEther(average), safeLow: formatEther(safeLow)})
+  // console.log({fast: formatEther(fast), average: formatEther(average), safeLow: formatEther(safeLow)})
   let tx
   try {
-    console.log(fast.toString(16), fast.toString(10), fast.toHexString())
+    // console.log(fast.toString(16), fast.toString(10), fast.toHexString())
     const options = {
       gasPrice: fast.toHexString()
     }
-    console.log({fast: fast.toString(10), gasPriceEth: formatEther(fast)})
+    // console.log({fast: fast.toString(10), gasPriceEth: formatEther(fast)})
     // dont verify clovers from the initial build
     if (isValid(board, moves, symmetries)) {
       debug(board + ' is valid, move to new owner')
       if (typeof wallet.CloversController['retrieveStakeWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
-        console.log('retrieve stake exists')
-        console.log(board, fast.toString(10), average.toString(10), safeLow.toString(10))
+        debug('retrieve stake exists')
+        debug(board, fast.toString(10), average.toString(10), safeLow.toString(10))
         tx = await wallet.CloversController.retrieveStakeWithGas(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
-        console.log('use legacy')
-        console.log()
+        debug('use legacy')
         tx = await wallet.CloversController.retrieveStake(board, options)
       }
       debug('started tx:' + tx.hash)
@@ -532,10 +549,10 @@ async function oracleVerify (clover, symmetries) {
     } else {
       debug(board + ' is not valid, please burn')
       if (typeof wallet.CloversController['challengeCloverWithGas(uint256,uint256,uint256,uint256)'] !== 'undefined' ) {
-        console.log('challenge clover exists')
+        debug('challenge clover exists')
         tx = await wallet.CloversController.challengeCloverWithGas(board, fast.toString(10), average.toString(10), safeLow.toString(10), options)
       } else {
-        console.log('use legacy')
+        debug('use legacy')
         tx = await wallet.CloversController.challengeClover(board, options)
       }
       debug('started tx:' + tx.hash)

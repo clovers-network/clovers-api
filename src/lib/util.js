@@ -10,7 +10,8 @@ var utils = require('ethers').utils
 
 export const oneEthInWei = utils.parseEther('1').toString(10)
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-export function userTemplate(address = null) {
+
+export function userTemplate(address = '') {
   return {
     name: '',
     address: address.toLowerCase(),
@@ -18,6 +19,7 @@ export function userTemplate(address = null) {
     modified: 0,
     balance: ''.padStart(64, '0'),
     curationMarket: {},
+    cloverCount: 0,
     albumCount: 0
   }
 }

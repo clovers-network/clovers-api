@@ -18,7 +18,7 @@ export var socketing = function ({ _io, _db }) {
   debug('socketing?')
   if (process.env.HOME !== '/home/billy') {
     debug('do not socket')
-    return
+    // return
   }
 
   debug('yes')

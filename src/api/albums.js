@@ -356,6 +356,14 @@ export default ({ config, db, io }) => {
         res.status(500).end()
         return
       }
+
+      // update the user
+      await r.table('users').get(user.address).update({
+        albumCount: r.table('albums')
+          .getAll(user.address, { index: 'userAddress' })
+          .count()
+      }, { nonAtomic: true }).run(db)
+
       // emit an event pls
       const log = {
         id: uuid(),
@@ -406,6 +414,13 @@ export default ({ config, db, io }) => {
 
     await r.table('albums')
       .get(id).delete().run(db)
+
+    // update the user
+    await r.table('users').get(userAddress.toLowerCase()).update({
+      albumCount: r.table('albums')
+        .getAll(userAddress.toLowerCase(), { index: 'userAddress' })
+        .count()
+    }, { nonAtomic: true }).run(db)
 
     res.status(200).end()
   })
