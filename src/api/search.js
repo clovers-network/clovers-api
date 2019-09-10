@@ -24,11 +24,6 @@ export default ({ config, db, io }) => {
       let [users, albums] = await Promise.all([
         r.table('users').filter((doc) => {
           return doc('name').match(`(?i)${s}`)
-        }).map((doc) => {
-          return doc.merge({
-            cloverCount: r.table('clovers').getAll(doc('address'), { index: 'owner' }).count(),
-            albumCount: r.table('albums').getAll(doc('address'), { index: 'userAddress' }).count()
-          })
         }).coerceTo('array').run(db, (err, data) => {
           if (err) throw new Error(err)
           return data
