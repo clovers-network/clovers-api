@@ -37,7 +37,7 @@ export default ({ config, db, io }) => {
 
     /** GET / - List all entities */
     async index({ query }, res) {
-      const filters = ['clovers', 'albums']
+      const filters = ['clovers', 'albums', 'modified', 'balance']
 
       // see ./search.js!
       const { s } = query
@@ -46,13 +46,8 @@ export default ({ config, db, io }) => {
 
         let results = await r.table('users').filter((doc) => {
           return doc('name').match(`(?i)${s}`)
-        }).map((doc) => {
-          return doc.merge({
-            cloverCount: r.table('clovers').getAll(doc('address'), { index: 'owner' }).count(),
-            albumCount: r.table('albums').getAll(doc('address'), { index: 'userAddress' }).count()
-          })
         }).coerceTo('array').run(db, (err, data) => {
-          if (err) throw new Error(err)
+          if (err) throw err
           return data
         })
 
@@ -60,80 +55,33 @@ export default ({ config, db, io }) => {
         return
       }
 
-      const { filter } = query
-
-      if (filter && filters.includes(filter)) {
-        debug('leaderboards...')
-        const order = filter === 'clovers' ? 'cloverCount' : 'albumCount'
-        let [results, count] = await Promise.all([
-          r.table('users')
-            .map((doc) => {
-              return doc.merge({
-                cloverCount: r.table('clovers').getAll(doc('address'), { index: 'owner' }).count(),
-                albumCount: r.table('albums').getAll(doc('address'), { index: 'userAddress' }).count()
-              })
-            })
-            .orderBy(r.desc(order))
-            .slice(0, 24)
-            .coerceTo('array')
-            .run(db, (err, data) => {
-              if (err) throw err
-              return data
-            }),
-          r.table('users').count().run(db, (err, data) => {
-            if (err) throw err
-            return data
-          })
-        ]).catch((err) => {
-          debug('filter error')
-          debug(err)
-          return res.status(500).end()
-        })
-
-        const response = {
-          prevPage: null,
-          page: 1,
-          nextPage: 2,
-          allResults: count,
-          pageResults: results.length,
-          sort: 'descending',
-          perPage: 24,
-
-          results
-        }
-
-        return res.status(200).json(response).end()
-      }
-
       debug('get users')
+
+      const { filter } = query
 
       const pageSize = 24
       const asc = query.asc === 'true'
-      const sort = query.sort === 'modified' ? '-modified' : '-balance'
+      const sort = (filter && filters.includes(filter)) ? filter : 'balance'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
 
-      const index = `all${sort}`
+      const index = `all-${sort}`
+
+      debug('get', index, sort)
 
       let [results, count] = await Promise.all([
         r.table('users')
           .between([true, r.minval], [true, r.maxval], { index })
           .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
           .slice(start, start + pageSize)
-          .map((doc) => {
-            return doc.merge({
-              cloverCount: r.table('clovers').getAll(doc('address'), { index: 'owner' }).count(),
-              albumCount: r.table('albums').getAll(doc('address'), { index: 'userAddress' }).count()
-            })
-          })
           .coerceTo('array')
           .run(db, (err, data) => {
-            if (err) throw new Error(err)
+            if (err) throw err
             return data
           }),
         r.table('users')
           .between([true, r.minval], [true, r.maxval], { index })
           .count().run(db, (err, data) => {
-            if (err) throw new Error(err)
+            if (err) throw err
             return data
           })
       ]).catch((err) => {
@@ -157,7 +105,7 @@ export default ({ config, db, io }) => {
         pageResults: results.length,
         filterBy: null,
         sort: asc ? 'ascending' : 'descending',
-        orderBy: sort.substr(1),
+        orderBy: sort,
         perPage: pageSize,
 
         results

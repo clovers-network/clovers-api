@@ -351,7 +351,37 @@ const tables = [
   },
   {
     name: 'users',
-    index: 'address'
+    index: 'address',
+    indexes: [
+      [
+        'all-modified',
+        [
+          r.row('address').ne(ZERO_ADDRESS),
+          r.row('modified')
+        ]
+      ],
+      [
+        'all-balance',
+        [
+          r.row('address').ne(ZERO_ADDRESS),
+          r.row('balance')
+        ]
+      ],
+      [
+        'all-clovers',
+        [
+          r.row('address').ne(ZERO_ADDRESS),
+          r.row('cloverCount')
+        ]
+      ],
+      [
+        'all-albums',
+        [
+          r.row('address').ne(ZERO_ADDRESS),
+          r.row('albumCount')
+        ]
+      ]
+    ]
   },
   {
     name: 'chats',
