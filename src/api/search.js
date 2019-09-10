@@ -10,7 +10,14 @@ export default ({ config, db, io }) => {
       debug(`searching... ${s}`)
 
       if (!s) {
-        res.status(400).json([]).end()
+        res.status(200).json({
+          query: '',
+          queryResults: 0,
+          userCount: 0,
+          albumCount: 0,
+          users: [],
+          albums: []
+        }).end()
         return
       }
 
