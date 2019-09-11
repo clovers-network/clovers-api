@@ -53,17 +53,22 @@ export default ({ config, db, io }) => {
     load,
 
     async index({ query }, res) {
-      const indexes = ['all', 'market', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'NonSym', 'public', 'contract', 'commented', 'pending']
+      const indexes = ['all', 'market', 'RotSym', 'X0Sym', 'Y0Sym', 'XYSym', 'XnYSym', 'Sym', 'NonSym', 'public', 'contract', 'commented', 'pending', 'multi']
       const pageSize = 24
       const asc = query.asc === 'true'
       const sort = query.sort === 'price' ? '-price' : '-modified'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
 
-      const index = !query.filter || query.filter === '' || !indexes.includes(query.filter) ? `all${sort}` : query.filter + sort
+      const index = (!query.filter || query.filter === '' || !indexes.includes(query.filter)) ? `all${sort}` : query.filter + sort
+
+      const multi = query.filter === 'multi'
+      const multis = (query.x && parseInt(query.x)) || 1 // 1, 3, 5
+
+      const getVal = multi ? multis : true
 
       let [results, count] = await Promise.all([
         r.table('clovers')
-          .between([true, r.minval], [true, r.maxval], { index })
+          .between([getVal, r.minval], [getVal, r.maxval], { index })
           .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
           .slice(start, start + pageSize)
           // .map((doc) => {
@@ -88,7 +93,7 @@ export default ({ config, db, io }) => {
             return data
           }),
         r.table('clovers')
-          .between([true, r.minval], [true, r.maxval], { index })
+          .between([getVal, r.minval], [getVal, r.maxval], { index })
           .count().run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
