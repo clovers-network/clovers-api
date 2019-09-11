@@ -1,7 +1,7 @@
 const debug = require('debug')('app:api:users')
 import resource from 'resource-router-middleware'
 import r from 'rethinkdb'
-import { toRes, userTemplate } from '../lib/util'
+import { toRes, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -41,7 +41,7 @@ export default ({ config, db, io }) => {
         debug('search users')
 
         let results = await r.table('users').filter((doc) => {
-          return doc('name').match(`(?i)${s}`)
+          return doc('name').match(`(?i)${s}`).and(doc('address').ne(ZERO_ADDRESS))
         }).coerceTo('array').run(db, (err, data) => {
           if (err) throw err
           return data
