@@ -40,6 +40,10 @@ export default ({ config, db, io }) => {
 
         let results = await r.table('albums').filter((doc) => {
           return doc('name').match(`(?i)${s}`)
+        }).map((doc) => {
+          return doc.merge({
+            user: r.table('users').get(doc('userAddress'))
+          })
         }).coerceTo('array').run(db, (err, data) => {
           if (err) throw new Error(err)
           return data
