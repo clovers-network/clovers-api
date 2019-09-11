@@ -7,6 +7,7 @@ import { auth } from '../middleware/auth'
 import xss from 'xss'
 import uuid from 'uuid/v4'
 import { provider } from '../lib/ethers-utils'
+import escapeRegex from 'escape-string-regexp'
 
 // addresses that can moderate comments :)
 // const whitelist = []
@@ -34,9 +35,11 @@ export default ({ config, db, io }) => {
     // GET /
     async index ({ query }, res) {
       // see ./search.js
-      const { s } = query
+      let { s } = query
       if (s) {
         debug('search albums')
+
+        s = escapeRegex(s)
 
         let results = await r.table('albums').filter((doc) => {
           return doc('name').match(`(?i)${s}`)

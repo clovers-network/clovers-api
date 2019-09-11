@@ -18,6 +18,10 @@ const tables = [
     index: 'board',
     indexes: [
       [
+        'named',
+        r.row('name').downcase().ne(r.row('board').downcase())
+      ],
+      [
         'all-modified',
         [
           r.row('owner').ne(ZERO_ADDRESS),

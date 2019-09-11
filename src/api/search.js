@@ -1,13 +1,14 @@
 const debug = require('debug')('app:api:search')
 import resource from 'resource-router-middleware'
 import r from 'rethinkdb'
+import escapeRegex from 'escape-string-regexp'
 import { ZERO_ADDRESS } from '../lib/util'
 
 export default ({ config, db, io }) => {
   return resource({
     id: 'search',
     async index ({ query }, res) {
-      const { s } = query
+      let { s } = query
       debug(`searching... ${s}`)
 
       if (!s) {
@@ -22,7 +23,19 @@ export default ({ config, db, io }) => {
         return
       }
 
-      let [users, albums] = await Promise.all([
+      s = escapeRegex(s)
+
+      let [clovers, users, albums] = await Promise.all([
+        r.table('clovers').getAll(true, { index: 'named' }).filter((doc) => {
+          return doc('name').match(`(?i)${s}`)
+        }).map((doc) => {
+          return doc.merge({
+            user: r.table('users').get(doc('owner'))
+          })
+        }).coerceTo('array').run(db, (err, data) => {
+          if (err) throw new Error(err)
+          return data
+        }),
         r.table('users').filter((doc) => {
           return doc('name').match(`(?i)${s}`).and(doc('address').ne(ZERO_ADDRESS))
         }).coerceTo('array').run(db, (err, data) => {
@@ -47,9 +60,11 @@ export default ({ config, db, io }) => {
 
       const response = {
         query: s,
-        queryResults: users.length + albums.length,
+        queryResults: users.length + albums.length + clovers.length,
+        cloverCount: clovers.length,
         userCount: users.length,
         albumCount: albums.length,
+        clovers,
         users,
         albums
       }

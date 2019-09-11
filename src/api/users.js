@@ -6,6 +6,7 @@ import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
 import { provider } from '../lib/ethers-utils'
+import escapeRegex from 'escape-string-regexp'
 
 export default ({ config, db, io }) => {
   /** For requests with an `id`, you can auto-load the entity.
@@ -36,9 +37,11 @@ export default ({ config, db, io }) => {
       const filters = ['clovers', 'albums', 'modified', 'balance']
 
       // see ./search.js!
-      const { s } = query
+      let { s } = query
       if (s) {
         debug('search users')
+
+        s = escapeRegex(s)
 
         let results = await r.table('users').filter((doc) => {
           return doc('name').match(`(?i)${s}`).and(doc('address').ne(ZERO_ADDRESS))
