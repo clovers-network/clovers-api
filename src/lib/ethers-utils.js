@@ -8,8 +8,7 @@ import {
   ClubTokenController
 } from 'clovers-contracts'
 
-var ethers = require('ethers')
-
+export var ethers = require('ethers')
 
 export let iface = ethers.Interface
 export let web3mode = false
@@ -77,7 +76,7 @@ let cloversControllerInstance = new ethers.Contract(
 //   cloversControllerAddress
 // )
 
-const walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
+export const walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
 
 export let wallet = {
   CloversController: new ethers.Contract(
