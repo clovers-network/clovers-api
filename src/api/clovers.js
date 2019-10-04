@@ -290,7 +290,7 @@ export default ({ config, db, io }) => {
       if (_tokenId !== tokenId) return res.status(500).end(`Invalid tokenId`)
 
       const _symmetries= reversi.returnSymmetriesAsBN().toString(10)
-      if (_symmetries !== symmetries) return res.status(500).end(`Invalid symmetries ${_symmetries}`)
+      if (_symmetries !== symmetries) return res.status(500).end(`Invalid symmetries need ${_symmetries.toString(10)} but got ${symmetries.toString(10)}`)
 
       const hashedMsg = ethers.utils.solidityKeccak256([
         'uint256', 'bytes28[2]', 'uint256', 'bool', 'address'
