@@ -4,12 +4,10 @@ import {
   ClubToken,
   CloversController,
   SimpleCloversMarket,
-  // CurationMarket,
   ClubTokenController
 } from 'clovers-contracts'
 
-var ethers = require('ethers')
-
+export var ethers = require('ethers')
 
 export let iface = ethers.Interface
 export let web3mode = false
@@ -19,6 +17,7 @@ ethers.apiAccessToken = config.infuraAPI
 var network = config.network
 
 export let provider = ethers.getDefaultProvider(network.name);
+// export let provider = new ethers.providers.JsonRpcProvider('http://localhost:8545');
 
 
 let simpleCloversMarketABI = SimpleCloversMarket.abi
@@ -30,14 +29,6 @@ let simpleCloversMarketInstance = new ethers.Contract(
   provider
 )
 
-
-// let curationMarketABI = CurationMarket.abi
-// let curationMarketAddress = CurationMarket.networks[network.chainId].address
-// let curationMarketInstance = new ethers.Contract(
-//   curationMarketAddress,
-//   curationMarketABI,
-//   provider
-// )
 
 let clubTokenControllerABI = ClubTokenController.abi
 let clubTokenControllerAddress =
@@ -77,7 +68,7 @@ let cloversControllerInstance = new ethers.Contract(
 //   cloversControllerAddress
 // )
 
-const walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
+export const walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
 
 export let wallet = {
   CloversController: new ethers.Contract(
@@ -97,19 +88,6 @@ export let events = {
       // 'OwnershipTransferred'
     ]
   },
-  // CurationMarket: {
-  //   abi: curationMarketABI,
-  //   address: curationMarketAddress,
-  //   instance: curationMarketInstance,
-  //   eventTypes: [
-  //     'Transfer',
-  //     // 'Mint',
-  //     // 'Burn',
-  //     'Buy',
-  //     'Sell'
-  //     // 'OwnershipTransferred'
-  //   ]
-  // },
   Clovers: {
     abi: cloversABI,
     address: cloversAddress,

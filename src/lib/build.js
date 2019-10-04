@@ -849,7 +849,7 @@ function populateLog(contract, key = 0) {
           throw new Error('no ' + contract + ' - ' + eventTypes[key])
         }
 
-        var topics = eventType().topics
+        const topics = [eventType.topic]
         var genesisBlock = config.genesisBlock[config.network.chainId]
 
         let logs = await testLogs({
@@ -861,7 +861,7 @@ function populateLog(contract, key = 0) {
         if (logs.length === 1000) {
           logs = await getLogs({
             address: address.toLowerCase(),
-            topics: eventType().topics,
+            topics,
             genesisBlock: config.genesisBlock[config.network.chainId],
             latest: currBlock,
             limit: 10,
@@ -870,7 +870,7 @@ function populateLog(contract, key = 0) {
           })
         }
 
-        debug(eventType().name + ': ' + logs.length + ' logs')
+        debug(eventType.name + ': ' + logs.length + ' logs')
 
         logs = logs.filter(log => {
           if (log.address.toLowerCase() !== address.toLowerCase()) {

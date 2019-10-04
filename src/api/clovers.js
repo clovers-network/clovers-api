@@ -10,7 +10,7 @@ import xss from 'xss'
 import Reversi from 'clovers-reversi'
 import BigNumber from 'bignumber.js'
 import uuid from 'uuid/v4'
-import { provider, events } from '../lib/ethers-utils'
+import { provider, events, ethers, walletProvider } from '../lib/ethers-utils'
 
 const semiSecretToken = process.env.SYNC_TOKEN
 console.log(`TOKEN ——— ${semiSecretToken}`)
@@ -267,6 +267,42 @@ export default ({ config, db, io }) => {
     const status = results.length ? 200 : 404
 
     res.status(status).json(response).end()
+  })
+
+  router.post('/verify', async (req, res) => {
+    try {
+      let {
+        tokenId,
+        moves,
+        symmetries,
+        keep,
+        recepient
+      } = req.body
+
+      if (!moves || typeof keep === 'undefined' || !recepient ) return res.status(500).end(`Invalid moves, keep or recepient`)
+
+      const reversi = new Reversi()
+      reversi.playGameByteMoves(...moves)
+
+      if (reversi.error || !reversi.complete) return res.status(500).end(`Invalid Game`)
+
+      const _tokenId = `0x${reversi.byteBoard}`
+      if (_tokenId !== tokenId) return res.status(500).end(`Invalid tokenId`)
+
+      const _symmetries= reversi.returnSymmetriesAsBN().toString(10)
+      if (_symmetries !== symmetries) return res.status(500).end(`Invalid symmetries need ${_symmetries.toString(10)} but got ${symmetries.toString(10)}`)
+
+      const hashedMsg = ethers.utils.solidityKeccak256([
+        'uint256', 'bytes28[2]', 'uint256', 'bool', 'address'
+      ], [
+        tokenId, moves, symmetries, keep, recepient
+      ])
+
+      const ethersSig = await walletProvider.signMessage(ethers.utils.arrayify(hashedMsg))
+      return res.status(200).json(ethersSig).end()
+    } catch (error) {
+      return res.status(500).json(error).end()
+    }
   })
 
   router.get('/sync/pending/:id', async (req, res) => {
