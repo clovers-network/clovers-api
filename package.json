@@ -42,7 +42,7 @@
   "dependencies": {
     "bignumber.js": "^7.2.1",
     "body-parser": "^1.13.3",
-    "clovers-contracts": "2.1.0",
+    "clovers-contracts": "2.2.0",
     "clovers-reversi": "1.0.21",
     "compression": "^1.7.3",
     "cors": "^2.7.1",
