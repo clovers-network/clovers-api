@@ -5,3 +5,5 @@
 .DS_Store
 /rethinkdb_data
 /src/config.json
+/venv
+*.gz
