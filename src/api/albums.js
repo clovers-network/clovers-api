@@ -13,26 +13,12 @@ import { isAddress } from 'web3-utils'
 // addresses that can moderate comments :)
 // const whitelist = []
 
-const mergeUser = doc => doc.merge({
-  user: r.table('users').get(doc('userAddress'))
-  .without('clovers', 'curationMarket').default(null)
-})
-const mergeEditors = doc => doc.merge({
-  editorsData: r.table('users').getAll(r.args(doc('editors').default([])))
-  .coerceTo('array').pluck('address', 'name')
-})
-
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
     r.table('albums')
     .get(id)
     .default({})
-    .do((doc) => {
-      return doc.merge({
-        user: r.table('users').get(doc('userAddress'))
-        .without('clovers', 'curationMarket').default(null)
-      })
-    })
+    .do(mergeUser)
     .run(db, (res) => {
       callback(res)
     })
@@ -94,12 +80,7 @@ export default ({ config, db, io }) => {
           .getAll(true, { index })
           .orderBy(asc ? r.asc(sort) : r.desc(sort))
           .slice(start, start + pageSize)
-          .map((doc) => {
-            return doc.merge({
-              user: r.table('users').get(doc('userAddress'))
-              .without('clovers', 'curationMarket').default(null)
-            })
-          })
+          .map(mergeUser)
           .run(db, (err, data) => {
             if (err) throw new Error(err)
             return data
@@ -166,12 +147,8 @@ export default ({ config, db, io }) => {
     let result = await r.table('albums')
       .getAll(true, { index })
       .pluck('id', 'clovers', 'name', 'userAddress')
-      .map((doc) => {
-        return doc.merge({
-          user: r.table('users').get(doc('userAddress'))
-          .without('clovers', 'curationMarket').default(null)
-        })
-      }).coerceTo('array').run(db).catch((err) => {
+      .map(mergeUser)
+      .coerceTo('array').run(db).catch((err) => {
         console.error(err)
         res.result(500).end()
       })
@@ -519,6 +496,17 @@ export function albumListener (server, db) {
   })
 
 }
+
+// util to add user to doc
+const mergeUser = doc => doc.merge({
+  user: r.table('users').get(doc('userAddress'))
+  .without('clovers', 'curationMarket').pluck('address', 'name').default(null)
+})
+// util to add editors to doc
+const mergeEditors = doc => doc.merge({
+  editorsData: r.table('users').getAll(r.args(doc('editors').default([])))
+  .coerceTo('array').pluck('address', 'name')
+})
 
 async function verifyClovers(clovers, db) {
   const regex = /\b(0x[0-9a-fA-F]+|[0-9]+)\b/g;
