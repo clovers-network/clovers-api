@@ -8,6 +8,7 @@ import xss from 'xss'
 import uuid from 'uuid/v4'
 import { provider } from '../lib/ethers-utils'
 import escapeRegex from 'escape-string-regexp'
+import { isAddress } from 'web3-utils'
 
 // addresses that can moderate comments :)
 // const whitelist = []
@@ -137,7 +138,9 @@ export default ({ config, db, io }) => {
         .do((doc) => {
           return doc.merge({
             user: r.table('users').get(doc('userAddress'))
-            .without('clovers', 'curationMarket').default(null)
+            .without('clovers', 'curationMarket').default(null),
+            editorsData: r.table('users').getAll(r.args(doc('editors').default([])))
+            .coerceTo('array').pluck('address', 'name')
           })
         })
         .default({})
@@ -284,13 +287,17 @@ export default ({ config, db, io }) => {
     }
   })
 
+  // update album
   router.put('/:id', async (req, res) => {
-    let { albumName, clovers } = req.body
+    let { albumName, clovers, editors } = req.body
+    console.log('eddd', editors)
     if (!albumName || !clovers) {
       return res.status(500).end()
     }
+
     const { id } = req.params
 
+    // check user
     const userAddress = req.auth && req.auth.user
     if (!userAddress) {
       console.error("no userAddress")
@@ -314,11 +321,15 @@ export default ({ config, db, io }) => {
       return res.status(401).send('Different album with that name already exists')
     }
 
+    // get album
     let album = await r.table('albums').get(id).run(db)
+    const isOwner = user.address === album.userAddress
+    const isEditor = album.editors && album.editors.includes(user.address)
 
-    albumName = xss(albumName)
     // check if albumName was changed
-    if (album.name !== albumName && album.userAddress !== user.address) {
+    albumName = xss(albumName)
+    const nameChange = album.name !== albumName
+    if (nameChange && !isOwner) {
       // cant change name of album unless you are owner
       return res.status(401).send('Only owner can change name')
     }
@@ -329,34 +340,60 @@ export default ({ config, db, io }) => {
       return res.status(500).send(error.message)
     }
 
+    // check editors
+    editors = [...new Set(editors || [])] // de-dup ES6
+    const editorsCopy = JSON.parse(JSON.stringify(album.editors || []))
+    const sameEditors = editors.length === editorsCopy.length && editors.every(e => editorsCopy.includes(e))
+    console.log('same?', sameEditors, editors, editorsCopy)
+    
+    if (!sameEditors && !isOwner) {
+      // can't change editors unless you own the album
+      return res.status(401).send('Only owner can change editors')
+    }
+    
+    if (editors.length && !editors.every(e => isAddress(e))) {
+      // valid ETH addr
+      return res.status(401).send('Editors must be a valid ETH address.')
+    }
+
+    if (editors.length > 5) {
+      // max editors
+      return res.status(401).send('Max 5 editors')
+    }
+
     // check if any clovers were removed...
     let cloversCopy = JSON.parse(JSON.stringify(album.clovers))
     clovers.forEach(c => {
       let i = cloversCopy.indexOf(c)
       cloversCopy.splice(i, 1)
     });
-    if (cloversCopy.length > 0 && album.userAddress !== user.address) {
-      // can't remove clovers unless you own the album
-      return res.status(401).send('Only owner can remove clovers')
+
+    if (cloversCopy.length > 0 && !(isOwner || isEditor)) {
+      // can't remove clovers unless you can edit
+      return res.status(401).send('Only editors can remove clovers')
     }
 
     // must update something
-    if (album.name === albumName && album.clovers.join('') === clovers.join('')) {
+    if (!nameChange && album.clovers.join('') === clovers.join('')  && sameEditors) {
       return res.status(400).send('Must update something')
     }
+
+    const emitLog = nameChange || clovers.length > album.clovers.length // name change or added clover
 
     const blockNum = await provider.getBlockNumber().catch((err) => {
       debug(err.toString())
       return 0
     })
-    album.name = albumName
-    album.clovers = clovers
-    album.modified = new Date()
+    // album.name = albumName
+    // album.clovers = clovers
+    // album.modified = new Date()
+    // album.editors = editors
     // update it
     r.table('albums').get(id).update({
-      name: album.name,
-      clovers: album.clovers,
-      modified: album.modified
+      name: albumName,
+      clovers: clovers,
+      modified: new Date(),
+      editors: editors
     }).run(db, async (err,  _) => {
       if (err) {
         console.error('db run error')
@@ -371,38 +408,44 @@ export default ({ config, db, io }) => {
           .count()
       }, { nonAtomic: true }).run(db)
 
-      // emit an event pls
-      const log = {
-        id: uuid(),
-        name: 'Album_Updated',
-        removed: false,
-        blockNumber: blockNum,
-        userAddress: null, // necessary data below
-        data: {
-          id,
-          userAddress: user.address,
-          name: albumName,
-          board: clovers.length > 0 && clovers[0],
-          createdAt: new Date()
-        },
-        userAddresses: []
-      }
+      // add a log ?
+      if (emitLog) {
+        const log = {
+          id: uuid(),
+          name: 'Album_Updated',
+          removed: false,
+          blockNumber: blockNum,
+          userAddress: null, // necessary data below
+          data: {
+            id,
+            userAddress: user.address,
+            name: albumName,
+            board: clovers.length > 0 && clovers[0],
+            createdAt: new Date()
+          },
+          userAddresses: []
+        }
 
-      r.table('logs').insert(log)
-        .run(db, (err) => {
-          if (err) {
-            debug('album log not saved')
-            debug(err)
-          } else {
-            try {
-              io.emit('newLog', log)
-            } catch (error) {
-              console.error(error)
+        r.table('logs').insert(log)
+          .run(db, (err) => {
+            if (err) {
+              debug('album log not saved')
+              debug(err)
+            } else {
+              try {
+                io.emit('newLog', log)
+              } catch (error) {
+                console.error(error)
+              }
             }
-          }
-          res.status(200).json({ ...album, id }).end()
-        })
-      })
+            res.status(200).json({ ...album, id }).end()
+          })
+
+      // no log
+      } else {
+        res.status(200).json({ ...album, id }).end()
+      }
+    })
   })
 
   router.delete('/:id', async (req, res) => {
