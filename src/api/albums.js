@@ -24,6 +24,28 @@ export default ({ config, db, io }) => {
     })
   }
 
+  async function makeUser(userAddress) {
+    const modified = await provider.getBlockNumber()
+    var user = userTemplate(userAddress.toLowerCase())
+    user.created = modified
+    user.modified = modified
+
+    // db update
+    const { changes } = await r.table('users')
+      .insert(user, { returnChanges: true })
+      .run(db)
+      .catch((err) => {
+          console.error(err)
+          res.sendStatus(500).end()
+          return
+      })
+      if (changes[0]) {
+        user = changes[0].new_val
+      }
+      io.emit('updateUser', user)
+      return user
+  }
+
   let router = resource({
     load,
     id: 'id',
@@ -242,29 +264,6 @@ export default ({ config, db, io }) => {
           res.json({ ...album, id: generated_keys[0] }).end()
         })
     })
-
-
-    async function makeUser(userAddress) {
-      const modified = await provider.getBlockNumber()
-      var user = userTemplate(userAddress.toLowerCase())
-      user.created = modified
-      user.modified = modified
-
-      // db update
-      const { changes } = await r.table('users')
-        .insert(user, { returnChanges: true })
-        .run(db)
-        .catch((err) => {
-            console.error(err)
-            res.sendStatus(500).end()
-            return
-        })
-        if (changes[0]) {
-          user = changes[0].new_val
-        }
-        io.emit('updateUser', user)
-        return user
-    }
   })
 
   // update album
@@ -320,7 +319,8 @@ export default ({ config, db, io }) => {
     }
 
     // check editors
-    editors = [...new Set(editors || [])] // de-dup ES6
+    editors = (editors || []).map(ed => ed.toLowerCase())
+    editors = [...new Set(editors)] // de-dupe ES6
     const editorsCopy = JSON.parse(JSON.stringify(album.editors || []))
     const sameEditors = editors.length === editorsCopy.length && editors.every(e => editorsCopy.includes(e))
     
