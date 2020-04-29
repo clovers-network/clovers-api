@@ -13,6 +13,15 @@ import { isAddress } from 'web3-utils'
 // addresses that can moderate comments :)
 // const whitelist = []
 
+const mergeUser = doc => doc.merge({
+  user: r.table('users').get(doc('userAddress'))
+  .without('clovers', 'curationMarket').default(null)
+})
+const mergeEditors = doc => doc.merge({
+  editorsData: r.table('users').getAll(r.args(doc('editors').default([])))
+  .coerceTo('array').pluck('address', 'name')
+})
+
 export default ({ config, db, io }) => {
   const load = (req, id, callback) => {
     r.table('albums')
@@ -135,14 +144,8 @@ export default ({ config, db, io }) => {
       const { id } = req.params
 
       const result = await r.table('albums').get(id)
-        .do((doc) => {
-          return doc.merge({
-            user: r.table('users').get(doc('userAddress'))
-            .without('clovers', 'curationMarket').default(null),
-            editorsData: r.table('users').getAll(r.args(doc('editors').default([])))
-            .coerceTo('array').pluck('address', 'name')
-          })
-        })
+        .do(mergeUser)
+        .do(mergeEditors)
         .default({})
         .run(db)
         .catch((err) => {
@@ -290,7 +293,6 @@ export default ({ config, db, io }) => {
   // update album
   router.put('/:id', async (req, res) => {
     let { albumName, clovers, editors } = req.body
-    console.log('eddd', editors)
     if (!albumName || !clovers) {
       return res.status(500).end()
     }
@@ -344,7 +346,6 @@ export default ({ config, db, io }) => {
     editors = [...new Set(editors || [])] // de-dup ES6
     const editorsCopy = JSON.parse(JSON.stringify(album.editors || []))
     const sameEditors = editors.length === editorsCopy.length && editors.every(e => editorsCopy.includes(e))
-    console.log('same?', sameEditors, editors, editorsCopy)
     
     if (!sameEditors && !isOwner) {
       // can't change editors unless you own the album
@@ -356,9 +357,9 @@ export default ({ config, db, io }) => {
       return res.status(401).send('Editors must be a valid ETH address.')
     }
 
-    if (editors.length > 5) {
+    if (editors.length > 4) {
       // max editors
-      return res.status(401).send('Max 5 editors')
+      return res.status(401).send('Max 4 editors')
     }
 
     // check if any clovers were removed...
@@ -384,22 +385,24 @@ export default ({ config, db, io }) => {
       debug(err.toString())
       return 0
     })
-    // album.name = albumName
-    // album.clovers = clovers
-    // album.modified = new Date()
-    // album.editors = editors
     // update it
     r.table('albums').get(id).update({
       name: albumName,
       clovers: clovers,
       modified: new Date(),
-      editors: editors
+      editors: editors,
     }).run(db, async (err,  _) => {
       if (err) {
         console.error('db run error')
         res.status(500).end()
         return
       }
+
+      // get updated album
+      album = await r.table('albums').get(id)
+        .do(mergeUser)
+        .do(mergeEditors)
+        .run(db)
 
       // update the user
       await r.table('users').get(user.address).update({
