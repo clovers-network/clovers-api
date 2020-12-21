@@ -1,0 +1,17 @@
+{
+  "port": 4444,
+  "networkId": 4,
+  "network":  { "chainId": 4, "name": "rinkeby" },
+  "etherscanAPI": "abc",
+  "infuraAPI": "xyz",
+  "genesisBlock": {
+    "4": 4906267,
+    "1": 8363000
+  },
+  "bodyLimit": "100kb",
+  "corsHeaders": ["Link"],
+  "infuraKey": "asdf",
+  "oraclePrivateKey":
+    "0x1234",
+  "oraclePublicKey": "0xabcd"
+}
