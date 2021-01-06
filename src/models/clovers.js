@@ -1,17 +1,18 @@
 const debug = require('debug')('app:models:clovers')
 import r from 'rethinkdb'
-import { events, wallet } from '../lib/ethers-utils'
+import { events } from '../lib/ethers-utils'
 import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 import { getLogs, transformLog, processLog } from '../lib/build.js'
-import axios from 'axios';
-import { BigNumber, parseEther, formatEther } from 'ethers/utils';
-import clovers from '../api/clovers';
+// import axios from 'axios'
+// import { BigNumber, parseEther, formatEther } from 'ethers/utils'
+import { parseEther, formatEther } from 'ethers/utils'
+// import clovers from '../api/clovers'
 import config from '../config.json'
 
 const nonAtomic = { nonAtomic: true }
-const oneGwei = '1000000000'
+// const oneGwei = '1000000000'
 let db
 let io
 
@@ -24,7 +25,7 @@ export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = fa
   } catch (error) {
     debug('error while updating users')
     debug(error.message)
-    debug(error.stack)
+    // debug(error.stack)
   }
   try {
     // update the clover
@@ -36,8 +37,7 @@ export const cloversTransfer = async ({ log, io: _io, db: _db }, skipOracle = fa
     }
   } catch (error) {
     debug('error while adding/updating clovers')
-    debug(error.message)
-    debug(error.stack)
+    debug(error)
   }
 }
 export const cloversApproval = async function ({ log, io, _db }) {
@@ -359,8 +359,8 @@ async function updateUser (log, user_id, add, _db) {
   let user = await dodb(db, command)
   if (add) {
     if (!user) {
-      user = userTemplate(user_id)
-      user.created = log.blockNumber
+      user = userTemplate(user_id, log)
+      // user.created = log.blockNumber
     }
   } else {
     if (user) {
@@ -427,26 +427,37 @@ async function updateClover (log) {
 }
 
 async function addNewClover (log, skipOracle = false) {
+  // debug(log)
   debug('adding new Clover', log.data._tokenId)
   let tokenId = log.data._tokenId
   let hasFoundBy = log.userAddresses.filter(u => u.id === '_to')
-  let foundBy = cloverKept && hasFoundBy.length > 0 ? hasFoundBy[0].address : null
+  let retry = false
 
   let [
     cloverKept,
     cloverMoves,
     cloverReward,
     cloverSymmetries,
-    cloverBlock,
+    // cloverBlock,
     price
   ] = await Promise.all([
-    events.Clovers.instance.getKeep(log.data._tokenId),
-    events.Clovers.instance.getCloverMoves(log.data._tokenId),
-    events.Clovers.instance.getReward(log.data._tokenId),
-    events.Clovers.instance.getSymmetries(log.data._tokenId),
-    events.Clovers.instance.getBlockMinted(log.data._tokenId),
+     events.Clovers.instance.getKeep(log.data._tokenId),
+     events.Clovers.instance.getCloverMoves(log.data._tokenId),
+     events.Clovers.instance.getReward(log.data._tokenId),
+     events.Clovers.instance.getSymmetries(log.data._tokenId),
+    // null, // events.Clovers.instance.getBlockMinted(log.data._tokenId),
     events.SimpleCloversMarket.instance.sellPrice(log.data._tokenId)
-  ])
+  ]).catch(async (err) => {
+    // console.log(err)
+    debug(err.responseText)
+    await sleep(30000)
+    retry = true
+    return addNewClover(log, skipOracle)
+  })
+
+  if (retry) return
+
+  let foundBy = cloverKept && hasFoundBy.length > 0 ? hasFoundBy[0].address : null
   // var cloverURI = await events.Clovers.instance.tokenURI(log.data._tokenId)
 
   let clover = {
@@ -458,13 +469,14 @@ async function addNewClover (log, skipOracle = false) {
     moves: cloverMoves,
     reward: padBigNum(cloverReward),
     symmetries: sym(cloverSymmetries),
-    created: Number(cloverBlock),
-    modified: Number(cloverBlock),
+    created: Number(log.blockNumber),
+    modified: Number(log.blockNumber),
     // store price as hex, padded for sorting/filtering in DB
     originalPrice: padBigNum(price),
     price: padBigNum(price),
     commentCount: 0
   }
+  // console.log(clover)
   let command = r.table('clovers').insert(clover)
   await dodb(db, command)
 
@@ -479,12 +491,16 @@ async function addNewClover (log, skipOracle = false) {
     if (checkFlag('build') || skipOracle) return
     // oracleVerify(clover, cloverSymmetries)
   } else {
-    console.log(log)
+    // debug(log)
   }
 }
 
 function checkFlag (flag) {
   return process.argv.findIndex(c => c === flag) > -1
+}
+
+function sleep (ms = 1000) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 // async function oracleVerify (clover, symmetries) {

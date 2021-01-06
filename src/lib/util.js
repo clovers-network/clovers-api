@@ -11,12 +11,12 @@ var utils = require('ethers').utils
 export const oneEthInWei = utils.parseEther('1').toString(10)
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
 
-export function userTemplate(address = '') {
+export function userTemplate (address = '', log = {}) {
   return {
     name: '',
     address: address.toLowerCase(),
-    created: 0,
-    modified: 0,
+    created: log.blockNumber || 0,
+    modified: log.blockNumber || 0,
     balance: ''.padStart(64, '0'),
     curationMarket: {},
     cloverCount: 0,
@@ -24,7 +24,7 @@ export function userTemplate(address = '') {
   }
 }
 
-export function albumTemplate(user, name, clovers) {
+export function albumTemplate (user, name, clovers) {
   if (!user) throw new Error('Must provide user object')
   if (!name) throw new Error('Must provide album name')
   return {
@@ -37,7 +37,7 @@ export function albumTemplate(user, name, clovers) {
 }
 
 
-export function commentTemplate(user, board, comment = '') {
+export function commentTemplate (user, board, comment = '') {
   if (!user) throw new Error('Must provide user object')
   if (!board) throw new Error('Board ID required')
   return {
@@ -62,7 +62,7 @@ export function dodb(db, command) {
   })
 }
 
-export async function getLowestPrice(
+export async function getLowestPrice (
   contract,
   targetAmount,
   _tokenId = null,
@@ -100,7 +100,7 @@ export async function getLowestPrice(
   )
 }
 
-export function parseLogForStorage(_l) {
+export function parseLogForStorage (_l) {
   let l = JSON.parse(JSON.stringify(_l))
   Object.keys(l).map((key, index) => {
     if (typeof l[key] === 'object' && l[key]._hex) {
@@ -126,7 +126,7 @@ export function padBigNum (amount, format = 10) {
   return amount.toString(format).padStart(64, '0')
 }
 
-export function toRes(res, status = 200) {
+export function toRes (res, status = 200) {
   return (err, thing) => {
     if (err) return res.status(500).send(err)
 
@@ -142,7 +142,7 @@ export function toRes(res, status = 200) {
   }
 }
 
-export function toSVG(id, size = 400) {
+export function toSVG (id, size = 400) {
   size = parseInt(size)
   return new Promise((resolve, reject) => {
     let green = '#01B463'
@@ -273,7 +273,7 @@ export function toSVG(id, size = 400) {
 //   })
 // }
 
-export function sym(syms) {
+export function sym (syms) {
   let RotSym = (syms >> 4) & (1 == 1)
   let Y0Sym = (syms >> 3) & (1 == 1)
   let X0Sym = (syms >> 2) & (1 == 1)

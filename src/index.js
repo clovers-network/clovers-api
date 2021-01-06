@@ -10,13 +10,12 @@ import middleware from './middleware'
 import api from './api'
 import config from './config.json'
 import { socketing } from './socketing'
-import { build, mine } from './lib/build'
+import { build, mine, syncChain, copyLogs } from './lib/build'
 import { commentListener } from './api/chats'
 
 let app = express()
 
 const port = process.env.PORT || 4444
-const host = process.env.HOST || 'localhost'
 
 app.server = http.createServer(app)
 
@@ -38,8 +37,16 @@ app.use(compression())
 
 // connect to db
 initializeDb((db) => {
-  if (process.argv.findIndex((c) => c === 'build') > -1) {
+  if (process.argv.findIndex(c => c.includes('sync')) > -1) {
+    process.argv.forEach(v => {
+      if (v.includes('sync')) {
+        syncChain(db)
+      }
+    })
+  } else if (process.argv.findIndex((c) => c === 'build') > -1) {
     build(db)
+  } else if (process.argv.findIndex(c => c === 'logs') > -1) {
+    copyLogs(db)
   } else {
     const io = require('socket.io')(app.server)
     commentListener(app.server, db)

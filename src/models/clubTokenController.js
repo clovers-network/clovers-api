@@ -13,10 +13,23 @@ export let clubTokenControllerSell = async function({ log, io, db }) {
 async function addBuySell(log, user, isBuy, io, db) {
   isBuy = isBuy === 'buy'
 
-  let order = {
+  const check = r.table('orders').getAll([
+    log.transactionHash,
+    log.logIndex
+  ], { index: 'unique_log' }).coerceTo('array')
+  const res = await dodb(db, check)
+
+  if (res.length) {
+    debug('order already exists')
+    return
+  }
+
+  const order = {
     market: 'ClubToken',
     created: log.blockNumber,
     transactionIndex: log.transactionIndex,
+    transactionHash: log.transactionHash,
+    logIndex: log.logIndex,
     type: isBuy ? 'buy' : 'sell',
     user,
     tokens: padBigNum(log.data.tokens),
@@ -24,10 +37,11 @@ async function addBuySell(log, user, isBuy, io, db) {
     poolBalance: padBigNum(log.data.poolBalance),
     tokenSupply: padBigNum(log.data.tokenSupply)
   }
-  let command = r.table('orders').insert(order)
+  const command = r.table('orders').insert(order)
   await dodb(db, command)
   io && io.emit('addOrder', order)
 }
-export let clubTokenControllerOwnershipTransferred = function({ log, io, db }) {
+
+export let clubTokenControllerOwnershipTransferred = function ({ log, io, db }) {
   debug(log)
 }

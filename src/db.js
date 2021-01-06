@@ -5,6 +5,7 @@ export default (callback) => {
   try {
     const chainId = config.network.chainId
     const dbName = `clovers_chain_${chainId}`
+    // const dbName = 'clovers_test'
     r.connect(
       { host: 'localhost', port: 28015, db: dbName },
       function (err, conn) {

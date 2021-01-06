@@ -261,7 +261,7 @@ export default ({ config, db, io }) => {
     })
 
 
-    async function makeUser(userAddress) {
+    async function makeUser (userAddress) {
       const modified = await provider.getBlockNumber()
       var user = userTemplate(userAddress.toLowerCase())
       user.created = modified

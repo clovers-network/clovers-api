@@ -1,6 +1,6 @@
 const debug = require('debug')('app:socketing')
 import { provider, events } from './lib/ethers-utils'
-import {network} from './config'
+import { network } from './config'
 import ethers from 'ethers'
 import * as clovers from './models/clovers'
 import * as clubToken from './models/clubToken'
@@ -11,6 +11,8 @@ import * as simpleCloversMarket from './models/simpleCloversMarket'
 import { transformLog } from './lib/build'
 import r from 'rethinkdb'
 import {Clovers} from 'clovers-contracts'
+
+const CLOVER_DB = `clovers_chain_${network.chainId}`
 
 let io, db
 
@@ -45,7 +47,7 @@ export var socketing = function ({ _io, _db }) {
   // beginListen('CloversController') // no events to listen to
   beginListen('SimpleCloversMarket')
   // beginListen('CurationMarket')
-   beginListen('ClubTokenController')
+  beginListen('ClubTokenController')
 }
 
 async function beginListen (contract, key = 0) {
@@ -64,7 +66,7 @@ async function beginListen (contract, key = 0) {
     return
   }
   debug('make a listener on ' + contract + ' ' + eventName)
-  events[contract].instance.on(eventName, (...foo) => {
+  events[contract].instance.on(eventName, async (...foo) => {
     let log = foo[foo.length - 1]
     // filter out events from different contracts
     let address = events[contract].address.toLowerCase()
@@ -73,6 +75,18 @@ async function beginListen (contract, key = 0) {
       return
     }
     log = transformLog(log, contract, key)
+
+    // no duplicates, hopefully
+    const check = r.table('logs').getAll([
+      log.transactionHash,
+      log.logIndex
+    ], { index: 'unique_log' }).coerceTo('array')
+    const res = await dodb(db, check)
+
+    if (res.length) {
+      debug('Log already stored')
+      return
+    }
 
     r.table('logs')
       .insert(log)
@@ -168,7 +182,22 @@ export var handleEvent = async ({ io, db, log }, skipOracle = false) => {
         throw new Error('Event ' + name + ' not found in ' + contract)
       }
       break
+    case 'Comment':
+    case 'CloverName':
+    case 'Album':
+      await modifyClover(log, db)
+      break
     default:
       return new Error('Contract ' + contract + ' not found')
   }
+}
+
+async function modifyClover ({ name, data, blockNumber }, db) {
+  const { board } = data
+  if (!board || !blockNumber) return
+
+  debug('updating clover modified value after', name)
+  await r.db(CLOVER_DB).table('clovers').get(board).update({
+    modified: blockNumber
+  }).run(db)
 }

@@ -106,7 +106,7 @@ async function changeUserBalance(user_id, amount, _tokenId, add, log) {
   let command = r.table('users').get(user_id)
   let user = await dodb(db, command)
   if (!user) {
-    user = userTemplate(user_id)
+    user = userTemplate(user_id, log)
     user.balance = '0'
   }
 

@@ -1,596 +1,38 @@
 import r from 'rethinkdb'
-import xss from 'xss'
 import config from '../config.json'
 import { handleEvent } from '../socketing'
-import ethers from 'ethers'
 import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
-import uuid from 'uuid/v4'
-import { provider, events, web3, web3mode } from '../lib/ethers-utils'
+import { provider, events } from '../lib/ethers-utils'
+import tables from './db-tables'
+
 const debug = require('debug')('app:build')
 
-const ZERO = '0000000000000000000000000000000000000000000000000000000000000000'
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+const CLOVER_DB = `clovers_chain_${config.network.chainId}`
 
-const tables = [
-  {
-    name: 'clovers',
-    index: 'board',
-    indexes: [
-      [
-        'named',
-        r.row('name').downcase().ne(r.row('board').downcase())
-      ],
-      [
-        'all-modified',
-        [
-          r.row('owner').ne(ZERO_ADDRESS),
-          r.row('modified')
-        ]
-      ],
-      [
-        'all-price',
-        [
-          r.row('owner').ne(ZERO_ADDRESS),
-          r.row('price')
-        ]
-      ],
+let db, io, running, syncing
 
-      [
-        'pending-modified',
-        [
-          r.row('owner').eq(events.Clovers.address.toLowerCase()).and(
-            r.row('price').eq(ZERO).or(
-              r.row('price').eq('0')
-            )
-          ),
-          r.row('modified')
-        ]
-      ],
-      [
-        'pending-price',
-        [
-          r.row('owner').eq(events.Clovers.address.toLowerCase()).and(
-            r.row('price').eq(ZERO).or(
-              r.row('price').eq('0')
-            )
-          ),
-          r.row('price')
-        ]
-      ],
-
-      [
-        'NonSym-modified',
-        [
-          r.row('symmetries').values().reduce((a, c) => a.add(c)).eq(0).and(
-            r.row('owner').ne(ZERO_ADDRESS)
-          ),
-          r.row('modified')
-        ]
-      ],
-      [
-        'NonSym-price',
-        [
-          r.row('symmetries').values().reduce((a, c) => a.add(c)).eq(0).and(
-            r.row('owner').ne(ZERO_ADDRESS)
-          ),
-          r.row('price')
-        ]
-      ],
-      [
-        'Sym-modified',
-        [
-          r.row('symmetries').values().reduce((a, c) => a.add(c)).gt(0),
-          r.row('modified')
-        ]
-      ],
-      [
-        'Sym-price',
-        [
-          r.row('symmetries').values().reduce((a, c) => a.add(c)).gt(0),
-          r.row('price')
-        ]
-      ],
-      [
-        'RotSym-modified',
-        [
-          r.row('symmetries')('RotSym').eq(1),
-          r.row('modified')
-        ]
-      ],
-      [
-        'RotSym-price',
-        [
-          r.row('symmetries')('RotSym').eq(1),
-          r.row('price')
-        ]
-      ],
-      [
-        'X0Sym-modified',
-        [
-          r.row('symmetries')('X0Sym').eq(1),
-          r.row('modified')
-        ]
-      ],
-      [
-        'X0Sym-price',
-        [
-          r.row('symmetries')('X0Sym').eq(1),
-          r.row('price')
-        ]
-      ],
-      [
-        'XYSym-modified',
-        [
-          r.row('symmetries')('XYSym').eq(1),
-          r.row('modified')
-        ]
-      ],
-      [
-        'XYSym-price',
-        [
-          r.row('symmetries')('XYSym').eq(1),
-          r.row('price')
-        ]
-      ],
-      [
-        'XnYSym-modified',
-        [
-          r.row('symmetries')('XnYSym').eq(1),
-          r.row('modified')
-        ]
-      ],
-      [
-        'XnYSym-price',
-        [
-          r.row('symmetries')('XnYSym').eq(1),
-          r.row('price')
-        ]
-      ],
-      [
-        'Y0Sym-modified',
-        [
-          r.row('symmetries')('Y0Sym').eq(1),
-          r.row('modified')
-        ]
-      ],
-      [
-        'Y0Sym-price',
-        [
-          r.row('symmetries')('Y0Sym').eq(1),
-          r.row('price')
-        ]
-      ],
-
-      [
-        'multi-modified',
-        [
-          r.branch(
-            r.row('owner').eq(ZERO_ADDRESS),
-            false,
-            r.row('symmetries').values().reduce((a, c) => a.add(c))
-          ),
-          r.row('modified')
-        ]
-      ],
-
-      [
-        'multi-price',
-        [
-          r.branch(
-            r.row('owner').eq(ZERO_ADDRESS),
-            false,
-            r.row('symmetries').values().reduce((a, c) => a.add(c))
-          ),
-          r.row('price')
-        ]
-      ],
-
-      [
-        'market-modified',
-        [
-          r.row('price').coerceTo('number').ne(0),
-          r.row('modified')
-        ]
-      ],
-      [
-        'market-price',
-        [
-          r.row('price').coerceTo('number').ne(0),
-          r.row('price')
-        ]
-      ],
-
-      [
-        'owner-modified',
-        [
-          r.row('owner').downcase(),
-          r.row('modified')
-        ]
-      ],
-      [
-        'owner-price',
-        [
-          r.row('owner').downcase(),
-          r.row('price')
-        ]
-      ],
-
-      [
-        'commented-modified',
-        [
-          r.row('commentCount').gt(0),
-          r.row('modified')
-        ]
-      ],
-      [
-        'commented-price',
-        [
-          r.row('commentCount').gt(0),
-          r.row('price')
-        ]
-      ],
-
-      [
-        'contract-modified',
-        [
-          r.row('owner').eq(events.Clovers.address.toLowerCase()),
-          r.row('modified')
-        ]
-      ],
-      [
-        'contract-price',
-        [
-          r.row('owner').eq(events.Clovers.address.toLowerCase()),
-          r.row('price')
-        ]
-      ],
-
-      [
-        'public-modified',
-        (doc) => {
-          return [
-            r.expr([
-              events.Clovers.address.toLowerCase(),
-              '0x0000000000000000000000000000000000000000'
-            ]).contains(doc('owner')).eq(false),
-            doc('modified')
-          ]
-        }
-      ],
-      [
-        'public-price',
-        (doc) => {
-          return [
-            r.expr([
-              events.Clovers.address.toLowerCase(),
-              '0x0000000000000000000000000000000000000000'
-            ]).contains(doc('owner')).eq(false),
-            doc('price')
-          ]
-        }
-      ],
-      [
-        'ownerfilter',
-        (doc) => {
-          return [
-            doc('owner').downcase(),
-            r.branch(
-              doc('price').ne('0'),
-              'forsale',
-              false
-            )
-          ]
-        }
-      ],
-      [
-        'ownersym',
-        (doc) => {
-          return [
-            doc('owner').downcase(),
-            doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
-          ]
-        }
-      ],
-
-      // old ones
-      [
-        'Sym',
-        (doc) => {
-          return doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
-        }
-      ],
-      [
-        'RotSym',
-        (doc) => {
-          return doc('symmetries')('RotSym').eq(1)
-        }
-      ],
-      [
-        'X0Sym',
-        (doc) => {
-          return doc('symmetries')('X0Sym').eq(1)
-        }
-      ],
-      [
-        'XYSym',
-        (doc) => {
-          return doc('symmetries')('XYSym').eq(1)
-        }
-      ],
-      [
-        'XnYSym',
-        (doc) => {
-          return doc('symmetries')('XnYSym').eq(1)
-        }
-      ],
-      [
-        'Y0Sym',
-        (doc) => {
-          return doc('symmetries')('Y0Sym').eq(1)
-        }
-      ],
-      [
-        'owner',
-        (doc) => {
-          return doc('owner').downcase()
-        }
-      ],
-      [
-        'all',
-        () => true
-      ],
-      [
-        'market',
-        (doc) => {
-          return doc('price').ne('0')
-        }
-      ],
-      // [
-      //   'rft',
-      //   (doc) => {
-      //     // curation market address
-      //     return doc('owner').eq('0x9b8e917d6a511d4a22dcfa668a46b508ac26731e')
-      //   }
-      // ],
-      [
-        'public',
-        (doc) => {
-          return r.expr([
-            // clovers and null address
-            events.Clovers.address.toLowerCase(),
-            '0x0000000000000000000000000000000000000000'
-          ]).contains(doc('owner')).eq(false)
-        }
-      ],
-      [
-        'contract',
-        (doc) => {
-          return doc('owner').eq(events.Clovers.address.toLowerCase())
-        }
-      ],
-      [
-        'commented',
-        (doc) => {
-          return doc('commentCount').gt(0)
-        }
-      ]
-    ]
-  },
-  {
-    name: 'users',
-    index: 'address',
-    indexes: [
-      [
-        'all-modified',
-        [
-          r.row('address').ne(ZERO_ADDRESS),
-          r.row('modified')
-        ]
-      ],
-      [
-        'all-balance',
-        [
-          r.row('address').ne(ZERO_ADDRESS),
-          r.row('balance')
-        ]
-      ],
-      [
-        'all-clovers',
-        [
-          r.row('address').ne(ZERO_ADDRESS),
-          r.row('cloverCount')
-        ]
-      ],
-      [
-        'all-albums',
-        [
-          r.row('address').ne(ZERO_ADDRESS),
-          r.row('albumCount')
-        ]
-      ]
-    ]
-  },
-  {
-    name: 'chats',
-    index: 'id',
-    indexes: [
-      [
-        'board',
-        (doc) => {
-          return doc('board').downcase()
-        }
-      ],
-      [
-        'dates',
-        (doc) => {
-          return [doc('board'), doc('created')]
-        }
-      ]
-    ]
-  },
-  {
-    name: 'albums',
-    index: 'id',
-    indexes: [
-      [
-        'name',
-        (doc) => {
-          return doc('name').downcase()
-        }
-      ],
-      [
-        'userAddress',
-        (doc) => {
-          return doc('userAddress')
-        }
-      ],
-      [
-        'dates',
-        (doc) => {
-          return [doc('id'), doc('modified')]
-        }
-      ],
-      [
-        'cloverCount',
-        (doc) => {
-          return doc('clovers').count()
-        }
-      ],
-      [
-        'all',
-        (doc) => {
-          return doc('clovers').count().gt(0)
-        }
-      ]
-    ]
-  },
-  {
-    name: 'logs',
-    indexes: [
-      // updated ones
-      [
-        'active',
-        (doc) => {
-          return [
-            r.branch(
-              // log.name is not in this list
-              // if
-              r.expr(['ClubToken_Transfer','CurationMarket_Transfer']).contains(doc('name')),
-              false,
-              // else if
-              doc('name').ne('Clovers_Transfer'),
-              true,
-              // not going to Clovers Contract
-              // else if
-              doc('data')('_to').downcase().ne(events.Clovers.address.toLowerCase()),
-              true,
-              // else
-              false
-            ),
-            doc('blockNumber')
-          ]
-        }
-      ],
-      [
-        'type',
-        (doc) => {
-          return [
-            r.branch(
-              r.expr(['ClubTokenController_Buy','ClubTokenController_Sell']).contains(doc('name')),
-              'Coin_Activity',
-              doc('name')
-            ),
-            doc('blockNumber')
-          ]
-        }
-      ],
-      [
-        'clovers',
-        (doc) => {
-          return [
-            r.branch(
-              doc.hasFields({ data: 'board' }),
-              doc('data')('board').downcase(),
-              r.branch(
-                doc.hasFields({ data: '_tokenId' }),
-                r.branch(
-                  doc('name').ne('CurationMarket_Transfer'),
-                  doc('data')('_tokenId').downcase(),
-                  null
-                ),
-                null
-              )
-            ),
-            doc('blockNumber')
-          ]
-        }
-      ],
-
-      // older
-      'name',
-      'userAddresses',
-      [
-        'activity',
-        (doc) => {
-          return r.branch(
-            // log.name is not in this list
-            // if
-            r.expr(['ClubToken_Transfer','CurationMarket_Transfer']).contains(doc('name')),
-            'priv',
-            // else if
-            doc('name').ne('Clovers_Transfer'),
-            'pub',
-            // not going to Clovers Contract
-            // else if
-            doc('data')('_to').downcase().ne(events.Clovers.address.toLowerCase()),
-            'pub',
-            // else
-            'priv'
-          )
-        }
-      ],
-      [
-        'clover',
-        (doc) => {
-          return r.branch(
-            doc.hasFields({ data: 'board' }),
-            doc('data')('board').downcase(),
-            r.branch(
-              doc.hasFields({ data: '_tokenId' }),
-              r.branch(
-                doc('name').ne('CurationMarket_Transfer'),
-                doc('data')('_tokenId').downcase(),
-                null
-              ),
-              null
-            )
-          )
-        }
-      ]
-    ]
-  },
-  {
-    name: 'orders',
-    index: 'id',
-    indexes: ['market']
-  }
-]
-
-let usernames = []
-let clovernames = []
-let db, io, running
-
-export function build(_db) {
+export function build (_db) {
   db = _db
   rebuildDatabases()
 }
 
-export function mine(_db, _io) {
+export function syncChain (_db) {
+  db = _db
+  syncing = true
+  syncLogs()
+}
+
+export function copyLogs (_db) {
+  db = _db
+  restoreLogs()
+}
+
+export function mine (_db, _io) {
   if (!db) db = _db
   io = _io
   running = true
-  io.on('mine', running => {
+  io.on('mine', data => {
     running = data
   })
   if (running) {
@@ -619,19 +61,19 @@ export function mine(_db, _io) {
   }
 }
 
-function rebuildDatabases() {
-  // testEvent()
-
+function rebuildDatabases () {
   debug('rebuildDatabases')
-  createDB()
-  .then(createTables)
-  .then(createIndexes)
-  .then(populateLogs)
+  // createDB()
+  // .then(createTables)
+  // .then(createIndexes)
+  copySyncData()
+  // .then(populateLogs)
   .then(processLogs)
   .then(nameClovers)
   .then(nameUsers)
-  .then(moveChats)
-  .then(res => {
+  // .then(moveChats)
+  // .then(moveAlbums)
+  .then(() => {
     debug('done!')
     process.exit()
   })
@@ -639,70 +81,43 @@ function rebuildDatabases() {
     debug(err)
   })
 }
-//
-// function testEvent() {
-//   let tx = "0x634f90048c1cac22becfe5953a9e63f932a4eaf690d9156011ec85a7d1997de0";
-//   let topics = [
-//     "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
-//     "0x0000000000000000000000000000000000000000000000000000000000000000",
-//     "0x00000000000000000000000035b701e4550f0fcc45d854040562e35a4600e4ee"
-//   ];
-//   let address = "0x345ca3e014aaf5dca488057592ee47305d9b3e10";
-//   if (web3mode) {
-//     // debug(events['Clovers'].instance)
-//     // events['Clovers'].instance['Transfer']({x: null}, {
-//     //   startBlock: 0,
-//     //   endBlock: 'latest'
-//     // }).get((error, result) => {
-//     //   debug(result)
-//     // })
-//     var filter = web3.eth.filter({
-//       fromBlock: 0,
-//       address: address.toLowerCase()
-//     });
-//     filter.get((err, result) => {
-//       debug(result);
-//     });
-//   } else {
-//     debug("not web3");
-//     provider.getTransactionReceipt(tx).then(resp => {
-//       debug(resp);
-//       resp.logs.map(log => {
-//         let logInfo = {
-//           address: address.toLowerCase(),
-//           fromBlock: 1,
-//           toBlock: 120
-//         };
-//         debug(logInfo);
-//         provider.send("eth_getLogs", logInfo).then(result => {
-//           debug("provider - eth_getLogs", result.length);
-//         });
-//         provider.getLogs(logInfo).then(logs => {
-//           debug("provider - getLogs", logs.length);
-//         });
-//         provider.getLogs(logInfo).then(logs => {
-//           debug("provider - getLogs", logs.length);
-//         });
-//       });
-//     });
-//   }
-// }
-function createDB() {
+
+function syncLogs () {
+  debug('syncing logs')
+  populateLogs(config.genesisBlock[config.network.chainId])
+  // .then(processLogs)
+  .then(() => {
+    debug('done sync...')
+    process.exit()
+  })
+  .catch(err => {
+    debug(err)
+  })
+}
+
+let newDBName = null
+
+function createDB () {
   debug('createDB')
   return new Promise((resolve, reject) => {
-    const chainId = config.network.chainId
-    const dbName = `clovers_chain_${chainId}`
     r.dbList().run(db, (err, res) => {
       if (err) return reject(err)
-      if (res.findIndex(a => a === dbName) > -1) {
-        debug(`dbDrop ${dbName}`)
-        r.dbDrop(dbName).run(db, (err, res) => {
+      if (res.findIndex(a => a === CLOVER_DB) > -1) {
+        debug(`rename ${CLOVER_DB}`)
+        newDBName = `${CLOVER_DB}_${new Date().getTime()}`
+        r.db(CLOVER_DB).config().update({
+          name: newDBName
+        }).run(db, (err) => {
           if (err) return reject(err)
           createDB().then(resolve)
         })
+        // r.dbDrop(dbName).run(db, (err, res) => {
+        //   if (err) return reject(err)
+        //   createDB().then(resolve)
+        // })
       } else {
-        debug(`dbCreate ${dbName}`)
-        r.dbCreate(dbName).run(db, (err, res) => {
+        debug(`dbCreate ${CLOVER_DB}`)
+        r.dbCreate(CLOVER_DB).run(db, (err, res) => {
           if (err) return reject(err)
           resolve()
         })
@@ -710,7 +125,8 @@ function createDB() {
     })
   })
 }
-function createTables(i = 0) {
+
+function createTables (i = 0) {
   debug('createTables')
   return new Promise((resolve, reject) => {
     if (i >= tables.length) {
@@ -729,7 +145,6 @@ function createTables(i = 0) {
   })
 }
 
-// untested :)
 async function createIndexes (i = 0) {
   debug(`create index #${i}`)
   if (i >= tables.length) {
@@ -759,40 +174,75 @@ async function asyncForEach (array, callback) {
   }
 }
 
-let currBlock = null
+async function copySyncData () {
+  const sb = 'sync'
+  await r.dbCreate(sb).run(db)
+  await r.db(sb).tableCreate('logs').run(db)
+  await r.db(sb).tableCreate('chats').run(db)
+  await r.db(sb).tableCreate('users', { primaryKey: 'address' }).run(db)
+  await r.db(sb).tableCreate('albums').run(db)
+  await r.db(sb).tableCreate('clovers', { primaryKey: 'board' }).run(db)
 
-async function populateLogs() {
+  // do copy
+  await r.db(sb).table('logs').insert(r.db(newDBName).table('logs')).run(db)
+  await r.db(sb).table('chats').insert(r.db(CLOVER_DB).table('chats')).run(db)
+  await r.db(sb).table('users').insert(r.db(CLOVER_DB).table('users')).run(db)
+  await r.db(sb).table('albums').insert(r.db(CLOVER_DB).table('albums')).run(db)
+  await r.db(sb).table('clovers').insert(r.db(CLOVER_DB).table('clovers')).run(db)
+
+  debug('did the copying')
+  return
+}
+
+let currBlock = null
+let fromBlock = null
+let maxBlock = null
+
+async function populateLogs (block) {
   debug('populateLogs')
   let blockNumber = await provider.getBlockNumber()
   currBlock = blockNumber
+  fromBlock = block || config.genesisBlock[config.network.chainId]
+  maxBlock = fromBlock + 10000
+
   debug('Current block number: ' + blockNumber)
   await populateLog('Clovers')
   // await populateLog('CloversController') // dont actually watch for any events here
   await populateLog('ClubToken')
   await populateLog('ClubTokenController')
   await populateLog('SimpleCloversMarket')
+
+  if (maxBlock < currBlock) {
+    debug('getting more logs from', maxBlock + 1)
+    try {
+      return populateLogs(maxBlock + 1)
+    } catch (err) {
+      debug(err)
+      return populateLogs(fromBlock)
+    }
+  }
 }
 
-async function testLogs({address, topics, genesisBlock}) {
-  return new Promise((resolve, reject) => {
-    provider.getLogs({
-      address,
-      topics,
-      fromBlock: genesisBlock,
-      toBlock: 'latest'
-    }).then((logs, err) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve(logs)
-      }
-    })
+async function testLogs ({ address, topics, genesisBlock }) {
+  debug('testLogs', genesisBlock, maxBlock)
+  await sleep(1000)
+  const logs = await provider.getLogs({
+    address,
+    topics,
+    fromBlock: genesisBlock,
+    toBlock: maxBlock
+  }).catch(async (err) => {
+    // console.error(err.responseText)
+    debug('testLogs err', err.responseText)
+    await sleep(30000)
+    return testLogs({ address, topics, genesisBlock })
   })
+  return logs
 }
 
 export async function getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs}){
   return new Promise((resolve, reject) => {
-    debug({genesisBlock})
+    debug({ genesisBlock })
     var fromBlock = genesisBlock + limit * offset
     var toBlock = genesisBlock + limit * (offset + 1)
 
@@ -826,7 +276,9 @@ export async function getLogs({address, topics, genesisBlock, latest, limit, off
   })
 }
 
-function populateLog(contract, key = 0) {
+let logsInserted = 0
+
+function populateLog (contract, key = 0) {
   return new Promise(async (resolve, reject) => {
     let eventTypes = events[contract].eventTypes
     if (key >= eventTypes.length) {
@@ -850,25 +302,15 @@ function populateLog(contract, key = 0) {
         }
 
         const topics = [eventType.topic]
-        var genesisBlock = config.genesisBlock[config.network.chainId]
+        const genesisBlock = fromBlock
 
+        debug('getting logs from', genesisBlock)
         let logs = await testLogs({
           address,
           topics,
           genesisBlock
         })
-        debug(logs.length)
-        if (logs.length === 1000) {
-          logs = await getLogs({
-            address: address.toLowerCase(),
-            topics,
-            genesisBlock: config.genesisBlock[config.network.chainId],
-            latest: currBlock,
-            limit: 10,
-            offset: 0,
-            previousLogs: []
-          })
-        }
+        debug('logs.length', logs.length)
 
         debug(eventType.name + ': ' + logs.length + ' logs')
 
@@ -884,11 +326,35 @@ function populateLog(contract, key = 0) {
 
         logs = logs.map(l => transformLog(l, contract, key))
 
+        const newOnes = []
+
+        for (const log of logs) {
+          const existing = await new Promise((resolve, reject) => {
+            r.table('logs')
+            .getAll([log.transactionHash, log.logIndex], { index: 'unique_log' })
+            .coerceTo('array')
+            .run(db, (err, res) => {
+              if (err) reject(err)
+              resolve(res[0])
+            })
+          })
+
+          if (!existing) {
+            newOnes.push(log)
+          }
+        }
+
+        if (newOnes.length) {
+          debug('New logs:', newOnes.length)
+          logsInserted += newOnes.length
+        } else {
+          debug(`No new logs for "${eventType.name}"`)
+        }
+
         return r.table('logs')
-          .insert(logs, {  returnChanges: true, conflict: 'update' })
+          .insert(newOnes, { returnChanges: true, conflict: 'update' })
           .run(db, (err, results) => {
             if (err) return reject(err)
-            debug(results)
             return populateLog(contract, key + 1)
               .then(resolve)
               .catch(reject)
@@ -901,12 +367,11 @@ function populateLog(contract, key = 0) {
   })
 }
 
-export function transformLog(_l, contract, key) {
-
+export function transformLog (_l, contract, key) {
   let address = events[contract].address.toLowerCase()
 
   if (_l.address.toLowerCase() !== address.toLowerCase()) {
-    console.error({_l})
+    debug({_l})
     throw new Error('Why did I get a log from another address?')
   }
 
@@ -930,36 +395,44 @@ export function transformLog(_l, contract, key) {
     }
     l.userAddresses = userAddresses
   } catch (err) {
-    console.error(err)
+    debug(err)
   }
   return l
 }
 
-function processLogs() {
+function processLogs () {
   debug('processLogs')
+  // if (logsInserted === 0) {
+  //   return Promise.resolve()
+  // }
+
   return new Promise((resolve, reject) => {
+    const genesisBlock = config.genesisBlock[config.network.chainId]
     r.table('logs')
-      .orderBy(
-        r.asc('blockNumber'),
-        r.asc('transactionIndex'),
-        r.asc('logIndex')
-      )
-      .run(db, (err, logs) => {
+      .between(genesisBlock, r.maxval, { index: 'blockNumber' })
+      // .between(genesisBlock, genesisBlock + 10000, { index: 'blockNumber' })
+      .orderBy({ index: 'blockNumber' })
+      .coerceTo('array')
+      .run(db, { arrayLimit: 200000 }, (err, logs) => {
+        if (logs) {
+          debug('got', logs.length, 'logs')
+        }
         if (err) return reject(err)
         processLog(logs)
           .then(() => {
             debug('processLog resolved')
             resolve()
           })
-          .catch(error => {
+          .catch((err) => {
             debug('processLog rejected')
-            reject(error)
+            debug(err)
+            reject(err)
           })
       })
   })
 }
 
-export function processLog(logs, i = 0, _db, skipOracle = false) {
+export function processLog (logs, i = 0, _db, skipOracle = false) {
   if (_db) {
     db = _db
   }
@@ -969,281 +442,103 @@ export function processLog(logs, i = 0, _db, skipOracle = false) {
       resolve()
     } else {
       let log = logs[i]
-      debug('process Log', log)
+      debug('process Log', [log.transactionHash, log.logIndex])
       debug(`blockNumber ${log.blockNumber}`)
-      handleEvent({ log, db}, skipOracle)
+      handleEvent({ log, db }, skipOracle)
         .then(() => {
           processLog(logs, i + 1, db, skipOracle)
             .then(resolve)
-            .catch(reject)
+            .catch((err) => {
+              debug('processLog err')
+              debug(err)
+              return proccessLog(logs, i, db, skipOracle)
+            })
         })
-        .catch(reject)
+        .catch(async (err) => {
+          debug('handleEvent err')
+          debug(err.responseText)
+          await sleep(1500)
+          return processLog(logs, i, _db, skipOracle)
+        })
     }
   })
 }
 
+async function moveChats () {
+  if (syncing) return
 
-async function moveChats(){
-  debug('move Chats!')
-  var v3_db = await new Promise((resolve, reject) => {
-    r.connect({ host: 'localhost', port: 28015, db: 'clovers_v3' }, (err, conn) => {
-      if (err) reject(err)
-      resolve(conn)
-    })
-  })
-
-  var chats = await new Promise((resolve, reject) => {
-    r.table('chats')
-    .filter((c) => true)
-    .orderBy('created')
-    .run(v3_db, (err, chats) => {
-      if (err) reject(err)
-      chats.toArray((err, result) => {
-        if (err) reject(err)
-        resolve(result)
-      })
-    })
-  })
-  debug(`moving ${chats.length} chats`)
-  await asyncForEach(chats, async (chat) => {
-    return new Promise((resolve, reject) => {
-        // save it
-      r.table('chats')
-      .insert(chat).run(db, async (err, { generated_keys }) => {
-        if (err) reject(err)
-        // emit an event pls
-        const log = {
-          id: uuid(),
-          name: 'Comment_Added',
-          removed: false,
-          blockNumber: 0,
-          userAddress: null, // necessary data below
-          data: {
-            userAddress: chat.userAddress,
-            userName: chat.userName,
-            board: chat.board,
-            createdAt: new Date()
-          },
-          userAddresses: []
-        }
-
-        r.table('logs').insert(log)
-        .run(db, (err) => {
-          if (err) {
-            reject(err)
-          } else {
-            resolve()
-          }
-        })
-      })
-    })
-  })
-  debug("done w chats")
-}
-
-async function nameClovers(){
-  debug("rename Clovers!")
   try {
-    var v3_db = await new Promise((resolve, reject) => {
-      r.connect({ host: 'localhost', port: 28015, db: 'clovers_v3' }, (err, conn) => {
-        if (err) reject(err)
-        resolve(conn)
-      })
-    })
-    var clovers = await new Promise((resolve, reject) => {
-      r.table('clovers')
-      .filter((c) => {
-        return c('name').match("^0x").not()
-      })
-      .pluck('board', 'name', 'commentCount')
-      .run(v3_db, (err, clovers) => {
-        if (err) reject(err)
-        clovers.toArray((err, result) => {
-          if (err) reject(err)
-          resolve(result)
-        })
-      })
-    })
-    debug(`naming ${clovers.length} clovers`)
-    await asyncForEach(clovers, async (oldClover) => {
-      return new Promise((resolve, reject) => {
-        r.table('clovers')
-        .get(oldClover.board)
-        .run(db, (err, newClover) => {
-          if (err) reject(err)
-          if (!newClover) {
-            debug('newClover ' + oldClover.board + ' with name ' + oldClover.name + ' not found')
-            resolve()
-          } else {
-            debug('naming ' + oldClover.name)
-            newClover.name = xss(oldClover.name)
-            newClover.commentCount = oldClover.commentCount
-            r.table('clovers')
-            .get(oldClover.board)
-            .update(newClover)
-            .run(db, (err, result) => {
-              if (err) reject(err)
-              resolve()
-            })
-          }
-        })
-      })
-    })
-  } catch (error) {
-    console.error(error)
+    debug('move Chats')
+    await r.db(CLOVER_DB).table('chats').insert(
+      r.db('sync').table('chats')
+    ).run(db)
+  } catch (err) {
+    debug('move chats error')
+    debug(err)
   }
-  debug("done naming Clovers")
 }
 
+async function moveChats () {
+  if (syncing) return
 
-async function nameUsers(){
-  debug("name Users!")
   try {
-    var v3_db = await new Promise((resolve, reject) => {
-      r.connect({ host: 'localhost', port: 28015, db: 'clovers_v3' }, (err, conn) => {
-        if (err) reject(err)
-        resolve(conn)
-      })
-    })
-
-    var users = await new Promise((resolve, reject) => {
-      r.table('users')
-      .filter((u) => {
-        return u('name').ne("")
-      })
-      .pluck('address', 'name')
-      .run(v3_db, (err, users) => {
-        if (err) reject(err)
-        users.toArray((err, result) => {
-          if (err) reject(err)
-          resolve(result)
-        })
-      })
-    })
-    debug(`naming ${users.length} users`)
-    await asyncForEach(users, async (oldUser) => {
-      return new Promise((resolve, reject) => {
-        r.table('users')
-        .get(oldUser.address)
-        .run(db, (err, newUser) => {
-          if (err) reject(err)
-          if (!newUser) {
-            debug('newUser ' + oldUser.address + ' with old name ' + oldUser.name + ' not found')
-            resolve()
-          } else {
-            debug('naming ' + oldUser.name)
-            newUser.name = xss(oldUser.name)
-            r.table('users')
-            .get(oldUser.address)
-            .update(newUser)
-            .run(db, (err, result) => {
-              if (err) reject(err)
-              resolve()
-            })
-          }
-        })
-      })
-    })
-  } catch (error) {
-    console.error(error)
+    debug('move Albums')
+    await r.db(CLOVER_DB).table('albums').insert(
+      r.db('sync').table('albums')
+    ).run(db)
+  } catch (err) {
+    debug('move albums error')
+    debug(err)
   }
-  debug("done naming users")
 }
 
-// function nameClovers() {
-//   debug('nameClovers')
-//   return new Promise((resolve, reject) => {
-//     r.table('logs')
-//       .filter({ name: 'newCloverName' })
-//       .orderBy('blockNumber')
-//       .run(db, (err, logs) => {
-//         if (err) return reject(err)
-//         debug('newCloverName:', logs.length)
-//         if (!logs.length) resolve()
-//         logs.toArray((err, result) => {
-//           if (err) return reject(err)
-//           nameClover(result)
-//             .then(resolve)
-//             .catch(reject)
-//         })
-//       })
-//   })
-// }
+async function nameClovers () {
+  if (syncing) return
 
-// function nameClover(logs, key = 0) {
-//   return new Promise((resolve, reject) => {
-//     if (logs.length === key) resolve()
-//     let log = logs[key]
-//     r.table('clovers')
-//       .get(log.data.board)
-//       .run(db, (err, clover) => {
-//         if (err) return reject(err)
-//         if (!clover) {
-//           debug('clover ' + log.data.board + ' not found')
-//           // return reject(new Error('clover ' + log.data.board + ' not found'))
-//           nameClover(logs, key + 1)
-//             .then(resolve)
-//             .catch(reject)
-//         } else {
-//           clover.name = xss(log.data.name)
-//           r.table('clovers')
-//             .get(log.data.board)
-//             .update(clover)
-//             .run(db, (err, result) => {
-//               if (err) return reject(err)
-//               nameClover(logs, key + 1)
-//                 .then(resolve)
-//                 .catch(reject)
-//             })
-//         }
-//       })
-//   })
-// }
+  try {
+    debug('rename Clovers')
+    await r.db('sync').table('clovers').pluck('board', 'name', 'modified').forEach((row) => {
+      return r.db(CLOVER_DB).table('clovers').get(row('board')).update({
+        name: row('name'),
+        modified: row('modified')
+      })
+    })
+  } catch (err) {
+    debug('rename clovers error')
+    debug(err)
+  }
+}
 
-// function nameUsers() {
-//   debug('nameUsers')
-//   return new Promise((resolve, reject) => {
-//     r.table('logs')
-//       .filter({ name: 'newUserName' })
-//       .orderBy('blockNumber')
-//       .run(db, (err, logs) => {
-//         if (err) return reject(err)
-//         logs.toArray((err, result) => {
-//           if (err) return reject(err)
-//           nameUser(result)
-//             .then(resolve)
-//             .catch(reject)
-//         })
-//       })
-//   })
-// }
+async function nameUsers () {
+  if (syncing) return
 
-// function nameUser(logs, key = 0) {
-//   return new Promise((resolve, reject) => {
-//     if (logs.length === key) resolve()
-//     let log = logs[key]
-//     r.table('users')
-//       .get(log.data.player)
-//       .run(db, (err, user) => {
-//         if (err) return reject(err)
-//         if (!user) {
-//           debug('user ' + log.data.player + ' not found')
-//           // return reject(new Error('user ' + log.data.player + ' not found'))
-//           nameUser(logs, key + 1)
-//             .then(resolve)
-//             .catch(reject)
-//         } else {
-//           user.name = xss(log.data.name)
-//           r.table('users')
-//             .get(log.data.player)
-//             .update(user)
-//             .run(db, (err, result) => {
-//               if (err) return reject(err)
-//               nameUser(logs, key + 1)
-//                 .then(resolve)
-//                 .catch(reject)
-//             })
-//         }
-//       })
-//   })
-// }
+  try {
+    debug('name Users')
+    await r.db('sync').table('users').pluck('address', 'name').forEach((row) => {
+      return r.db(CLOVER_DB).table('users').get(row('address')).update({ name: row('name') })
+    }).run(db)
+  } catch (err) {
+    debug('name users error')
+    debug(err)
+  }
+}
+
+async function restoreLogs () {
+  if (syncing) return
+
+  try {
+    debug('insert missing logs')
+    await r.db('sync').table('logs').forEach((log) => {
+      return r.db(CLOVER_DB).table('logs').insert(log)
+    }).run(db)
+    debug('done!')
+    process.exit()
+  } catch (err) {
+    debug('add logs error')
+    debug(err)
+  }
+}
+
+function sleep (ms = 1000) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}

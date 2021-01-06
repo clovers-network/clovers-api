@@ -5,17 +5,17 @@ import { dodb, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 let db, io
 const BigNumber = require('bignumber.js')
 
-export let clubTokenBurn = async function({ log, io: _io, db: _db }) {
+export let clubTokenBurn = async function ({ log, io: _io, db: _db }) {
   debug(log.name + ' does not affect the database')
   //taken care of w transfer
   // await changeUserBalance(user, amount, 'sub', log)
 }
-export let clubTokenMint = async function({ log, io: _io, db: _db }) {
+export let clubTokenMint = async function ({ log, io: _io, db: _db }) {
   debug(log.name + ' does not affect the database')
   //taken care of w transfer
   // await changeUserBalance(user, amount, 'add', log)
 }
-export let clubTokenApproval = async function({ log, io, _db }) {
+export let clubTokenApproval = async function ({ log, io, _db }) {
   debug(log.name + ' does not affect the database')
 }
 
@@ -50,14 +50,14 @@ export let clubTokenOwnershipTransferred = async ({
   debug(log.name + ' does not affect the database')
 }
 
-async function changeUserBalance(user_id, amount, add, log) {
+async function changeUserBalance (user_id, amount, add, log) {
   user_id = user_id.toLowerCase()
   amount = typeof amount == 'object' ? amount : new BigNumber(amount)
   add = add == 'add'
   let command = r.table('users').get(user_id)
   let user = await dodb(db, command)
   if (!user) {
-    user = userTemplate(user_id)
+    user = userTemplate(user_id, log)
   } else if (!user.balance) {
     user.balance = await events.ClubToken.instance.balanceOf(user.address)
   }

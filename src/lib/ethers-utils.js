@@ -18,7 +18,7 @@ var network = config.network
 
 export let provider = ethers.getDefaultProvider(network.name);
 // export let provider = new ethers.providers.JsonRpcProvider('http://localhost:8545');
-
+// export let provider = new ethers.providers.JsonRpcProvider('https://cloudflare-eth.com');
 
 let simpleCloversMarketABI = SimpleCloversMarket.abi
 let simpleCloversMarketAddress =
