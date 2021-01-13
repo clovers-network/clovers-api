@@ -69,6 +69,7 @@ function rebuildDatabases () {
   copySyncData()
   // .then(populateLogs)
   .then(processLogs)
+  // processLogs()
   .then(nameClovers)
   .then(nameUsers)
   // .then(moveChats)

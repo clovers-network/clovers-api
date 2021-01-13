@@ -284,6 +284,8 @@ module.exports = [
           ]
         }
       ],
+      'modified',
+      'created',
 
       // old ones
       [
