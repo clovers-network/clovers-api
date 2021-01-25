@@ -9,7 +9,7 @@ export default ({ config, db, io }) => {
     id: 'search',
     async index ({ query }, res) {
       let { s } = query
-      debug(`searching... ${s}`)
+      // debug(`searching... ${s}`)
 
       if (!s) {
         res.status(200).json({

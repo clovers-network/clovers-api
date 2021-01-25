@@ -89,6 +89,8 @@ async function beginListen (contract, key = 0) {
       return
     }
 
+    debug('Inserting new log', log.transactionHash, blockNumber)
+
     r.table('logs')
       .insert(log)
       .run(db, async (err, results) => {

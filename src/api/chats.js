@@ -31,7 +31,7 @@ export default ({ config, db, io }) => {
       const pageSize = 16
       const before = query.before ? new Date(query.before) : new Date()
 
-      debug('get chat by board id', boardId, before)
+      // debug('get chat by board id', boardId, before)
 
       const [results, count] = await Promise.all([
         r.table('chats').between(
@@ -94,7 +94,7 @@ export default ({ config, db, io }) => {
     if (!user.address) {
       user = await  makeUser(userAddress)
     }
-      
+
     const comment = xss(req.body.comment || '').trim()
 
     if (!comment.length || !user.address) {
@@ -224,14 +224,14 @@ export default ({ config, db, io }) => {
 
 export function commentListener (server, db) {
   const io = require('socket.io')(server, { path: '/comments' })
-  let connections = 0
-  io.on('connection', (socket) => {
-    debug('+1 comment subscribers: ', connections += 1)
+  // let connections = 0
+  // io.on('connection', (socket) => {
+  //   debug('+1 comment subscribers: ', connections += 1)
 
-    socket.on('disconnect', () => {
-      debug('-1 comment subscribers: ', connections -= 1)
-    })
-  })
+  //   socket.on('disconnect', () => {
+  //     debug('-1 comment subscribers: ', connections -= 1)
+  //   })
+  // })
 
   // listen to chat changes :)
   r.table('chats').changes().run(db, (err, cursor) => {

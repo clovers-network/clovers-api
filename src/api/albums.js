@@ -37,7 +37,7 @@ export default ({ config, db, io }) => {
       // see ./search.js
       let { s } = query
       if (s) {
-        debug('search albums')
+        // debug('search albums')
 
         s = escapeRegex(s)
 
@@ -57,7 +57,7 @@ export default ({ config, db, io }) => {
 
       const { clover } = query
       if (clover) {
-        debug('albums by clover')
+        // debug('albums by clover')
 
         let results = await r.table('albums').getAll(clover.toLowerCase(), { index: 'clovers' })
           .pluck('id', 'clovers', 'name', 'userAddress').coerceTo('array')
@@ -69,7 +69,7 @@ export default ({ config, db, io }) => {
         return res.status(200).json(results).end()
       }
 
-      debug('get albums')
+      // debug('get albums')
 
       const indexes = ['all', 'name', 'userAddress', 'dates', 'cloverCount']
       const pageSize = 12
@@ -77,7 +77,7 @@ export default ({ config, db, io }) => {
       const asc = query.asc === 'true'
       const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
       const index = !query.filter || query.filter === '' || !indexes.includes(query.filter) ? 'all' : query.filter
-      debug('filter by', index, sort)
+      // debug('filter by', index, sort)
 
       let [results, count] = await Promise.all([
         r.table('albums')
@@ -437,14 +437,14 @@ export default ({ config, db, io }) => {
 
 export function albumListener (server, db) {
   const io = require('socket.io')(server, { path: '/albums' })
-  let connections = 0
-  io.on('connection', (socket) => {
-    debug('+1 album subscribers: ', connections += 1)
+  // let connections = 0
+  // io.on('connection', (socket) => {
+  //   debug('+1 album subscribers: ', connections += 1)
 
-    socket.on('disconnect', () => {
-      debug('-1 album subscribers: ', connections -= 1)
-    })
-  })
+  //   socket.on('disconnect', () => {
+  //     debug('-1 album subscribers: ', connections -= 1)
+  //   })
+  // })
 
   // listen to album changes :)
   r.table('albums').changes().run(db, (err, cursor) => {

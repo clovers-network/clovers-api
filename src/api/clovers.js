@@ -194,13 +194,13 @@ export default ({ config, db, io }) => {
 
   router.get('/:id/activity', async (req, res) => {
     const { id } = req.params
-    debug(`getting activity for ${id}`)
+    // debug(`getting activity for ${id}`)
 
     const pageSize = 12
     const asc = req.query.asc === 'true'
     const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
     const index = 'clover'
-    debug('filter by', id)
+    // debug('filter by', id)
 
     let [results, count] = await Promise.all([
       r.table('logs')

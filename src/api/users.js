@@ -39,7 +39,7 @@ export default ({ config, db, io }) => {
       // see ./search.js!
       let { s } = query
       if (s) {
-        debug('search users')
+        // debug('search users')
 
         s = escapeRegex(s)
 
@@ -54,7 +54,7 @@ export default ({ config, db, io }) => {
         return
       }
 
-      debug('get users')
+      // debug('get users')
 
       const { filter } = query
 
@@ -65,7 +65,7 @@ export default ({ config, db, io }) => {
 
       const index = `all-${sort}`
 
-      debug('get', index, sort)
+      // debug('get', index, sort)
 
       let [results, count] = await Promise.all([
         r.table('users')
@@ -143,8 +143,8 @@ export default ({ config, db, io }) => {
     const index = indexes.includes(filter) ? map[filter][0] : 'owner'
     const search = indexes.includes(filter) ? [id.toLowerCase(), map[filter][1]] : id.toLowerCase()
 
-    debug(index, search)
-    debug('get user clovers', start)
+    // debug(index, search)
+    // debug('get user clovers', start)
 
     let [results, count] = await Promise.all([
       r.table('clovers')

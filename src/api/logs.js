@@ -23,7 +23,7 @@ export default ({ config, db, io }) => {
       const index = (query.filter && indexes.includes(query.filter)) ? 'type' : 'active' // 'activity'
       const val = index === 'type' ? query.filter : true
 
-      debug('filter by', val)
+      // debug('filter by', val)
 
       let [results, count] = await Promise.all([
         r.table('logs')
