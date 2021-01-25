@@ -28,19 +28,20 @@ export var socketing = function ({ _io, _db }) {
 
   io = _io
   db = _db
-  var connections = 0
+  // var connections = 0
   io.on('connection', (socket) => {
-    connections += 1
-    debug('opened, now ' + connections + ' connections')
-    socket.on('data', (data) => {
-      debug(data)
-    })
-    socket.on('disconnect', () => {
-      connections -= 1
-      debug('closed, now ' + connections + ' connections')
-    })
+    // connections += 1
+    // debug('opened, now ' + connections + ' connections')
+    // socket.on('data', (data) => {
+    //   debug(data)
+    // })
+    // socket.on('disconnect', () => {
+    //   connections -= 1
+    //   debug('closed, now ' + connections + ' connections')
+    // })
     socket.on('error', (err) => {
-      debug('error', err)
+      debug('socketing error')
+      debug(err)
     })
   })
   beginListen('Clovers')
