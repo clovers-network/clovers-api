@@ -582,6 +582,11 @@ module.exports = [
     index: 'id',
     indexes: [
       'market',
+      'created',
+      [
+        'ordered',
+        [r.row('market'), r.row('created').default(0), r.row('logIndex').default(0)]
+      ],
       [
         'unique_log',
         [r.row('transactionHash'), r.row('logIndex')]

@@ -13,10 +13,11 @@ export default ({ config, db, io }) =>
      */
     load(req, id, callback) {
       r.table('orders')
-        // .get(id)
-        .orderBy(r.desc('created'))
-        .filter({ market: id })
-        // .slice(0, 100)
+        .between([id, r.minval, r.minval], [id, r.maxval, r.maxval], { index: 'ordered' })
+        .orderBy({ index: r.desc('ordered') })
+        // .orderBy(r.desc('created'), r.desc('transactionIndex'))
+        .slice(0, 2000)
+        .coerceTo('array')
         .run(db, (err, order) => {
           callback(err, order)
         })
@@ -28,7 +29,9 @@ export default ({ config, db, io }) =>
       let offset = parseInt(query.offset) || 0
       limit = Math.min(limit, 500)
       r.table('orders')
-        .orderBy(r.desc('created'), r.desc('transactionIndex'))
+        .orderBy({ index: r.desc('created') })
+        // .orderBy({ index: r.desc('created') })
+        // .orderBy(r.desc('created'), r.desc('transactionIndex'))
         .slice(offset, offset + limit)
         .run(db, toRes(res))
     },
