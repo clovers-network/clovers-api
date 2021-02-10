@@ -129,27 +129,32 @@ export default ({ config, db, io }) => {
   router.get('/:id/clovers', async (req, res) => {
     const indexes = ['forsale', 'Sym']
     const map = {
-      forsale: ['ownerfilter', 'forsale'],
+      forsale: ['ownersale', true],
       Sym: ['ownersym', true]
     }
 
     const { id } = req.params
     const { filter } = req.query
 
+    const owner = id.toLowerCase()
+
     const pageSize = 12
     const asc = req.query.asc === 'true'
-    const sort = req.query.sort || 'modified'
-    const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
-    const index = indexes.includes(filter) ? map[filter][0] : 'owner'
-    const search = indexes.includes(filter) ? [id.toLowerCase(), map[filter][1]] : id.toLowerCase()
+    const sort = req.query.sort === 'price' ? '-price' : '-modified'
 
-    // debug(index, search)
-    // debug('get user clovers', start)
+    const start = Math.max(((parseInt(req.query.page) || 1) - 1), 0) * pageSize
+
+    const index = (!filter || filter === '' || !indexes.includes(filter)) ? `owner${sort}` : map[filter][0] + sort
+
+    const min = r.minval
+    const max = r.maxval
+
+    debug(owner, index)
 
     let [results, count] = await Promise.all([
       r.table('clovers')
-        .getAll(search, { index })
-        .orderBy(asc ? r.asc(sort) : r.desc(sort))
+        .between([owner, true, min], [owner, true, max], { index })
+        .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
         .slice(start, start + pageSize)
         .map((doc) => {
           return doc.merge({
@@ -164,12 +169,12 @@ export default ({ config, db, io }) => {
           return doc('left').merge({
             user: doc('right')
           })
-        }).run(db, (err, data) => {
+        }).coerceTo('array').run(db, (err, data) => {
           if (err) throw new Error(err)
           return data
         }),
       r.table('clovers')
-        .getAll(search, { index })
+        .between([owner, true, min], [owner, true, max], { index })
         .count().run(db, (err, data) => {
           if (err) throw new Error(err)
           return data

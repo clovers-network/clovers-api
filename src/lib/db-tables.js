@@ -197,6 +197,7 @@ module.exports = [
         'owner-modified',
         [
           r.row('owner').downcase(),
+          true,
           r.row('modified')
         ]
       ],
@@ -204,7 +205,8 @@ module.exports = [
         'owner-price',
         [
           r.row('owner').downcase(),
-          r.row('price')
+          true,
+          r.row('price').coerceTo('number')
         ]
       ],
 
@@ -262,27 +264,43 @@ module.exports = [
           ]
         }
       ],
+      // [
+      //   'ownerfilter',
+      //   (doc) => {
+      //     return [
+      //       doc('owner').downcase(),
+      //       r.branch(
+      //         doc('price').coerceTo('number').ne(0),
+      //         'forsale',
+      //         false
+      //       )
+      //     ]
+      //   }
+      // ],
+      // [
+      //   'ownersym',
+      //   (doc) => {
+      //     return [
+      //       doc('owner').downcase(),
+      //       doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
+      //     ]
+      //   }
+      // ],
       [
-        'ownerfilter',
-        (doc) => {
-          return [
-            doc('owner').downcase(),
-            r.branch(
-              doc('price').ne('0'),
-              'forsale',
-              false
-            )
-          ]
-        }
+        'ownersym-modified',
+        [r.row('owner').downcase(), r.row('symmetries').values().reduce((a, c) => a.add(c)).gt(0), r.row('modified')]
       ],
       [
-        'ownersym',
-        (doc) => {
-          return [
-            doc('owner').downcase(),
-            doc('symmetries').values().reduce((a, c) => a.add(c)).gt(0)
-          ]
-        }
+        'ownersym-price',
+        [r.row('owner').downcase(), r.row('symmetries').values().reduce((a, c) => a.add(c)).gt(0), r.row('price').coerceTo('number')]
+      ],
+      [
+        'ownersale-modified',
+        [r.row('owner').downcase(), r.row('price').coerceTo('number').gt(0), r.row('modified')]
+      ],
+      [
+        'ownersale-price',
+        [r.row('owner').downcase(), r.row('price').coerceTo('number').gt(0), r.row('price').coerceTo('number')]
       ],
       'modified',
       'created',
