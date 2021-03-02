@@ -14,7 +14,6 @@ export default ({ config, db, io }) => {
    *  Errors terminate the request, success sets `req[id] = data`.
    */
   const load = (req, id, callback) => {
-    // debug('load used')
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
@@ -150,7 +149,7 @@ export default ({ config, db, io }) => {
     const min = r.minval
     const max = r.maxval
 
-    debug(owner, index)
+    // debug(owner, index)
 
     let [results, count] = await Promise.all([
       r.table('clovers')
