@@ -56,15 +56,16 @@ export default ({ config, db, io }) => {
           }),
         r.table('logs')
           .between([val, r.minval], [val, r.maxval], { index })
-          .count().run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          })
+          .pluck('id').coerceTo('array').run(db)
       ]).catch((err) => {
         debug('query error')
         debug(err)
         return res.status(500).end()
       })
+
+      count = count.length
+
+      debug('results count', count)
 
       const currentPage = Math.max((parseInt(query.page) || 1), 1)
       const hasNext = start + pageSize < count
