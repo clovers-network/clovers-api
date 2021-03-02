@@ -7,13 +7,14 @@ import { auth } from '../middleware/auth'
 import xss from 'xss'
 import { provider } from '../lib/ethers-utils'
 import escapeRegex from 'escape-string-regexp'
+import { checkUserBalance } from '../models/clubToken'
 
 export default ({ config, db, io }) => {
   /** For requests with an `id`, you can auto-load the entity.
    *  Errors terminate the request, success sets `req[id] = data`.
    */
   const load = (req, id, callback) => {
-    // debug('load')
+    // debug('load used')
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
@@ -263,6 +264,16 @@ export default ({ config, db, io }) => {
 
     res.status(status).json(response).end()
   })
+
+  // router.get('/:id/balance', async (req, res) => {
+  //   const { id } = req.params
+  //   try {
+  //     const user = await checkUserBalance(id, db)
+  //     res.status(200).json(user).end()
+  //   } catch (err) {
+  //     res.status(500).json({ err: err.toString() }).end()
+  //   }
+  // })
 
   // Authentication header required
   // Format: btoa(Basic address:signedmessage)

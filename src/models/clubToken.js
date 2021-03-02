@@ -1,6 +1,6 @@
 const debug = require('debug')('app:models:clubToken')
 import r from 'rethinkdb'
-import { events } from '../lib/ethers-utils'
+import { events, provider } from '../lib/ethers-utils'
 import { dodb, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 let db, io
 const BigNumber = require('bignumber.js')
@@ -84,4 +84,24 @@ async function changeUserBalance (user_id, amount, add, log) {
   let changes = await dodb(db, command)
   debug('update user!')
   io && io.emit('updateUser', user)
+}
+
+export async function checkUserBalance (user_id, _db) {
+  user_id = user_id.toLowerCase()
+  let user = await dodb(_db, r.table('users').get(user_id))
+  const block = await provider.getBlockNumber()
+  if (!user) {
+    user = userTemplate(user_id)
+    user.created = block
+    user.modified = block
+  }
+
+  const balance = await events.ClubToken.instance.balanceOf(user.address)
+  user.balance = padBigNum(balance)
+
+  await r.table('users')
+    .insert(user, { conflict: 'update' })
+    .run(_db)
+
+  return user
 }

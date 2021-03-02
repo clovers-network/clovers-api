@@ -10,7 +10,7 @@ import middleware from './middleware'
 import api from './api'
 import config from './config.json'
 import { socketing } from './socketing'
-import { build, mine, syncChain, copyLogs } from './lib/build'
+import { build, mine, syncChain, copyLogs, syncBalances } from './lib/build'
 import { commentListener } from './api/chats'
 
 let app = express()
@@ -47,6 +47,8 @@ initializeDb((db) => {
     build(db)
   } else if (process.argv.findIndex(c => c === 'logs') > -1) {
     copyLogs(db)
+  } else if (process.argv.findIndex(c => c === 'users') > -1) {
+    syncBalances(db)
   } else {
     const io = require('socket.io')(app.server)
     commentListener(app.server, db)

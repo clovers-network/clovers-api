@@ -5,6 +5,7 @@ import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
 import { provider, events } from '../lib/ethers-utils'
 import tables from './db-tables'
+import { checkUserBalance } from '../models/clubToken'
 
 const debug = require('debug')('app:build')
 
@@ -26,6 +27,11 @@ export function syncChain (_db) {
 export function copyLogs (_db) {
   db = _db
   restoreLogs()
+}
+
+export function syncBalances (_db) {
+  db = _db
+  syncUsers()
 }
 
 export function mine (_db, _io) {
@@ -537,6 +543,26 @@ async function restoreLogs () {
   } catch (err) {
     debug('add logs error')
     debug(err)
+  }
+}
+
+async function syncUsers () {
+  if (syncing) return
+
+  const users = await r.db(CLOVER_DB).table('users').pluck('address')
+    .coerceTo('array').run(db)
+
+  for await (const user of users) {
+    debug('sync', user.address)
+
+    try {
+      const u = await checkUserBalance(user.address, db)
+      debug('done. balance is', u.balance)
+    } catch (err) {
+      debug(err)
+      // probably a infura rate limit?
+      await sleep(5000)
+    }
   }
 }
 
