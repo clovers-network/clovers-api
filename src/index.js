@@ -71,3 +71,8 @@ initializeDb((db) => {
 })
 
 export default app
+
+process.on('SIGINT', () => {
+  debug('do SIGINT')
+  process.exit()
+})
