@@ -8,6 +8,9 @@ import xss from 'xss'
 import { provider } from '../lib/ethers-utils'
 import escapeRegex from 'escape-string-regexp'
 import { checkUserBalance } from '../models/clubToken'
+import { syncClover } from '../models/clovers'
+
+const semiSecretToken = process.env.SYNC_TOKEN
 
 export default ({ config, db, io }) => {
   /** For requests with an `id`, you can auto-load the entity.
@@ -273,6 +276,44 @@ export default ({ config, db, io }) => {
   //     res.status(500).json({ err: err.toString() }).end()
   //   }
   // })
+
+  router.get('/sync/:id', async (req, res) => {
+    const { s } = req.query
+    if (s !== semiSecretToken) return res.sendStatus(401).end()
+
+    const { id } = req.params
+
+    try {
+      const tokens = await r.table('clovers').filter({
+        owner: id.toLowerCase()
+      }).coerceTo('array').run(db, (err, data) => {
+        if (err) throw err
+        return data
+      })
+
+      if (tokens && tokens.length) {
+        res.status(200).json({ sync: `${tokens.length} tokens`}).end()
+
+        // in bg
+        await asyncForEach(tokens, async (clover, index) => {
+          debug(`syncing clover ${index}: ${clover.board}`)
+          await syncClover(db, io, clover)
+        })
+      }
+
+      res.status(404).end()
+
+    } catch (err) {
+      debug(err)
+      res.status(500).end()
+    }
+  })
+
+  async function asyncForEach (array, callback) {
+    for (let index = 0; index < array.length; index++) {
+      await callback(array[index], index, array)
+    }
+  }
 
   // Authentication header required
   // Format: btoa(Basic address:signedmessage)

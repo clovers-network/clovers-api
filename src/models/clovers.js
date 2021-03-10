@@ -119,12 +119,14 @@ export async function syncClover (_db, _io, clover) {
   io = _io
   debug('checking clover')
   debug(clover.board)
-  // sync clover
-  // test if exists
+
+  const mod = clover.modified || await provider.getBlockNumber()
+
   let log = {
     data: { _tokenId: clover.board },
-    blockNumber: null
+    blockNumber: mod
   }
+  debug(log)
   const exists = await events.Clovers.instance.exists(clover.board)
   if (!exists) {
     debug('clover DOES NOT exist')
@@ -144,7 +146,10 @@ export async function syncClover (_db, _io, clover) {
     clover.board
   )
   let padPrice = salePrice.toString(10)
-  if (padPrice !== '0') padPrice = padPrice.padStart(64, '0')
+  padPrice = padPrice.padStart(64, '0')
+
+  debug('prices', salePrice, padPrice, clover.price)
+
   if (padPrice !== clover.price) {
     debug('sale price wrong')
     log.data.price = salePrice
@@ -404,6 +409,8 @@ async function updateClover (log) {
 
   const modified = log.blockNumber || clover.modified || await provider.getBlockNumber()
   clover.modified = modified
+  debug('updateClover: new modifed', modified)
+
   clover.owner = log.data._to.toLowerCase()
   command = r.table('clovers').insert(clover, { returnChanges: true, conflict: 'update' })
   await dodb(db, command)
