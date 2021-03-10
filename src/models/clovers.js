@@ -369,8 +369,8 @@ async function updateUser (log, user_id, add, _db) {
     if (user) {
       user.modified = log.blockNumber
     } else {
-      // this should not happen
-      throw new Error('cant find for user ' + log.data._from + ' but not found')
+      // user isn't in the DB for some reason (logs missing)
+      user = userTemplate(user_id, log)
     }
   }
   command = r.table('users')
