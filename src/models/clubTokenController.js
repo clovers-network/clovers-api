@@ -11,6 +11,7 @@ export let clubTokenControllerSell = async function({ log, io, db }) {
   await addBuySell(log, log.data.seller, 'sell', io, db)
 }
 async function addBuySell(log, user, isBuy, io, db) {
+  debug('clubTokenController', isBuy, 'user', user)
   isBuy = isBuy === 'buy'
 
   const check = r.table('orders').getAll([

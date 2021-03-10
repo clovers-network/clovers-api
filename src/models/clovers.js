@@ -1,6 +1,6 @@
 const debug = require('debug')('app:models:clovers')
 import r from 'rethinkdb'
-import { events } from '../lib/ethers-utils'
+import { events, provider } from '../lib/ethers-utils'
 import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
@@ -163,8 +163,10 @@ export async function syncClover (_db, _io, clover) {
       debug(`owner seems to be ${clover.owner} but is actually ${owner}`)
       debug('owner is wrong')
       log.data._to = owner
+      log.data._from = clover.owner
       await updateClover(log)
-      await updateUser(log, owner, 'add', db)
+      // this is called at the end of update..
+      // await updateUser(log, owner, 'add', db)
     } else {
       debug(`owner is ok ${owner}`)
     }
@@ -343,6 +345,7 @@ async function doSyncContract (db, tokenId) {
 }
 
 async function updateUser (log, user_id, add, _db) {
+  debug('updateUser', user_id)
   if (_db) {
     db = _db
   }
@@ -398,8 +401,10 @@ async function updateClover (log) {
     .get(log.data._tokenId)
   let clover = await dodb(db, command)
   if (!clover) throw new Error('clover ' + log.data._tokenId + ' not found')
+
+  const modified = log.blockNumber || clover.modified || await provider.getBlockNumber()
+  clover.modified = modified
   clover.owner = log.data._to.toLowerCase()
-  clover.modified = log.blockNumber
   command = r.table('clovers').insert(clover, { returnChanges: true, conflict: 'update' })
   await dodb(db, command)
 
@@ -422,8 +427,12 @@ async function updateClover (log) {
     })
 
   debug('update users after updateClover()')
-  await updateUser(log, log.data._to)
-  await updateUser(log, log.data._from)
+  if (log.data._to) {
+    await updateUser(log, log.data._to)
+  }
+  if (log.data._from) {
+    await updateUser(log, log.data._from)
+  }
 }
 
 async function addNewClover (log, skipOracle = false) {
