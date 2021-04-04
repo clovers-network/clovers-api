@@ -95,5 +95,16 @@ export default ({ config, db, io }) => {
     }
   })
 
+  // router.get('/sync/:transaction', async (req, res) => {
+  //   const { s } = req.query
+  //   if (s !== semiSecretToken) return res.sendStatus(401).end()
+
+  //   const { transaction } = req.params
+
+  //   // fetch transaction, process logs
+
+  //   return res.sendStatus(200).end()
+  // })
+
   return router
 }

@@ -92,7 +92,7 @@ function rebuildDatabases () {
 function syncLogs () {
   debug('syncing logs')
   populateLogs(config.genesisBlock[config.network.chainId])
-  // .then(processLogs)
+  .then(processLogs)
   .then(() => {
     debug('done sync...')
     process.exit()
