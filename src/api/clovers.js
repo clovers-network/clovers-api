@@ -135,7 +135,7 @@ export default ({ config, db, io }) => {
   })
 
   router.get('/metadata/:id', async (req, res) => {
-    const { id } = req.params
+    let { id } = req.params
     load(req, id, (err, clover) => {
       if (err || !clover) {
         // show the clover anyway since we've been having trouble keeping the database in sync
