@@ -138,8 +138,21 @@ export default ({ config, db, io }) => {
     const { id } = req.params
     load(req, id, (err, clover) => {
       if (err || !clover) {
-        res.sendStatus(404).end()
-        return
+        // show the clover anyway since we've been having trouble keeping the database in sync
+        id = id.toLowerCase()
+        if (id.substr(0,2) !== '0x' && !isNaN(id)) {
+            id = '0x' + new BigNumber(id).toString(16).toLowerCase()
+        }
+        let nft = {}
+        nft.name = ''
+        nft.description = 'This Clover ' + id + ' was created with the moves: n/a'
+        nft.image = 'https://api2.clovers.network/clovers/svg/' + id
+        nft.image_url = nft.image
+        nft.external_url = 'https://clovers.network/clovers/' + id
+        nft.home_url = nft.external_url
+        res.json(nft).end()
+//         res.sendStatus(404).end()
+//         return
       } else {
         let reversi = new Reversi()
         let nft = {}
