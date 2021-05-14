@@ -10,7 +10,7 @@ import * as clubTokenController from './models/clubTokenController'
 import * as simpleCloversMarket from './models/simpleCloversMarket'
 import { transformLog } from './lib/build'
 import r from 'rethinkdb'
-import {Clovers} from 'clovers-contracts'
+import { Clovers } from 'clovers-contracts'
 import { dodb } from './lib/util'
 
 const CLOVER_DB = `clovers_chain_${network.chainId}`
