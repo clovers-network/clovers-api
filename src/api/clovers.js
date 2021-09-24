@@ -10,7 +10,8 @@ import xss from 'xss'
 import Reversi from 'clovers-reversi'
 import BigNumber from 'bignumber.js'
 import uuid from 'uuid/v4'
-import { provider, events, ethers, walletProvider } from '../lib/ethers-utils'
+import { provider, events, ethers, walletProvider, cloversAddress } from '../lib/ethers-utils'
+import http from 'https'
 
 const semiSecretToken = process.env.SYNC_TOKEN
 console.log(`TOKEN ——— ${semiSecretToken}`)
@@ -426,6 +427,7 @@ export default ({ config, db, io }) => {
 
       // db update
       const modified = await provider.getBlockNumber()
+
       r.table('clovers')
       .get(clover.board)
       .update({ name, modified }, { returnChanges: true })
@@ -466,6 +468,18 @@ export default ({ config, db, io }) => {
             io.emit('newLog', log)
           }
         })
+
+        try {
+          // force-update OpenSea
+          const tokenId = new BigNumber(id).toFixed()
+          const openseaUrl = `https://api.opensea.io/api/v1/asset/${cloversAddress}/${tokenId}/?force_update=true`
+          http.get(openseaUrl)
+
+          // debug('update OpenSea')
+          // debug(openseaUrl)
+        } catch (err) {
+          console.log(err)
+        }
 
         io.emit('updateClover', clover)
         res.sendStatus(200).end()

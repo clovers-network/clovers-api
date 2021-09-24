@@ -1,5 +1,6 @@
 import eth from 'ethjs'
 import sigUtil from 'eth-sig-util'
+import debug from 'debug'
 // import utils from 'ethereumjs-util'
 var msgParams = [{
   type: 'string',
@@ -15,7 +16,7 @@ var msgParams = [{
 // }
 
 export function auth (wallet, signature) {
-  console.log('auth')
+  console.log('auth', wallet)
   try {
     var now = new Date()
     msgParams[0].value += (now.getMonth() + 1) + '/' + now.getFullYear()
@@ -23,6 +24,7 @@ export function auth (wallet, signature) {
       data: msgParams,
       sig: signature
     })
+    console.log(recovered)
     return wallet.toLowerCase() === recovered.toLowerCase() || new Error('try again')
   } catch (err) {
     console.log('first sig recovery failed')

@@ -16,10 +16,10 @@ ethers.apiToken = config.etherscanAPI
 ethers.apiAccessToken = config.infuraAPI
 var network = config.network
 
-// export let provider = ethers.getDefaultProvider(network.name);
+export let provider = ethers.getDefaultProvider(network.name);
 // export let provider = new ethers.providers.JsonRpcProvider('http://localhost:8545');
 // export let provider = new ethers.providers.JsonRpcProvider('https://cloudflare-eth.com');
-export let provider = new ethers.providers.JsonRpcProvider('http://138.68.85.68:8545'); // eth-node
+// export let provider = new ethers.providers.JsonRpcProvider('http://138.68.85.68:8545'); // eth-node
 
 let simpleCloversMarketABI = SimpleCloversMarket.abi
 let simpleCloversMarketAddress =
@@ -41,7 +41,7 @@ let clubTokenControllerInstance = new ethers.Contract(
 )
 
 let cloversABI = Clovers.abi
-let cloversAddress = Clovers.networks[network.chainId].address
+export let cloversAddress = Clovers.networks[network.chainId].address
 let cloversInstance = new ethers.Contract(cloversAddress, cloversABI, provider)
 // let _clovers = web3.eth.contract(cloversABI)
 // let cloversWeb3Instance = _clovers.at(cloversAddress)
