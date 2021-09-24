@@ -496,7 +496,7 @@ module.exports = [
             r.branch(
               // log.name is not in this list
               // if
-              r.expr(['ClubToken_Transfer','CurationMarket_Transfer']).contains(doc('name')),
+              r.expr(['ClubToken_Transfer','CurationMarket_Transfer', 'Album_Created']).contains(doc('name')),
               false,
               // else if
               doc('name').ne('Clovers_Transfer'),
