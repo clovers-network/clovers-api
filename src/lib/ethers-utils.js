@@ -16,10 +16,10 @@ ethers.apiToken = config.etherscanAPI
 ethers.apiAccessToken = config.infuraAPI
 var network = config.network
 
-export let provider = ethers.getDefaultProvider(network.name);
+// export let provider = ethers.getDefaultProvider(network.name);
 // export let provider = new ethers.providers.JsonRpcProvider('http://localhost:8545');
 // export let provider = new ethers.providers.JsonRpcProvider('https://cloudflare-eth.com');
-// export let provider = new ethers.providers.JsonRpcProvider('http://138.68.85.68:8545'); // eth-node
+export let provider = new ethers.providers.JsonRpcProvider('http://138.68.85.68:8545'); // eth-node
 
 let simpleCloversMarketABI = SimpleCloversMarket.abi
 let simpleCloversMarketAddress =
