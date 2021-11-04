@@ -1,0 +1,39 @@
+*Symmetry*
+rotational 
+vertical
+horizontal
+diagonal up
+diagonal down
+1x
+3x
+5x
+none
+
+*Colors*
+only white
+only black
+black/white
+white/green
+black/green
+black/white/green
+only green
+
+*hasName*
+yes
+no
+
+*# of dots*
+0
+1
+2
+3
+4
+6-10
+11-25
+26-50
+51-59
+60
+61
+62
+63
+64
