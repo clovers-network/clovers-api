@@ -1,0 +1,40 @@
+Add traits for opensea-filter
+
+  Symmetry
+    Non-symmetrical
+    Symmetrical
+      Rotational
+      Vertical
+      Horizontal
+      Diagonal Up
+      Diagonal Down
+      1x Symmetries
+      3x Symmetries
+      5x Symmetries
+  
+  Colors
+    One
+      only white
+      only black
+      only green
+    Two
+      black/white
+      white/green
+      black/green
+    Three
+      black/white/green
+      
+  Name
+    Yes
+    No
+    
+# of dots
+    0 if possible
+    1
+    2
+    3
+    4-60
+    61
+    62
+    63
+    64
