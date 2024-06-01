@@ -2011,10 +2011,10 @@ cloneable-readable@^1.0.0:
     process-nextick-args "^2.0.0"
     readable-stream "^2.3.5"
 
-clovers-contracts@2.0.0:
-  version "2.0.0"
-  resolved "https://registry.yarnpkg.com/clovers-contracts/-/clovers-contracts-2.0.0.tgz#df1aa53d98e5c636187509b98668410b838b3fda"
-  integrity sha512-NGXn+0t8AuvwRIHDpgUOf013EmmYvaExPEfxcPZPgfgrjFAGFjvnJA2JUivJHy9slgIPr6HM6UzfnLImXp6/6g==
+clovers-contracts@2.2.0:
+  version "2.2.0"
+  resolved "https://registry.yarnpkg.com/clovers-contracts/-/clovers-contracts-2.2.0.tgz#af674966253c20fabfa5b8dc8ae4daa3394dfec2"
+  integrity sha512-yDoMBA7wDDw8O9aQlLaDxUoV5RvglJCKV4nSvDSF5Pv1uVCP8kIkx6N3mRFMAOJd4CF5OVKSr78p4KP+QTPe1g==
 
 clovers-reversi@1.0.21:
   version "1.0.21"
@@ -4806,9 +4806,9 @@ http-signature@~1.2.0:
     sshpk "^1.7.0"
 
 https-proxy-agent@^2.2.1:
-  version "2.2.2"
-  resolved "https://registry.yarnpkg.com/https-proxy-agent/-/https-proxy-agent-2.2.2.tgz#271ea8e90f836ac9f119daccd39c19ff7dfb0793"
-  integrity sha512-c8Ndjc9Bkpfx/vCJueCPy0jlP4ccCCSNDp8xwCZzPjKJUm+B+u9WX2x98Qx4n1PiMNTWo3D7KK5ifNV/yJyRzg==
+  version "2.2.4"
+  resolved "https://registry.yarnpkg.com/https-proxy-agent/-/https-proxy-agent-2.2.4.tgz#4ee7a737abd92678a293d9b34a1af4d0d08c787b"
+  integrity sha512-OmvfoQ53WLjtA9HeYP9RNrWMJzzAz1JGaSFr1nijg0PVR1JaD/xbJq1mdEIIlxGpXp9eSe/O2LgU9DJmTPd0Eg==
   dependencies:
     agent-base "^4.3.0"
     debug "^3.1.0"
