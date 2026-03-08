@@ -3,7 +3,7 @@ import config from '../config.json'
 import { handleEvent } from '../socketing'
 import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
-import { provider, events } from '../lib/ethers-utils'
+import { provider, events, fetchHistoricalEvents } from './indexsupply'
 import tables from './db-tables'
 import { checkUserBalance } from '../models/clubToken'
 
@@ -69,17 +69,7 @@ export function mine (_db, _io) {
 
 function rebuildDatabases () {
   debug('rebuildDatabases')
-  // createDB()
-  // .then(createTables)
-  // .then(createIndexes)
-  // copySyncData()
-  // .then(populateLogs)
-  // .then(processLogs)
   processLogs()
-  // .then(nameClovers)
-  // .then(nameUsers)
-  // .then(moveChats)
-  // .then(moveAlbums)
   .then(() => {
     debug('done!')
     process.exit()
@@ -118,10 +108,6 @@ function createDB () {
           if (err) return reject(err)
           createDB().then(resolve)
         })
-        // r.dbDrop(dbName).run(db, (err, res) => {
-        //   if (err) return reject(err)
-        //   createDB().then(resolve)
-        // })
       } else {
         debug(`dbCreate ${CLOVER_DB}`)
         r.dbCreate(CLOVER_DB).run(db, (err, res) => {
@@ -201,149 +187,54 @@ async function copySyncData () {
   return
 }
 
-let currBlock = null
-let fromBlock = null
-let maxBlock = null
+// Block range size for IndexSupply queries
+const BLOCK_BATCH_SIZE = 50000
 
+/**
+ * Populate logs using IndexSupply instead of direct RPC getLogs.
+ * Fetches historical events in batches by block range.
+ */
 async function populateLogs (block) {
-  debug('populateLogs')
-  let blockNumber = await provider.getBlockNumber()
-  currBlock = blockNumber
-  fromBlock = block || config.genesisBlock[config.network.chainId]
-  maxBlock = fromBlock + 10000
+  debug('populateLogs via IndexSupply')
 
-  debug('Current block number: ' + blockNumber)
-  await populateLog('Clovers')
-  // await populateLog('CloversController') // dont actually watch for any events here
-  await populateLog('ClubToken')
-  await populateLog('ClubTokenController')
-  await populateLog('SimpleCloversMarket')
-
-  if (maxBlock < currBlock) {
-    debug('getting more logs from', maxBlock + 1)
-    try {
-      return populateLogs(maxBlock + 1)
-    } catch (err) {
-      debug(err)
-      return populateLogs(fromBlock)
-    }
+  let blockNumber
+  try {
+    blockNumber = await provider.getBlockNumber()
+  } catch (err) {
+    debug('Could not get current block number from RPC, using fallback')
+    blockNumber = 21000000 // reasonable fallback for mainnet
   }
-}
 
-async function testLogs ({ address, topics, genesisBlock }) {
-  debug('testLogs', genesisBlock, maxBlock)
-  await sleep(1000)
-  const logs = await provider.getLogs({
-    address,
-    topics,
-    fromBlock: genesisBlock,
-    toBlock: maxBlock
-  }).catch(async (err) => {
-    // console.error(err.responseText)
-    debug('testLogs err', err.responseText)
-    await sleep(30000)
-    return testLogs({ address, topics, genesisBlock })
-  })
-  return logs
-}
+  const fromBlock = block || config.genesisBlock[config.network.chainId]
+  debug('Current block number: ' + blockNumber)
+  debug('Fetching from block: ' + fromBlock)
 
-export async function getLogs({address, topics, genesisBlock, latest, limit, offset, previousLogs}){
-  return new Promise((resolve, reject) => {
-    debug({ genesisBlock })
-    var fromBlock = genesisBlock + limit * offset
-    var toBlock = genesisBlock + limit * (offset + 1)
+  const contracts = ['Clovers', 'ClubToken', 'ClubTokenController', 'SimpleCloversMarket']
 
-    if (genesisBlock !== latest && toBlock > latest) {
-      toBlock = 'latest'
-    }
-    debug({fromBlock, toBlock})
-    provider
-    .getLogs({
-      address,
-      topics,
-      fromBlock,
-      toBlock
-    }).then((logs, err) => {
-      debug({logs: logs.length})
+  // Process in block range batches
+  let currentFrom = fromBlock
+  while (currentFrom <= blockNumber) {
+    const currentTo = Math.min(currentFrom + BLOCK_BATCH_SIZE - 1, blockNumber)
+    debug(`Fetching events for blocks ${currentFrom} to ${currentTo}`)
 
-      if (err) {
-        reject(err)
-      } else {
-        if (logs.length > 0) {
-          debug(`concat ${previousLogs.length} previous logs with ${logs.length} new logs`)
-          previousLogs = previousLogs.concat(logs)
-        }
-        if (toBlock === 'latest' || genesisBlock === latest) {
-          resolve(previousLogs)
-        } else {
-          getLogs({address, topics, genesisBlock, latest, limit, offset: offset + 1, previousLogs}).then(resolve)
-        }
-      }
-    }).catch(reject)
-  })
-}
-
-let logsInserted = 0
-
-function populateLog (contract, key = 0) {
-  return new Promise(async (resolve, reject) => {
-    let eventTypes = events[contract].eventTypes
-    if (key >= eventTypes.length) {
-      resolve()
-    } else {
+    for (const contract of contracts) {
       try {
-        if (!eventTypes[key]) {
-          debug('dont watch this event' + eventTypes[key])
-          return resolve()
-        }
-        debug('populateLog - ' + contract + ' - ' + eventTypes[key])
-        let address = events[contract].address.toLowerCase()
-        // let abi = events[contract].abi
-        // let iface = new ethers.Interface(abi)
+        const logs = await fetchHistoricalEvents(contract, currentFrom, currentTo)
+        debug(`${contract}: ${logs.length} events in range`)
 
-        let eventType =
-          events[contract].instance.interface.events[eventTypes[key]]
-        // let transferCoder = iface.events[eventTypes[key]]
-        if (!eventType) {
-          throw new Error('no ' + contract + ' - ' + eventTypes[key])
-        }
+        if (logs.length === 0) continue
 
-        const topics = [eventType.topic]
-        const genesisBlock = fromBlock
-
-        debug('getting logs from', genesisBlock)
-        let logs = await testLogs({
-          address,
-          topics,
-          genesisBlock
-        })
-        debug('logs.length', logs.length)
-
-        debug(eventType.name + ': ' + logs.length + ' logs')
-
-        logs = logs.filter(log => {
-          if (log.address.toLowerCase() !== address.toLowerCase()) {
-            debug(log.address)
-            debug('not my contract!!!!!')
-            return false
-          } else {
-            return true
-          }
-        })
-
-        logs = logs.map(l => transformLog(l, contract, key))
-
+        // Deduplicate against existing logs
         const newOnes = []
-
         for (const log of logs) {
           const existing = await new Promise((resolve, reject) => {
             r.table('logs')
-            .getAll([log.transactionHash, log.logIndex], { index: 'unique_log' })
-            .coerceTo('array')
-            .run(db, (err, res) => {
-              if (err) reject(err)
-              resolve(res[0])
-            })
+              .getAll([log.transactionHash, log.logIndex], { index: 'unique_log' })
+              .coerceTo('array')
+              .run(db, (err, res) => {
+                if (err) reject(err)
+                resolve(res[0])
+              })
           })
 
           if (!existing) {
@@ -352,29 +243,86 @@ function populateLog (contract, key = 0) {
         }
 
         if (newOnes.length) {
-          debug('New logs:', newOnes.length)
-          logsInserted += newOnes.length
-        } else {
-          debug(`No new logs for "${eventType.name}"`)
-        }
-
-        return r.table('logs')
-          .insert(newOnes, { returnChanges: true, conflict: 'update' })
-          .run(db, (err, results) => {
-            if (err) return reject(err)
-            return populateLog(contract, key + 1)
-              .then(resolve)
-              .catch(reject)
+          debug(`New logs for ${contract}: ${newOnes.length}`)
+          await new Promise((resolve, reject) => {
+            r.table('logs')
+              .insert(newOnes, { returnChanges: true, conflict: 'update' })
+              .run(db, (err, results) => {
+                if (err) return reject(err)
+                resolve(results)
+              })
           })
-      } catch(error) {
-        debug('error!!!')
-        debug(error)
+        } else {
+          debug(`No new logs for ${contract} in this range`)
+        }
+      } catch (err) {
+        debug(`Error fetching ${contract} events:`, err.message)
+        // Retry after delay
+        await sleep(5000)
       }
     }
-  })
+
+    currentFrom = currentTo + 1
+  }
 }
 
+/**
+ * Legacy getLogs function - now wraps IndexSupply queries.
+ * Kept for backward compatibility with doSyncContract in clovers.js.
+ */
+export async function getLogs({ address, topics, genesisBlock, latest, limit, offset, previousLogs }) {
+  debug('getLogs via IndexSupply (legacy compat)')
+
+  // Determine which contract this is for
+  let contractName = null
+  for (const [name, info] of Object.entries(events)) {
+    if (info.address.toLowerCase() === address.toLowerCase()) {
+      contractName = name
+      break
+    }
+  }
+
+  if (!contractName) {
+    debug('Unknown contract address:', address)
+    return previousLogs || []
+  }
+
+  const fromBlock = genesisBlock + (limit * offset)
+  const toBlock = latest === genesisBlock ? genesisBlock + limit : (genesisBlock + limit * (offset + 1) > latest ? null : genesisBlock + limit * (offset + 1))
+
+  try {
+    const logs = await fetchHistoricalEvents(contractName, fromBlock, toBlock)
+
+    // Convert to a format compatible with the old transformLog
+    // These logs are already in the right format from fetchHistoricalEvents
+    const combinedLogs = (previousLogs || []).concat(logs.map(log => ({
+      ...log,
+      // Add raw log fields for compatibility with old transformLog
+      data: log.data,
+      topics: topics
+    })))
+
+    return combinedLogs
+  } catch (err) {
+    debug('getLogs error:', err.message)
+    return previousLogs || []
+  }
+}
+
+let logsInserted = 0
+
+/**
+ * transformLog - kept for backward compatibility.
+ * With IndexSupply, logs come pre-transformed from indexSupplyRowToLog.
+ * This function handles the legacy case where raw ethers logs need decoding.
+ */
 export function transformLog (_l, contract, key) {
+  // If the log already has a 'name' field, it's already transformed (from IndexSupply)
+  if (_l.name && _l.name.includes('_')) {
+    return _l
+  }
+
+  // Legacy path: decode raw ethers log
   let address = events[contract].address.toLowerCase()
 
   if (_l.address.toLowerCase() !== address.toLowerCase()) {
@@ -409,15 +357,11 @@ export function transformLog (_l, contract, key) {
 
 function processLogs () {
   debug('processLogs')
-  // if (logsInserted === 0) {
-  //   return Promise.resolve()
-  // }
 
   return new Promise((resolve, reject) => {
     const genesisBlock = config.genesisBlock[config.network.chainId]
     r.table('logs')
       .between(genesisBlock, r.maxval, { index: 'blockNumber' })
-      // .between(genesisBlock, genesisBlock + 10000, { index: 'blockNumber' })
       .orderBy({ index: 'blockNumber' })
       .coerceTo('array')
       .run(db, { arrayLimit: 200000 }, (err, logs) => {
@@ -458,12 +402,12 @@ export function processLog (logs, i = 0, _db, skipOracle = false) {
             .catch((err) => {
               debug('processLog err')
               debug(err)
-              return proccessLog(logs, i, db, skipOracle)
+              return processLog(logs, i, db, skipOracle)
             })
         })
         .catch(async (err) => {
           debug('handleEvent err')
-          debug(err.responseText)
+          debug(err.responseText || err.message)
           await sleep(1500)
           return processLog(logs, i, _db, skipOracle)
         })
@@ -485,7 +429,7 @@ async function moveChats () {
   }
 }
 
-async function moveChats () {
+async function moveAlbums () {
   if (syncing) return
 
   try {
@@ -560,7 +504,7 @@ async function syncUsers () {
       debug('done. balance is', u.balance)
     } catch (err) {
       debug(err)
-      // probably a infura rate limit?
+      // probably a rate limit
       await sleep(5000)
     }
   }

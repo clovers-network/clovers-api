@@ -1,6 +1,6 @@
 const debug = require('debug')('app:models:clovers')
 import r from 'rethinkdb'
-import { events, provider } from '../lib/ethers-utils'
+import { events, provider } from '../lib/indexsupply'
 import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
