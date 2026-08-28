@@ -189,6 +189,7 @@ async function copySyncData () {
 
 // Block range size for IndexSupply queries
 const BLOCK_BATCH_SIZE = 50000
+const MAX_RANGE_RETRIES = 5
 
 /**
  * Populate logs using IndexSupply instead of direct RPC getLogs.
@@ -218,47 +219,57 @@ async function populateLogs (block) {
     debug(`Fetching events for blocks ${currentFrom} to ${currentTo}`)
 
     for (const contract of contracts) {
-      try {
-        const logs = await fetchHistoricalEvents(contract, currentFrom, currentTo)
-        debug(`${contract}: ${logs.length} events in range`)
+      // Retry the range rather than moving on: silently skipping a failed
+      // range loses those events permanently, since currentFrom advances
+      // whether or not the fetch succeeded.
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const logs = await fetchHistoricalEvents(contract, currentFrom, currentTo)
+          debug(`${contract}: ${logs.length} events in range`)
 
-        if (logs.length === 0) continue
+          if (logs.length === 0) break
 
-        // Deduplicate against existing logs
-        const newOnes = []
-        for (const log of logs) {
-          const existing = await new Promise((resolve, reject) => {
-            r.table('logs')
-              .getAll([log.transactionHash, log.logIndex], { index: 'unique_log' })
-              .coerceTo('array')
-              .run(db, (err, res) => {
-                if (err) reject(err)
-                resolve(res[0])
-              })
-          })
+          // Deduplicate against existing logs
+          const newOnes = []
+          for (const log of logs) {
+            const existing = await new Promise((resolve, reject) => {
+              r.table('logs')
+                .getAll([log.transactionHash, log.logIndex], { index: 'unique_log' })
+                .coerceTo('array')
+                .run(db, (err, res) => {
+                  if (err) reject(err)
+                  resolve(res[0])
+                })
+            })
 
-          if (!existing) {
-            newOnes.push(log)
+            if (!existing) {
+              newOnes.push(log)
+            }
           }
-        }
 
-        if (newOnes.length) {
-          debug(`New logs for ${contract}: ${newOnes.length}`)
-          await new Promise((resolve, reject) => {
-            r.table('logs')
-              .insert(newOnes, { returnChanges: true, conflict: 'update' })
-              .run(db, (err, results) => {
-                if (err) return reject(err)
-                resolve(results)
-              })
-          })
-        } else {
-          debug(`No new logs for ${contract} in this range`)
+          if (newOnes.length) {
+            debug(`New logs for ${contract}: ${newOnes.length}`)
+            await new Promise((resolve, reject) => {
+              r.table('logs')
+                .insert(newOnes, { returnChanges: true, conflict: 'update' })
+                .run(db, (err, results) => {
+                  if (err) return reject(err)
+                  resolve(results)
+                })
+            })
+          } else {
+            debug(`No new logs for ${contract} in this range`)
+          }
+          break
+        } catch (err) {
+          debug(`Error fetching ${contract} events (attempt ${attempt + 1}):`, err.message)
+          if (attempt >= MAX_RANGE_RETRIES) {
+            throw new Error(
+              `Giving up on ${contract} blocks ${currentFrom}-${currentTo}: ${err.message}`
+            )
+          }
+          await sleep(Math.min(60000, 5000 * Math.pow(2, attempt)))
         }
-      } catch (err) {
-        debug(`Error fetching ${contract} events:`, err.message)
-        // Retry after delay
-        await sleep(5000)
       }
     }
 

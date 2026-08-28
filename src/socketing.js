@@ -38,17 +38,39 @@ export var socketing = function ({ _io, _db }) {
   })
 
   // Use IndexSupply SSE live streams instead of ethers.js event listeners
-  beginLiveListening()
+  beginLiveListening().catch(err => {
+    debug('Failed to start live streams')
+    debug(err)
+  })
+}
+
+/**
+ * Highest block already persisted, so live streams resume exactly where the
+ * historical sync left off instead of replaying history or skipping a gap.
+ */
+async function lastStoredBlock () {
+  try {
+    const res = await dodb(db, r.table('logs')
+      .max({ index: 'blockNumber' })('blockNumber')
+      .default(null))
+    return res === null ? undefined : Number(res)
+  } catch (err) {
+    debug('Could not read last stored block, starting from chain head')
+    debug(err)
+    return undefined
+  }
 }
 
 /**
  * Start live event streaming via IndexSupply SSE.
  * Routes decoded events to the same model handlers as before.
  */
-function beginLiveListening () {
+async function beginLiveListening () {
   debug('Starting IndexSupply live event streams...')
 
-  liveControllers = startLiveStreams(async (log) => {
+  const fromBlock = await lastStoredBlock()
+
+  liveControllers = await startLiveStreams(async (log) => {
     try {
       // Filter out events from wrong contract addresses
       const contractName = log.name.split('_')[0]
@@ -86,7 +108,7 @@ function beginLiveListening () {
     } catch (err) {
       debug('Error handling live event:', err.message)
     }
-  })
+  }, fromBlock)
 
   debug(`Started ${liveControllers.length} live streams`)
 }

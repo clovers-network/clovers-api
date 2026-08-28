@@ -121,22 +121,62 @@ export let events = {
 // IndexSupply event signatures (human-readable ABI format)
 // ---------------------------------------------------------------------------
 
+/**
+ * Per-event IndexSupply spec.
+ *
+ * `signature` must match the deployed ABI *including* `indexed` markers. topic0
+ * is unaffected by indexing, so a signature with the wrong indexed-ness still
+ * matches the logs but decodes the mis-declared args out of the wrong section --
+ * silently yielding zeros rather than an error.
+ *
+ * `table` is the event name lowercased. `columns` are the arg names lowercased
+ * (Postgres folds unquoted identifiers), in signature order.
+ */
 export const EVENT_SIGNATURES = {
   Clovers: {
-    Transfer: 'Transfer(address indexed from, address indexed to, uint256 tokenId)'
+    // _tokenId IS indexed on the deployed Clovers contract. Dropping `indexed`
+    // here decodes every tokenId as 0 -- and _tokenId is the clovers primary key.
+    Transfer: {
+      signature: 'Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
+      table: 'transfer',
+      columns: ['from', 'to', 'tokenid']
+    }
   },
   ClubToken: {
-    Transfer: 'Transfer(address indexed from, address indexed to, uint256 value)'
+    Transfer: {
+      signature: 'Transfer(address indexed from, address indexed to, uint256 value)',
+      table: 'transfer',
+      columns: ['from', 'to', 'value']
+    }
   },
   SimpleCloversMarket: {
-    updatePrice: 'updatePrice(uint256 _tokenId, uint256 price)'
+    updatePrice: {
+      signature: 'updatePrice(uint256 _tokenId, uint256 price)',
+      table: 'updateprice',
+      columns: ['_tokenid', 'price']
+    }
   },
   ClubTokenController: {
-    Buy: 'Buy(address buyer, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply)',
-    Sell: 'Sell(address seller, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply)'
+    Buy: {
+      signature: 'Buy(address buyer, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply)',
+      table: 'buy',
+      columns: ['buyer', 'tokens', 'value', 'poolbalance', 'tokensupply']
+    },
+    Sell: {
+      signature: 'Sell(address seller, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply)',
+      table: 'sell',
+      columns: ['seller', 'tokens', 'value', 'poolbalance', 'tokensupply']
+    }
   },
   CloversController: {}
 }
+
+// Log columns every event virtual table carries. IndexSupply has no
+// transaction-index column; log_idx is monotonic within a block, so it orders
+// events identically to (tx_idx, log-within-tx).
+const LOG_COLUMNS = ['block_num', 'tx_hash', 'log_idx', 'address']
+
+const CHAIN_ID = network.chainId
 
 export const CONTRACT_ADDRESSES = {
   Clovers: cloversAddress.toLowerCase(),
@@ -150,15 +190,22 @@ export const CONTRACT_ADDRESSES = {
 // IndexSupply query helpers
 // ---------------------------------------------------------------------------
 
-function buildQueryParams (signatures, sql, chain = 1) {
-  const params = new URLSearchParams()
-  params.set('chain', chain)
+function sleep (ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
 
-  // signatures can be a single string or array
-  const sigs = Array.isArray(signatures) ? signatures : [signatures]
-  sigs.forEach(s => params.append('signatures', s))
+function buildQueryParams (signature, sql, cursor) {
+  const params = new URLSearchParams()
+  params.set('chain', CHAIN_ID)
+
+  const sigs = Array.isArray(signature) ? signature : [signature]
+  sigs.forEach(sig => params.append('signatures', sig))
 
   params.set('query', sql)
+
+  if (cursor) {
+    params.set('cursor', cursor)
+  }
 
   if (INDEXSUPPLY_API_KEY) {
     params.set('api_key', INDEXSUPPLY_API_KEY)
@@ -168,122 +215,198 @@ function buildQueryParams (signatures, sql, chain = 1) {
 }
 
 /**
- * Execute a query against IndexSupply /v2/query endpoint.
- * Returns an array of row objects.
+ * Build the SQL for one contract event.
+ *
+ * IndexSupply rejects `SELECT *` and `SELECT <table>.*`, requires a `chain`
+ * predicate in the SQL itself (the URL param alone is not enough), and exposes
+ * the log address as `address` on the event table -- there is no `log_addr`
+ * column and no need to JOIN the `logs` base table.
  */
-export async function queryIndexSupply (signatures, sql, chain = 1) {
-  const params = buildQueryParams(signatures, sql, chain)
-  const url = `${INDEXSUPPLY_BASE}/v2/query?${params.toString()}`
+export function buildEventSQL (contractName, eventName, { fromBlock, toBlock, limit } = {}) {
+  const spec = EVENT_SIGNATURES[contractName][eventName]
+  const cols = spec.columns
+    .map(c => `"${c}"`)
+    .concat(LOG_COLUMNS)
+    .join(', ')
 
-  debug('IndexSupply query:', sql.substring(0, 120))
+  const where = [
+    `chain = ${CHAIN_ID}`,
+    `address = '${CONTRACT_ADDRESSES[contractName]}'`
+  ]
+  if (fromBlock !== undefined && fromBlock !== null) where.push(`block_num >= ${Number(fromBlock)}`)
+  if (toBlock !== undefined && toBlock !== null) where.push(`block_num <= ${Number(toBlock)}`)
 
-  const response = await fetch(url, {
-    headers: { 'Accept': 'application/json' }
-  })
-
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`IndexSupply query failed (${response.status}): ${text}`)
-  }
-
-  const data = await response.json()
-
-  // IndexSupply returns { result: [{ columns: [...], data: [[...], ...] }] }
-  if (!data.result || !data.result.length) {
-    return []
-  }
-
-  const result = data.result[0]
-  const columns = result.columns || []
-  const rows = result.data || []
-
-  return rows.map(row => {
-    const obj = {}
-    columns.forEach((col, i) => {
-      obj[col] = row[i]
-    })
-    return obj
-  })
+  return `SELECT ${cols} FROM ${spec.table}` +
+    ` WHERE ${where.join(' AND ')}` +
+    ` ORDER BY block_num ASC, log_idx ASC` +
+    (limit ? ` LIMIT ${Number(limit)}` : '')
 }
 
 /**
- * Open an SSE stream via IndexSupply /v2/query-live endpoint.
- * Calls `onEvent(rows)` for each batch of new events.
- * Returns an abort controller to stop the stream.
+ * Normalise an IndexSupply /v2 response body.
+ *
+ * The API returns a top-level ARRAY, one entry per query:
+ *   [{ cursor, columns: [{ name, pgtype }], rows: [[...]] }]
+ * Errors come back as { error, message }.
  */
-export function queryLiveIndexSupply (signatures, sql, onEvent, chain = 1) {
-  const params = buildQueryParams(signatures, sql, chain)
-  const url = `${INDEXSUPPLY_BASE}/v2/query-live?${params.toString()}`
+function parseResult (body) {
+  if (body && !Array.isArray(body) && (body.error || body.message)) {
+    const err = new Error(`IndexSupply error: ${body.message || body.error}`)
+    err.isUserError = body.error === 'user'
+    throw err
+  }
 
+  const result = Array.isArray(body) ? body[0] : null
+  if (!result) return { rows: [], cursor: null }
+
+  const columns = (result.columns || []).map(c => (typeof c === 'string' ? c : c.name))
+  const rows = (result.rows || []).map(row => {
+    const obj = {}
+    columns.forEach((col, k) => { obj[col] = row[k] })
+    return obj
+  })
+
+  return { rows, cursor: result.cursor || null }
+}
+
+// The free tier allows 5 queries/min. Serialise requests behind a minimum
+// interval so a long historical sync degrades to "slow" rather than "429s that
+// get swallowed and silently skip block ranges".
+const MIN_QUERY_INTERVAL_MS = Number(
+  process.env.INDEXSUPPLY_MIN_INTERVAL_MS ||
+  (INDEXSUPPLY_API_KEY ? 250 : 12500)
+)
+const MAX_QUERY_RETRIES = 5
+
+let queryQueue = Promise.resolve()
+let lastQueryAt = 0
+
+function throttle () {
+  const next = queryQueue.then(async () => {
+    const wait = lastQueryAt + MIN_QUERY_INTERVAL_MS - Date.now()
+    if (wait > 0) await sleep(wait)
+    lastQueryAt = Date.now()
+  })
+  queryQueue = next.catch(() => {})
+  return next
+}
+
+/**
+ * Execute a query against IndexSupply /v2/query.
+ * Returns { rows, cursor }; rows are column-name keyed objects.
+ */
+export async function queryIndexSupplyWithCursor (signature, sql, { cursor } = {}) {
+  const url = `${INDEXSUPPLY_BASE}/v2/query?${buildQueryParams(signature, sql, cursor).toString()}`
+
+  debug('IndexSupply query:', sql.substring(0, 160))
+
+  for (let attempt = 0; ; attempt++) {
+    await throttle()
+
+    const response = await fetch(url, { headers: { 'Accept': 'application/json' } })
+
+    if (response.status === 429 && attempt < MAX_QUERY_RETRIES) {
+      const retryAfter = Number(response.headers.get('retry-after') || 0) * 1000
+      const wait = retryAfter || Math.min(60000, 5000 * Math.pow(2, attempt))
+      debug(`IndexSupply rate limited, retrying in ${wait}ms (attempt ${attempt + 1})`)
+      await sleep(wait)
+      continue
+    }
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(`IndexSupply query failed (${response.status}): ${text}`)
+    }
+
+    return parseResult(await response.json())
+  }
+}
+
+/**
+ * Convenience wrapper returning just the rows.
+ */
+export async function queryIndexSupply (signature, sql, opts = {}) {
+  const { rows } = await queryIndexSupplyWithCursor(signature, sql, opts)
+  return rows
+}
+
+/**
+ * Open an SSE stream via IndexSupply /v2/query-live.
+ *
+ * The cursor is what makes a live query incremental: without one the query is
+ * evaluated over all of history on connect. Do NOT bound the query with LIMIT --
+ * the live stream re-evaluates the whole query per block, so a LIMIT truncates
+ * each block's result set and silently drops events.
+ *
+ * Calls `onEvent(rows)` per batch. Returns an AbortController that stops the
+ * stream, including across reconnects.
+ */
+export function queryLiveIndexSupply (signature, sql, onEvent, { cursor } = {}) {
   const abortController = new AbortController()
+  let position = cursor || null
 
-  debug('IndexSupply live query starting:', sql.substring(0, 120))
+  debug('IndexSupply live query starting:', sql.substring(0, 160))
 
   ;(async () => {
-    try {
-      const response = await fetch(url, {
-        headers: { 'Accept': 'text/event-stream' },
-        signal: abortController.signal
-      })
+    while (!abortController.signal.aborted) {
+      try {
+        const url = `${INDEXSUPPLY_BASE}/v2/query-live?${buildQueryParams(signature, sql, position).toString()}`
 
-      if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`IndexSupply live query failed (${response.status}): ${text}`)
-      }
+        const response = await fetch(url, {
+          headers: { 'Accept': 'text/event-stream' },
+          signal: abortController.signal
+        })
 
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
+        if (!response.ok) {
+          const text = await response.text()
+          throw new Error(`IndexSupply live query failed (${response.status}): ${text}`)
+        }
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+        const reader = response.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
 
-        buffer += decoder.decode(value, { stream: true })
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
 
-        // Parse SSE events from buffer
-        const parts = buffer.split('\n\n')
-        buffer = parts.pop() // keep incomplete part
+          buffer += decoder.decode(value, { stream: true })
 
-        for (const part of parts) {
-          const dataLines = part
-            .split('\n')
-            .filter(l => l.startsWith('data:'))
-            .map(l => l.slice(5).trim())
+          const parts = buffer.split('\n\n')
+          buffer = parts.pop() // keep incomplete part
 
-          if (dataLines.length === 0) continue
+          for (const part of parts) {
+            const dataLines = part
+              .split('\n')
+              .filter(l => l.startsWith('data:'))
+              .map(l => l.slice(5).trim())
 
-          try {
-            const data = JSON.parse(dataLines.join(''))
-            if (data.result && data.result.length) {
-              const result = data.result[0]
-              const columns = result.columns || []
-              const rows = (result.data || []).map(row => {
-                const obj = {}
-                columns.forEach((col, i) => {
-                  obj[col] = row[i]
-                })
-                return obj
-              })
-              if (rows.length > 0) {
-                onEvent(rows)
-              }
+            if (dataLines.length === 0) continue
+
+            let parsed
+            try {
+              parsed = parseResult(JSON.parse(dataLines.join('')))
+            } catch (e) {
+              if (e.isUserError) throw e // broken query; reconnecting will not help
+              debug('SSE parse error:', e.message)
+              continue
             }
-          } catch (e) {
-            debug('SSE parse error:', e.message)
+
+            // Advance the cursor before dispatching so a throw still resumes.
+            if (parsed.cursor) position = parsed.cursor
+            if (parsed.rows.length) onEvent(parsed.rows)
           }
         }
-      }
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        debug('IndexSupply live query error:', err.message)
-        // Reconnect after delay
-        setTimeout(() => {
-          if (!abortController.signal.aborted) {
-            debug('Reconnecting live query...')
-            queryLiveIndexSupply(signatures, sql, onEvent, chain)
-          }
-        }, 5000)
+      } catch (err) {
+        if (abortController.signal.aborted || err.name === 'AbortError') return
+
+        if (err.isUserError) {
+          debug('IndexSupply live query rejected, not reconnecting:', err.message)
+          return
+        }
+
+        debug('IndexSupply live query error, reconnecting in 5s:', err.message)
+        await sleep(5000)
       }
     }
   })()
@@ -303,35 +426,20 @@ export async function fetchHistoricalEvents (contractName, fromBlock, toBlock) {
   const eventTypes = events[contractName].eventTypes
   if (!eventTypes || eventTypes.length === 0) return []
 
-  const address = CONTRACT_ADDRESSES[contractName]
   const allLogs = []
 
   for (let i = 0; i < eventTypes.length; i++) {
     const eventName = eventTypes[i]
-    const sig = EVENT_SIGNATURES[contractName][eventName]
-    if (!sig) {
+    const spec = EVENT_SIGNATURES[contractName][eventName]
+    if (!spec) {
       debug(`No signature for ${contractName}.${eventName}, skipping`)
       continue
     }
 
-    // Table name is the lowercase event name in IndexSupply
-    const tableName = eventName.toLowerCase()
-
-    // Build SQL to fetch events filtered by contract address and block range
-    const sql = `
-      SELECT ${tableName}.*, logs.block_num, logs.tx_hash, logs.log_addr, logs.log_idx, logs.tx_idx
-      FROM ${tableName}
-      INNER JOIN logs ON ${tableName}.log_idx = logs.log_idx
-        AND ${tableName}.block_num = logs.block_num
-        AND ${tableName}.tx_hash = logs.tx_hash
-      WHERE logs.log_addr = '${address}'
-        AND logs.block_num >= ${fromBlock}
-        ${toBlock ? `AND logs.block_num <= ${toBlock}` : ''}
-      ORDER BY logs.block_num ASC, logs.log_idx ASC
-    `.trim()
+    const sql = buildEventSQL(contractName, eventName, { fromBlock, toBlock })
 
     try {
-      const rows = await queryIndexSupply(sig, sql)
+      const rows = await queryIndexSupply(spec.signature, sql)
       debug(`${contractName}.${eventName}: ${rows.length} events from block ${fromBlock}`)
 
       const logs = rows.map(row => indexSupplyRowToLog(row, contractName, eventName, i))
@@ -406,12 +514,14 @@ function indexSupplyRowToLog (row, contractName, eventName, eventTypeIndex) {
     }
   }
 
+  // IndexSupply exposes no transaction-index column. log_idx is monotonic
+  // within a block, so it sorts events in the same order tx_idx would.
   return {
     blockNumber: Number(row.block_num),
     transactionHash: row.tx_hash,
-    transactionIndex: Number(row.tx_idx || 0),
+    transactionIndex: Number(row.log_idx || 0),
     logIndex: Number(row.log_idx || 0),
-    address: (row.log_addr || CONTRACT_ADDRESSES[contractName]).toLowerCase(),
+    address: (row.address || CONTRACT_ADDRESSES[contractName]).toLowerCase(),
     name: `${contractName}_${eventName}`,
     data,
     userAddresses
@@ -427,8 +537,7 @@ function getFieldMappings (contractName, eventName) {
       Transfer: {
         'from': '_from',
         'to': '_to',
-        'tokenid': '_tokenId',
-        'tokenId': '_tokenId'
+        'tokenid': '_tokenId'
       }
     },
     ClubToken: {
@@ -441,9 +550,6 @@ function getFieldMappings (contractName, eventName) {
     SimpleCloversMarket: {
       updatePrice: {
         '_tokenid': '_tokenId',
-        '_tokenId': '_tokenId',
-        'tokenid': '_tokenId',
-        'tokenId': '_tokenId',
         'price': 'price'
       }
     },
@@ -453,18 +559,14 @@ function getFieldMappings (contractName, eventName) {
         'tokens': 'tokens',
         'value': 'value',
         'poolbalance': 'poolBalance',
-        'poolBalance': 'poolBalance',
-        'tokensupply': 'tokenSupply',
-        'tokenSupply': 'tokenSupply'
+        'tokensupply': 'tokenSupply'
       },
       Sell: {
         'seller': 'seller',
         'tokens': 'tokens',
         'value': 'value',
         'poolbalance': 'poolBalance',
-        'poolBalance': 'poolBalance',
-        'tokensupply': 'tokenSupply',
-        'tokenSupply': 'tokenSupply'
+        'tokensupply': 'tokenSupply'
       }
     },
     CloversController: {}
@@ -479,36 +581,40 @@ function getFieldMappings (contractName, eventName) {
 
 /**
  * Start live SSE streams for all tracked contracts/events.
+ *
+ * `fromBlock` seeds each stream's cursor. Pass the highest block already
+ * persisted so the stream resumes exactly where the historical sync stopped;
+ * omit it to start from chain head. Without a cursor IndexSupply evaluates the
+ * query over all of history on connect, which times out.
+ *
  * Calls onLog(log) for each new event, in the standard log format.
  * Returns an array of AbortControllers (one per stream).
  */
-export function startLiveStreams (onLog) {
+export async function startLiveStreams (onLog, fromBlock) {
   const controllers = []
   const contractNames = ['Clovers', 'ClubToken', 'SimpleCloversMarket', 'ClubTokenController']
 
+  let startBlock = fromBlock
+  if (startBlock === undefined || startBlock === null) {
+    startBlock = await provider.getBlockNumber()
+    debug(`No start block given, streaming from chain head ${startBlock}`)
+  }
+
+  const cursor = `${CHAIN_ID}-${Number(startBlock)}`
+
   for (const contractName of contractNames) {
     const eventTypes = events[contractName].eventTypes
-    const address = CONTRACT_ADDRESSES[contractName]
 
     for (let i = 0; i < eventTypes.length; i++) {
       const eventName = eventTypes[i]
-      const sig = EVENT_SIGNATURES[contractName][eventName]
-      if (!sig) continue
+      const spec = EVENT_SIGNATURES[contractName][eventName]
+      if (!spec) continue
 
-      const tableName = eventName.toLowerCase()
+      // No LIMIT: the live query is re-evaluated per block and a LIMIT would
+      // truncate blocks that carry more than one matching event.
+      const sql = buildEventSQL(contractName, eventName, { fromBlock: startBlock })
 
-      const sql = `
-        SELECT ${tableName}.*, logs.block_num, logs.tx_hash, logs.log_addr, logs.log_idx, logs.tx_idx
-        FROM ${tableName}
-        INNER JOIN logs ON ${tableName}.log_idx = logs.log_idx
-          AND ${tableName}.block_num = logs.block_num
-          AND ${tableName}.tx_hash = logs.tx_hash
-        WHERE logs.log_addr = '${address}'
-        ORDER BY logs.block_num DESC
-        LIMIT 1
-      `.trim()
-
-      const controller = queryLiveIndexSupply(sig, sql, (rows) => {
+      const controller = queryLiveIndexSupply(spec.signature, sql, (rows) => {
         for (const row of rows) {
           try {
             const log = indexSupplyRowToLog(row, contractName, eventName, i)
@@ -518,10 +624,10 @@ export function startLiveStreams (onLog) {
             debug(`Error processing live event for ${contractName}.${eventName}:`, err.message)
           }
         }
-      })
+      }, { cursor })
 
       controllers.push(controller)
-      debug(`Live stream started for ${contractName}.${eventName}`)
+      debug(`Live stream started for ${contractName}.${eventName} from block ${startBlock}`)
     }
   }
 
