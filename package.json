@@ -13,24 +13,36 @@
     "prestart-dev": "npm run -s prestart",
     "reload": "pm2 reload ecosystem.config.js",
     "prereload": "npm i && npm run -s build",
-    "test": "eslint src",
+    "test": "npm run lint && npm run -s build && npm run -s test:unit",
     "contracts": "npm i clovers-network/clovers-contracts --force",
     "accessremote": "ssh -fNTL localhost:8080:127.0.0.1:8080  clover",
     "accessremote-main": "ssh -fNTL localhost:8080:127.0.0.1:8080  clover-main",
-    "killremote": "kill $(ps aux | grep '[s]sh' | grep 8080 | awk '{print $2}')"
+    "killremote": "kill $(ps aux | grep '[s]sh' | grep 8080 | awk '{print $2}')",
+    "lint": "eslint src",
+    "test:unit": "node --test \"test/*.test.js\""
   },
   "eslintConfig": {
     "extends": "eslint:recommended",
     "parserOptions": {
-      "ecmaVersion": 7,
+      "ecmaVersion": 2022,
       "sourceType": "module"
     },
     "env": {
-      "node": true
+      "node": true,
+      "es2022": true
     },
     "rules": {
       "no-console": 0,
-      "no-unused-vars": 1
+      "no-unused-vars": 1,
+      "no-empty": [
+        "error",
+        {
+          "allowEmptyCatch": true
+        }
+      ]
+    },
+    "globals": {
+      "WebSocket": "readonly"
     }
   },
   "repository": {
@@ -73,7 +85,7 @@
     "babel-preset-es2015": "^6.9.0",
     "babel-preset-stage-0": "^6.5.0",
     "babel-runtime": "^6.26.0",
-    "eslint": "^3.1.1",
+    "eslint": "^8.57.0",
     "nodemon": "^1.9.2"
   },
   "bugs": {

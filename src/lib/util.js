@@ -1,4 +1,5 @@
 const debug = require('debug')('app:util')
+import r from 'rethinkdb'
 import Reversi from 'clovers-reversi'
 import svg_to_png from 'svg-to-png'
 import fs from 'fs-extra'
@@ -10,6 +11,26 @@ var utils = require('ethers').utils
 
 export const oneEthInWei = utils.parseEther('1').toString(10)
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
+
+/**
+ * Insert a user row and return it. Shared by the chats and albums routes --
+ * albums.js used to call a `makeUser` that only existed in chats.js, which was
+ * a guaranteed ReferenceError for any album created by an unknown address.
+ */
+export async function makeUser (db, io, address, blockNumber) {
+  let user = userTemplate(String(address).toLowerCase())
+  user.created = blockNumber
+  user.modified = blockNumber
+
+  const { changes } = await r
+    .table('users')
+    .insert(user, { returnChanges: true })
+    .run(db)
+
+  if (changes && changes[0]) user = changes[0].new_val
+  if (io) io.emit('updateUser', user)
+  return user
+}
 
 export function userTemplate (address = '', log = {}) {
   return {
@@ -75,10 +96,13 @@ export async function getLowestPrice (
   let littleIncrement = utils.parseEther('0.001')
   let bigIncrement = utils.parseEther('0.1')
   currentPrice = currentPrice.plus(useLittle ? littleIncrement : bigIncrement)
+  // Was declared with `let` inside each branch, so it was out of scope by the
+  // time it was read below -- getLowestPrice threw ReferenceError on every call.
+  let resultOfSpend
   if (_tokenId) {
-    let resultOfSpend = await contract.getBuy(_tokenId, currentPrice)
+    resultOfSpend = await contract.getBuy(_tokenId, currentPrice)
   } else {
-    let resultOfSpend = await contract.getBuy(currentPrice)
+    resultOfSpend = await contract.getBuy(currentPrice)
   }
   if (resultOfSpend.gt(targetAmount)) {
     return useLittle

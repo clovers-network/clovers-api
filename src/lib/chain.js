@@ -76,7 +76,7 @@ const GROW_AFTER = 5 // successful calls before widening the chunk again
 const CONFIRMATIONS = Number(process.env.RPC_CONFIRMATIONS || 12)
 
 const POLL_INTERVAL_MS = Number(process.env.RPC_POLL_INTERVAL_MS || 60000)
-const RECONNECT_DELAY_MS = 5000
+const RECONNECT_DELAY_MS = Number(process.env.RPC_RECONNECT_DELAY_MS || 5000)
 
 const network = config.network
 

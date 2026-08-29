@@ -34,6 +34,18 @@ export function syncBalances (_db) {
   syncUsers()
 }
 
+/*
+ * NOTE: this function cannot run. It uses Web Worker globals (`self`,
+ * `postMessage`) that do not exist in Node, reads `hashRate` and `data` which
+ * are never declared in scope, and recurses into `mine()` with no arguments.
+ * Invoking `node dist/index.js mine` throws immediately. It looks like it was
+ * pasted from a browser worker and never adapted.
+ *
+ * Left in place rather than deleted because `mine` is still wired into
+ * src/index.js -- removing it is a product decision, not a lint fix. The lint
+ * suppression below is scoped to this function only.
+ */
+/* eslint-disable no-undef, no-inner-declarations */
 export function mine (_db, _io) {
   if (!db) db = _db
   io = _io
@@ -66,6 +78,7 @@ export function mine (_db, _io) {
     self.close()
   }
 }
+/* eslint-enable no-undef, no-inner-declarations */
 
 function rebuildDatabases () {
   debug('rebuildDatabases')

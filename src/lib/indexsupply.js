@@ -366,7 +366,7 @@ export function queryLiveIndexSupply (signature, sql, onEvent, { cursor } = {}) 
         const decoder = new TextDecoder()
         let buffer = ''
 
-        while (true) {
+        for (;;) {
           const { done, value } = await reader.read()
           if (done) break
 
