@@ -200,10 +200,27 @@ database — not a broken one.
 
 ## After the deploy has been stable
 
-### Repair the damaged clover rows
+### Repair the damaged clover rows — DONE 2026-08-29
 
-Chronic drift from a bug now fixed. Measured against mainnet: 157 rows missing
-entirely, 254 rows with the wrong owner, 2 rows for tokens never minted.
+Completed ahead of the migration, from an isolated work tree, without touching
+the running API. Result: **157 rows inserted, 254 owners corrected, 0 failed.**
+An independent re-run afterwards reports 0 missing and 0 wrong.
+
+| | Before | After | Chain |
+|---|---|---|---|
+| Rows | 44,432 | 44,589 | — |
+| Non-zero owner | 44,012 | **44,326** | 44,326 |
+| API `allResults` | 44,012 | **44,326** | 44,326 |
+
+A follow-up pass corrected `created` on the 157 inserted rows: the logs table
+no longer held their mint logs, so they had defaulted to the current block.
+reconcile now takes the mint block from the chain walk, so that fallback no
+longer occurs.
+
+The steps below are retained for future use.
+
+Original measurement: 157 rows missing entirely, 254 rows with the wrong
+owner, 0 rows for tokens never minted.
 
 **This can be done before the migration, and without touching the running
 API.** Check the branch out into a separate work tree so a pm2 restart cannot
