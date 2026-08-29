@@ -3,7 +3,7 @@ import config from '../config.json'
 import { handleEvent } from '../socketing'
 import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
-import { provider, events, fetchHistoricalEvents } from './indexsupply'
+import { provider, events, fetchHistoricalEvents } from './chain'
 import tables from './db-tables'
 import { checkUserBalance } from '../models/clubToken'
 

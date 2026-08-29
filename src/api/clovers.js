@@ -10,7 +10,7 @@ import xss from 'xss'
 import Reversi from 'clovers-reversi'
 import BigNumber from 'bignumber.js'
 import uuid from 'uuid/v4'
-import { provider, events, ethers, walletProvider, cloversAddress } from '../lib/indexsupply'
+import { provider, events, ethers, walletProvider, cloversAddress } from '../lib/chain'
 import http from 'https'
 
 const semiSecretToken = process.env.SYNC_TOKEN

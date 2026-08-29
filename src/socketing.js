@@ -1,5 +1,5 @@
 const debug = require('debug')('app:socketing')
-import { events, startLiveStreams } from './lib/indexsupply'
+import { events, startLiveStreams } from './lib/chain'
 import { network } from './config'
 import * as clovers from './models/clovers'
 import * as clubToken from './models/clubToken'

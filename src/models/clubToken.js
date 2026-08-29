@@ -1,6 +1,6 @@
 const debug = require('debug')('app:models:clubToken')
 import r from 'rethinkdb'
-import { events, provider } from '../lib/indexsupply'
+import { events, provider } from '../lib/chain'
 import { dodb, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
 let db, io
 const BigNumber = require('bignumber.js')

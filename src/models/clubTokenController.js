@@ -1,6 +1,6 @@
 const debug = require('debug')('app:models:clubTokenController')
 import r from 'rethinkdb'
-import { events } from '../lib/indexsupply'
+import { events } from '../lib/chain'
 import { padBigNum, dodb } from '../lib/util'
 // event Buy(address buyer, uint256 tokens, uint256 value, uint256 poolBalance, uint256 tokenSupply);
 export let clubTokenControllerBuy = async function({ log, io, db }) {

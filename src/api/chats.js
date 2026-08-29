@@ -6,7 +6,7 @@ import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
 import uuid from 'uuid/v4'
-import { provider } from '../lib/indexsupply'
+import { provider } from '../lib/chain'
 
 // addresses that can moderate comments :)
 const whitelist = []
