@@ -72,15 +72,38 @@ Wait for it to complete before continuing:
 doctl compute action list --format ID,Type,Status | head
 ```
 
-Also back up the database independently of the droplet snapshot:
+Also back up the database independently of the droplet snapshot.
+
+**`rethinkdb-dump` is not installed on the host and neither is the python
+driver**, so the documented backup route does not work. `~/backup-clovers.js`
+streams every table to gzipped JSON-lines using the `rethinkdb` npm driver the
+API already depends on. Module resolution is relative to the script, so
+`NODE_PATH` must be set:
 
 ```sh
-ssh clover-main 'cd ~/backups && rethinkdb dump -f clovers-$(date +%Y%m%d).tar.gz'
-ssh clover-main 'ls -lh ~/backups | tail -3'
+ssh clover-main 'NODE_PATH=/home/billy/apps/api2/node_modules node ~/backup-clovers.js'
 ```
+
+Takes about 50 seconds and writes ~36 MB to `~/backups/backup-<timestamp>/`.
+Verify the row counts, then pull a copy **off the droplet** — a backup living
+on the machine it protects is not a backup:
+
+```sh
+D=$(ssh clover-main 'ls -d ~/backups/backup-* | tail -1')
+for f in clovers users chats albums logs orders; do
+  echo -n "  $f: "; ssh clover-main "gunzip -c $D/$f.jsonl.gz | wc -l"
+done
+scp -r "clover-main:$D" ~/clovers-backups/
+```
+
+Expected counts as of 2026-08-29: clovers 44,432 · logs 154,913 · orders 8,866
+· users 3,086 · albums 2,457 · chats 1,127.
 
 **The social data — clover names, comments, albums, user profiles — exists
 nowhere else.** Do not proceed without a verified dump.
+
+> The previous backup on that host was from **February 2021**. Whatever else
+> comes of this work, a recurring dump is worth setting up.
 
 ### 1. Get the code onto the server
 
@@ -177,23 +200,36 @@ database — not a broken one.
 
 ## After the deploy has been stable
 
-### Repair the 314 missing clovers
+### Repair the damaged clover rows
 
-Chronic drift from a bug now fixed (see `REBUILD-PLAN.md` and commit
-`12700a1`). Dry run first:
+Chronic drift from a bug now fixed. Measured against mainnet: 157 rows missing
+entirely, 254 rows with the wrong owner, 2 rows for tokens never minted.
 
-```sh
-ssh clover-main 'cd ~/apps/api2 && node dist/index.js reconcile'
-```
-
-That enumerates ~44,326 tokens via `tokenByIndex` and takes a while at
-free-tier rate limits. Review the diff, then apply:
+**This can be done before the migration, and without touching the running
+API.** Check the branch out into a separate work tree so a pm2 restart cannot
+pick up the new code by accident:
 
 ```sh
-ssh clover-main 'cd ~/apps/api2 && node dist/index.js reconcile --write'
+git push server feature/indexsupply-migration        # hook ignores non-master
+ssh clover-main '
+  mkdir -p ~/apps/api2-reconcile
+  git --work-tree=/home/billy/apps/api2-reconcile --git-dir=/home/billy/clovers-api.git       checkout -f feature/indexsupply-migration
+  cd ~/apps/api2-reconcile
+  ln -sfn /home/billy/apps/api2/node_modules node_modules
+  cp /home/billy/apps/api2/src/config.json src/config.json
+  npm run -s build
+'
 ```
 
-It re-checks the diff afterwards and reports anything still missing.
+Dry run, then apply:
+
+```sh
+ssh clover-main 'cd ~/apps/api2-reconcile && DEBUG=app:reconcile node dist/index.js reconcile'
+ssh clover-main 'cd ~/apps/api2-reconcile && DEBUG=app:reconcile node dist/index.js reconcile --write'
+```
+
+The walk covers ~17.5M blocks and takes a few minutes. It re-checks the
+database afterwards and reports anything still missing or still wrong.
 
 ### Only then, decommission the node
 
