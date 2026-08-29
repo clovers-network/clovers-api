@@ -57,17 +57,22 @@ let db
  */
 async function chainOwnership (fromBlock, toBlock) {
   const owner = new Map()
+  const mintBlock = new Map()
   let seen = 0
 
   await catchUp(fromBlock, toBlock, log => {
     if (log.name !== 'Clovers_Transfer') return
     seen++
-    owner.set(String(log.data._tokenId).toLowerCase(), String(log.data._to).toLowerCase())
+    const id = String(log.data._tokenId).toLowerCase()
+    owner.set(id, String(log.data._to).toLowerCase())
+    // First transfer of a token is its mint, so this is the true creation
+    // block -- needed because the logs table does not always still hold it.
+    if (!mintBlock.has(id)) mintBlock.set(id, Number(log.blockNumber))
     if (seen % 10000 === 0) debug(`${seen} transfers processed`)
   }, { addresses: [events.Clovers.address.toLowerCase()] })
 
   debug(`${seen} transfers over ${owner.size} distinct tokens`)
-  return owner
+  return { owner, mintBlock }
 }
 
 /** board -> owner, for every row currently in the table. */
@@ -101,11 +106,20 @@ async function findMintLog (tokenId) {
   return rows[0] || null
 }
 
-async function insertMissing (tokenId, chainOwner) {
+async function insertMissing (tokenId, chainOwner, mintBlock) {
   const stored = await findMintLog(tokenId)
-  const blockNumber = stored ? Number(stored.blockNumber) : await getBlockNumber()
 
-  if (!stored) debug(`no stored mint log for ${tokenId}; using current block`)
+  // Prefer the chain-derived mint block. The logs table frequently no longer
+  // holds the mint log for exactly the clovers that went missing, and falling
+  // back to the current block sets `created` to "when we noticed" rather than
+  // when it was minted, which distorts age and any ordering by created.
+  let blockNumber
+  if (stored) blockNumber = Number(stored.blockNumber)
+  else if (mintBlock) blockNumber = mintBlock
+  else {
+    debug(`no mint block known for ${tokenId}; using current block`)
+    blockNumber = await getBlockNumber()
+  }
 
   const log = {
     name: 'Clovers_Transfer',
@@ -150,10 +164,12 @@ export async function reconcile (_db, { write = false } = {}) {
   console.log(`  walking Clovers transfers, blocks ${fromBlock.toLocaleString()} to ${head.toLocaleString()}`)
   console.log('  (this is the slow part — roughly 1,750 requests)\n')
 
-  const [onChain, inDb] = await Promise.all([
+  const [chainState, inDb] = await Promise.all([
     chainOwnership(fromBlock, head),
     dbOwnership()
   ])
+  const onChain = chainState.owner
+  const mintBlocks = chainState.mintBlock
 
   const live = new Map()
   for (const [id, o] of onChain) if (o !== ZERO_ADDRESS) live.set(id, o)
@@ -194,7 +210,7 @@ export async function reconcile (_db, { write = false } = {}) {
   console.log(`\n  inserting ${missing.length} missing clovers...`)
   for (let i = 0; i < missing.length; i++) {
     try {
-      await insertMissing(missing[i], live.get(missing[i]))
+      await insertMissing(missing[i], live.get(missing[i]), mintBlocks.get(missing[i]))
       inserted++
     } catch (err) {
       failed++
