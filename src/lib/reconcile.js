@@ -12,7 +12,15 @@
  *
  *     exists on chain, no db row .............. 157
  *     db row exists, wrong owner .............. 254   (157 of them showing 0x0)
- *     db row for a token never minted ..........  2
+ *     db row for a token never minted ..........   0
+ *
+ * A first pass computed those last two as 2, from a local export. That was a
+ * key-normalisation artifact: it built token ids with BigInt.toString(16),
+ * which drops a leading zero nibble, while the database stores ethers' _hex,
+ * which is always even-length. Two real tokens whose ids are not board-shaped
+ * (0x043cd2f5... and 0x02bd35b0...) therefore failed to match. Deriving the
+ * map from decoded logs, as below, uses the same _hex form as the table and
+ * has no such gap.
  *
  * The 314-row shortfall the API reports is exactly 157 missing rows plus 157
  * rows wrongly showing owner 0x0. The other 97 are rows that still count, but
