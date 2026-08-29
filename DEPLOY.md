@@ -1,0 +1,223 @@
+# Deploy Runbook — Stage 1
+
+Replacing the dead Ethereum node with redundant third-party RPC providers.
+
+**Status:** prepared, not executed.
+**Prepared:** 2026-08-29
+
+---
+
+## Pre-flight findings
+
+These were checked directly against the production host (read-only) and change
+how the deploy must be done. Do not skip this section.
+
+| | Value | Consequence |
+|---|---|---|
+| Host | `clover-main` → `206.81.16.230` (`api-production`) | SSH works from this machine |
+| Uptime | **1932 days** | Never rebooted. Do not reboot casually. |
+| Node | **v9.4.0** (2018, EOL) | No `fetch`, no `WebSocket`, no `URLSearchParams`, no `AbortController` |
+| npm | **5.6.0** | Reads **lockfileVersion 1 only** |
+| Disk | 12G used of 25G (47%) | Room for a backup |
+| Memory | 3951 MB total, ~1860 MB available | Fine |
+| pm2 | app `API`, online, 176 restarts | `pm2 reload ecosystem.config.js` |
+| RethinkDB | active, `/var/lib/rethinkdb/instance1/data` | Backup target |
+| Deploy | bare repo `~/clovers-api.git` → checkout to `~/apps/api2` | `post-receive` hook, **master branch only** |
+
+### Two things this forced
+
+**1. Node 9 has no `fetch` or `WebSocket`.** `src/lib/chain.js` needs both.
+Both now fall back automatically — HTTP via the `http`/`https` modules,
+WebSocket via `ws` — with no new dependency. Verified locally by deleting both
+globals and confirming `getBlockNumber`, `catchUp` and live subscriptions all
+still work. Without this the deploy would have failed on the first RPC call.
+
+**2. npm 5.6 cannot read a lockfileVersion 3 lockfile.** `package-lock.json`
+has been regenerated at **version 1**. If it ever gets rewritten by a modern
+npm, convert it back before deploying:
+
+```sh
+npm install --package-lock-only --lockfile-version 1 --ignore-scripts
+```
+
+### Known trap: `npm install` fails on modern Node
+
+The native module `sha3` cannot compile on current Node/toolchains. It arrives
+transitively and **nothing loads it** — `eth-sig-util` works without it. Use
+`npm install --ignore-scripts` when installing locally. On the server's Node 9
+it built successfully years ago and is already present.
+
+---
+
+## Recommended path: manual, staged
+
+The `post-receive` hook runs `npm run reload`, which runs `npm i` — and an
+`npm i` under npm 5.6 against a changed `package.json` is the single riskiest
+step in this deploy. The only new runtime dependency is `ws`, which is
+**already installed** (socket.io depends on it). So skip the install.
+
+Deploy manually instead of pushing to the hook.
+
+### 0. Snapshot first  ← this is what needs `doctl`
+
+```sh
+doctl auth init
+doctl compute droplet list --format ID,Name,PublicIPv4,Memory,Disk,PriceMonthly
+doctl compute droplet-action snapshot <api-droplet-id> --snapshot-name "pre-rpc-migration-$(date +%Y%m%d)"
+```
+
+Wait for it to complete before continuing:
+
+```sh
+doctl compute action list --format ID,Type,Status | head
+```
+
+Also back up the database independently of the droplet snapshot:
+
+```sh
+ssh clover-main 'cd ~/backups && rethinkdb dump -f clovers-$(date +%Y%m%d).tar.gz'
+ssh clover-main 'ls -lh ~/backups | tail -3'
+```
+
+**The social data — clover names, comments, albums, user profiles — exists
+nowhere else.** Do not proceed without a verified dump.
+
+### 1. Get the code onto the server
+
+The hook only fires on `master`, and this work is on
+`feature/indexsupply-migration`. Either merge to master first, or push the
+branch to the bare repo under a name the hook ignores and check out manually.
+The manual route avoids triggering `npm i`:
+
+```sh
+git remote add server ssh://billy@206.81.16.230/home/billy/clovers-api.git   # once
+git push server feature/indexsupply-migration          # hook ignores non-master
+ssh clover-main '
+  git --work-tree=/home/billy/apps/api2 --git-dir=/home/billy/clovers-api.git \
+      checkout -f feature/indexsupply-migration
+'
+```
+
+### 2. Build (no install)
+
+```sh
+ssh clover-main 'cd ~/apps/api2 && npm run -s build 2>&1 | tail -5'
+```
+
+If the build fails on Node 9, stop — do not reload. Babel 6 is Node 9
+compatible, so this is expected to pass.
+
+### 3. Sanity-check the new module before restarting anything
+
+This touches nothing and proves the RPC path works from that host:
+
+```sh
+ssh clover-main 'cd ~/apps/api2 && node -e "
+const c = require(\"./dist/lib/chain.js\");
+c.getBlockNumber()
+ .then(b => { console.log(\"head:\", b); return c.events.Clovers.instance.totalSupply() })
+ .then(s => console.log(\"totalSupply:\", s.toString()))
+ .catch(e => { console.log(\"FAILED:\", e.message); process.exit(1) })
+"'
+```
+
+Expect a current block number and `44326`. If this fails, the server cannot
+reach the RPC providers — check egress before going further.
+
+### 4. Reload
+
+```sh
+ssh clover-main 'cd ~/apps/api2 && pm2 reload ecosystem.config.js --env production'
+ssh clover-main 'pm2 list'
+```
+
+### 5. Watch it catch up
+
+```sh
+ssh clover-main 'pm2 logs API --lines 100'
+```
+
+Expect, in order:
+
+- `Catching up blocks 25761841-<head>` — roughly 97,000+ blocks
+- `Catch-up complete: N events in M requests` — around 10 requests, a few seconds
+- `2 live subscriptions started`
+- `[wss://...] subscribed (0x...)` twice
+
+If you see repeated `socket error` / `reconnecting`, the provider list may need
+adjusting via `RPC_WS` in `ecosystem.config.js`.
+
+### 6. Verify data actually moved
+
+```sh
+curl -s 'https://api.clovers.network/clovers?page=1' | head -c 300
+```
+
+`modified` on the newest clover should now be near chain head rather than
+25761840.
+
+---
+
+## Rollback
+
+Nothing in Stage 1 is destructive to data — it only changes where events are
+read from. To revert:
+
+```sh
+ssh clover-main '
+  git --work-tree=/home/billy/apps/api2 --git-dir=/home/billy/clovers-api.git checkout -f master
+  cd /home/billy/apps/api2 && npm run -s build && pm2 reload ecosystem.config.js --env production
+'
+```
+
+The old code points at the dead node, so rolling back returns you to a frozen
+database — not a broken one.
+
+---
+
+## After the deploy has been stable
+
+### Repair the 314 missing clovers
+
+Chronic drift from a bug now fixed (see `REBUILD-PLAN.md` and commit
+`12700a1`). Dry run first:
+
+```sh
+ssh clover-main 'cd ~/apps/api2 && node dist/index.js reconcile'
+```
+
+That enumerates ~44,326 tokens via `tokenByIndex` and takes a while at
+free-tier rate limits. Review the diff, then apply:
+
+```sh
+ssh clover-main 'cd ~/apps/api2 && node dist/index.js reconcile --write'
+```
+
+It re-checks the diff afterwards and reports anything still missing.
+
+### Only then, decommission the node
+
+Once the API has been running on RPC providers for a few days:
+
+```sh
+doctl compute droplet list --format ID,Name,PublicIPv4,PriceMonthly
+# confirm 138.68.85.68 is the node droplet, then:
+doctl compute volume list                       # its block storage is the big cost
+doctl compute droplet delete <node-droplet-id>
+doctl compute volume delete <node-volume-id>
+```
+
+**This is where the money comes back.** Take a snapshot first if you want the
+option of resurrecting it.
+
+---
+
+## Deferred, deliberately
+
+- **Node 9 is eight years EOL.** It should be upgraded, but not during this
+  deploy — one change at a time. The code now works on Node 9 through 22, so
+  the upgrade can happen independently and be rolled back independently.
+- **`npm i` on the server** is untested against the modified `package.json`.
+  The manual path above avoids it. If you ever do run it, snapshot first.
+- **`mine()` in `src/lib/build.js`** cannot run — Web Worker globals in Node.
+  Deleting it is a product decision, not a deploy step.

@@ -77,6 +77,7 @@ const CONFIRMATIONS = Number(process.env.RPC_CONFIRMATIONS || 12)
 
 const POLL_INTERVAL_MS = Number(process.env.RPC_POLL_INTERVAL_MS || 60000)
 const RECONNECT_DELAY_MS = Number(process.env.RPC_RECONNECT_DELAY_MS || 5000)
+const REQUEST_TIMEOUT_MS = Number(process.env.RPC_TIMEOUT_MS || 30000)
 
 const network = config.network
 
@@ -269,6 +270,68 @@ function sleep (ms) {
 }
 
 /**
+ * POST a JSON body and resolve the parsed response.
+ *
+ * Prefers global `fetch`, but the production server runs Node 9, where
+ * `fetch`, `WebSocket`, `URLSearchParams` and `AbortController` are all
+ * undefined. Falling back to the `http`/`https` modules keeps this working
+ * across every Node version in play without adding a dependency.
+ */
+function httpPostJson (url, payload) {
+  if (typeof fetch !== 'undefined') {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    }).then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      return res.json()
+    })
+  }
+
+  return new Promise((resolve, reject) => {
+    // `url.parse` rather than `new URL`, which is not global until Node 10.
+    const parsed = require('url').parse(url)
+    const transport = parsed.protocol === 'http:' ? require('http') : require('https')
+    const data = JSON.stringify(payload)
+
+    const req = transport.request({
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      port: parsed.port,
+      path: parsed.path,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(data)
+      }
+    }, res => {
+      let raw = ''
+      res.setEncoding('utf8')
+      res.on('data', chunk => { raw += chunk })
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`HTTP ${res.statusCode}`))
+        }
+        try {
+          resolve(JSON.parse(raw))
+        } catch (err) {
+          reject(new Error(`invalid JSON from ${parsed.hostname}`))
+        }
+      })
+    })
+
+    req.on('error', reject)
+    req.setTimeout(REQUEST_TIMEOUT_MS, () => {
+      req.abort()
+      reject(new Error(`request to ${parsed.hostname} timed out`))
+    })
+    req.write(data)
+    req.end()
+  })
+}
+
+/**
  * Call every HTTP endpoint in turn until one answers. Rotates the starting
  * point on success so load spreads rather than always hammering the first.
  */
@@ -278,14 +341,7 @@ async function rpcCall (method, params) {
     const idx = (httpCursor + i) % HTTP_ENDPOINTS.length
     const url = HTTP_ENDPOINTS[idx]
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params })
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-
-      const body = await res.json()
+      const body = await httpPostJson(url, { jsonrpc: '2.0', id: 1, method, params })
       if (body.error) {
         throw Object.assign(new Error(body.error.message || 'rpc error'), {
           code: body.error.code
