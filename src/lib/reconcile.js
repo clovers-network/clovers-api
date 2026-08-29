@@ -5,87 +5,82 @@
  * then destructure the catch's return value, which is `undefined`. Any
  * transient RPC failure therefore threw "is not iterable", and
  * `cloversTransfer` swallowed that into `debug()` — so the clover was never
- * inserted and nothing ever retried it. Over six years on a flaky node that
- * silently dropped ~314 clovers, 96% of them owned by the Clovers contract.
+ * written and nothing ever retried it.
  *
- * The bug is fixed, but the missing rows are still missing. This walks the
- * contract's own enumeration (`tokenByIndex`), diffs it against the database,
- * and re-runs the mint path for anything absent.
+ * That bug is fixed, but the damage is still in the table, and it is not only
+ * missing rows. Measured against mainnet on 2026-08-29:
+ *
+ *     exists on chain, no db row .............. 157
+ *     db row exists, wrong owner .............. 254   (157 of them showing 0x0)
+ *     db row for a token never minted ..........  2
+ *
+ * The 314-row shortfall the API reports is exactly 157 missing rows plus 157
+ * rows wrongly showing owner 0x0. The other 97 are rows that still count, but
+ * name the wrong holder — the dapp shows the wrong owner for those clovers.
+ *
+ * Ownership is rebuilt from the full Transfer log rather than by enumerating
+ * `tokenByIndex`. Both are ground truth, but the log walk is roughly an order
+ * of magnitude fewer requests (~1,750 getLogs against ~44,000 eth_calls) and
+ * it yields the owner as well as the token id, which the enumeration does not.
  *
  * Usage:
- *   node dist/index.js reconcile          # report only, changes nothing
- *   node dist/index.js reconcile --write  # actually insert the missing rows
+ *   node dist/index.js reconcile           # report only, changes nothing
+ *   node dist/index.js reconcile --write   # apply the repairs
  */
 
 const debug = require('debug')('app:reconcile')
 import r from 'rethinkdb'
-import { events, provider } from './chain'
+import config from '../config.json'
+import { catchUp, getBlockNumber, events } from './chain'
 import { ZERO_ADDRESS } from './util'
-import { cloversTransfer } from '../models/clovers'
+import { cloversTransfer, syncClover } from '../models/clovers'
 
-// Concurrent view calls. Free RPC tiers rate-limit around 15/s, so stay under.
-const CONCURRENCY = Number(process.env.RECONCILE_CONCURRENCY || 8)
-const PROGRESS_EVERY = 2000
+// The Clovers contract's first Transfer is at block 8,364,713. config's
+// genesisBlock is the last full-rebuild point, which is much later, so it
+// cannot be used here without silently skipping most of the history.
+const DEFAULT_FROM_BLOCK = { 1: 8363000, 4: 4906267 }
 
 let db
 
-async function mapWithConcurrency (count, worker, onProgress) {
-  const out = new Array(count)
-  let next = 0
-  let done = 0
-
-  const runners = Array.from({ length: Math.min(CONCURRENCY, count) }, async () => {
-    for (;;) {
-      const i = next++
-      if (i >= count) return
-      out[i] = await worker(i)
-      if (++done % PROGRESS_EVERY === 0) onProgress && onProgress(done, count)
-    }
-  })
-
-  await Promise.all(runners)
-  return out
-}
-
 /**
- * Every tokenId the contract currently reports as existing.
- * This is ground truth, independent of the `logs` table — which matters,
- * because we cannot assume the logs are complete either.
+ * tokenId -> current owner, rebuilt from every Clovers Transfer ever emitted.
+ * catchUp delivers in (blockNumber, logIndex) order, so the last write per
+ * token is by construction the current owner.
  */
-async function chainTokenIds () {
-  const supply = (await events.Clovers.instance.totalSupply()).toNumber()
-  debug(`on-chain totalSupply: ${supply}`)
+async function chainOwnership (fromBlock, toBlock) {
+  const owner = new Map()
+  let seen = 0
 
-  const ids = await mapWithConcurrency(supply, async i => {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        const id = await events.Clovers.instance.tokenByIndex(i)
-        return (id._hex || id.toHexString()).toLowerCase()
-      } catch (err) {
-        if (attempt >= 4) throw new Error(`tokenByIndex(${i}) failed: ${err.message}`)
-        await new Promise(res => setTimeout(res, 1000 * Math.pow(2, attempt)))
-      }
-    }
-  }, (done, total) => debug(`enumerated ${done}/${total}`))
+  await catchUp(fromBlock, toBlock, log => {
+    if (log.name !== 'Clovers_Transfer') return
+    seen++
+    owner.set(String(log.data._tokenId).toLowerCase(), String(log.data._to).toLowerCase())
+    if (seen % 10000 === 0) debug(`${seen} transfers processed`)
+  }, { addresses: [events.Clovers.address.toLowerCase()] })
 
-  return ids
+  debug(`${seen} transfers over ${owner.size} distinct tokens`)
+  return owner
 }
 
-/** Every board currently in the database, regardless of owner. */
-async function dbBoards () {
-  const boards = await r.table('clovers')
-    .pluck('board')
-    .map(d => d('board'))
+/** board -> owner, for every row currently in the table. */
+async function dbOwnership () {
+  const rows = await r.table('clovers')
+    .pluck('board', 'owner')
     .coerceTo('array')
     .run(db)
-  return boards.map(b => String(b).toLowerCase())
+
+  const map = new Map()
+  rows.forEach(row => {
+    map.set(String(row.board).toLowerCase(), String(row.owner || '').toLowerCase())
+  })
+  return map
 }
 
 /**
- * Recover the original mint log for a token so `created` is the real block
- * rather than "whenever we noticed". The log row usually survives even when
- * the clover row does not — socketing inserts the log *before* calling the
- * handler that used to throw.
+ * Recover the original mint log so `created` is the real block rather than
+ * "whenever we noticed". The log row usually survives even when the clover row
+ * does not, because socketing inserts the log before calling the handler that
+ * used to throw.
  */
 async function findMintLog (tokenId) {
   const rows = await r.table('logs')
@@ -98,109 +93,131 @@ async function findMintLog (tokenId) {
   return rows[0] || null
 }
 
-async function synthesizeLog (tokenId) {
+async function insertMissing (tokenId, chainOwner) {
   const stored = await findMintLog(tokenId)
+  const blockNumber = stored ? Number(stored.blockNumber) : await getBlockNumber()
 
-  let owner
-  try {
-    owner = await events.Clovers.instance.ownerOf(tokenId)
-    if (Array.isArray(owner)) owner = owner[0]
-  } catch (err) {
-    return null // burned or nonexistent; nothing to insert
-  }
+  if (!stored) debug(`no stored mint log for ${tokenId}; using current block`)
 
-  const blockNumber = stored
-    ? Number(stored.blockNumber)
-    : await provider.getBlockNumber()
-
-  if (!stored) {
-    debug(`no stored mint log for ${tokenId}; using current block for created/modified`)
-  }
-
-  return {
+  const log = {
     name: 'Clovers_Transfer',
     blockNumber,
     transactionHash: stored ? stored.transactionHash : null,
     transactionIndex: stored ? stored.transactionIndex : 0,
     logIndex: stored ? stored.logIndex : 0,
     address: events.Clovers.address,
-    data: {
-      _from: ZERO_ADDRESS,
-      _to: owner,
-      _tokenId: tokenId
-    },
+    data: { _from: ZERO_ADDRESS, _to: chainOwner, _tokenId: tokenId },
     userAddresses: [
       { id: '_from', address: ZERO_ADDRESS },
-      { id: '_to', address: String(owner).toLowerCase() }
+      { id: '_to', address: chainOwner }
     ]
   }
+
+  // Reuse the real mint path so the row is built exactly like any other.
+  await cloversTransfer({ log, io: null, db }, true)
+}
+
+/**
+ * syncClover already knows how to correct a row against the chain — owner,
+ * sale price and moves — and adjusts the users' clover counts as it goes.
+ */
+async function fixOwner (tokenId) {
+  const clover = await r.table('clovers').get(tokenId).default(null).run(db)
+  if (!clover) return false
+  await syncClover(db, null, clover)
+  return true
 }
 
 export async function reconcile (_db, { write = false } = {}) {
   db = _db
 
-  debug(write ? 'RECONCILE (writing)' : 'RECONCILE (dry run — pass --write to apply)')
+  console.log(write
+    ? '\n  RECONCILE — applying changes'
+    : '\n  RECONCILE — dry run, pass --write to apply')
 
-  const [onChain, inDb] = await Promise.all([chainTokenIds(), dbBoards()])
+  const chainId = config.network.chainId
+  const fromBlock = Number(process.env.RECONCILE_FROM_BLOCK || DEFAULT_FROM_BLOCK[chainId] || 0)
+  const head = await getBlockNumber()
 
-  const dbSet = new Set(inDb)
-  const chainSet = new Set(onChain)
+  console.log(`  walking Clovers transfers, blocks ${fromBlock.toLocaleString()} to ${head.toLocaleString()}`)
+  console.log('  (this is the slow part — roughly 1,750 requests)\n')
 
-  const missing = onChain.filter(id => !dbSet.has(id))
-  const extra = inDb.filter(id => !chainSet.has(id))
+  const [onChain, inDb] = await Promise.all([
+    chainOwnership(fromBlock, head),
+    dbOwnership()
+  ])
 
-  console.log('')
-  console.log(`  on chain:            ${onChain.length}`)
-  console.log(`  in database:         ${inDb.length}`)
-  console.log(`  missing from db:     ${missing.length}`)
-  console.log(`  in db but not chain: ${extra.length}  (burned, or stale rows)`)
-  console.log('')
+  const live = new Map()
+  for (const [id, o] of onChain) if (o !== ZERO_ADDRESS) live.set(id, o)
 
-  if (!missing.length) {
-    console.log('  nothing to backfill')
-    return { missing, extra, inserted: 0 }
+  const missing = []
+  const wrongOwner = []
+  for (const [id, chainOwner] of live) {
+    if (!inDb.has(id)) missing.push(id)
+    else if (inDb.get(id) !== chainOwner) wrongOwner.push(id)
   }
+  const ghost = [...inDb.keys()].filter(id => !onChain.has(id))
 
-  console.log('  missing tokenIds (first 20):')
-  missing.slice(0, 20).forEach(id => console.log(`    ${id}`))
-  if (missing.length > 20) console.log(`    ...and ${missing.length - 20} more`)
+  console.log(`  tokens ever minted:        ${onChain.size.toLocaleString()}`)
+  console.log(`  currently existing:        ${live.size.toLocaleString()}`)
+  console.log(`  rows in database:          ${inDb.size.toLocaleString()}`)
   console.log('')
+  console.log(`  missing rows:              ${missing.length}`)
+  console.log(`  wrong owner:               ${wrongOwner.length}`)
+  console.log(`  rows for unminted tokens:  ${ghost.length}   (reported only, never deleted)`)
+  console.log('')
+
+  ghost.forEach(id => console.log(`    unminted: ${id}`))
+  missing.slice(0, 10).forEach(id => console.log(`    missing:  ${id}`))
+  if (missing.length > 10) console.log(`    ...and ${missing.length - 10} more missing`)
+  wrongOwner.slice(0, 10).forEach(id =>
+    console.log(`    owner:    ${id}  db=${inDb.get(id)} chain=${live.get(id)}`))
+  if (wrongOwner.length > 10) console.log(`    ...and ${wrongOwner.length - 10} more wrong owners`)
 
   if (!write) {
-    console.log('  dry run — re-run with --write to insert these')
-    return { missing, extra, inserted: 0 }
+    console.log('\n  dry run — nothing written')
+    return { missing, wrongOwner, ghost, inserted: 0, corrected: 0 }
   }
 
   let inserted = 0
+  let corrected = 0
   let failed = 0
 
+  console.log(`\n  inserting ${missing.length} missing clovers...`)
   for (let i = 0; i < missing.length; i++) {
-    const tokenId = missing[i]
     try {
-      const log = await synthesizeLog(tokenId)
-      if (!log) {
-        debug(`${tokenId} does not exist on chain after all, skipping`)
-        continue
-      }
-      // Reuse the real mint path so the row is built exactly like any other,
-      // including user counts and the market/price fields.
-      await cloversTransfer({ log, io: null, db }, true)
+      await insertMissing(missing[i], live.get(missing[i]))
       inserted++
-      if ((i + 1) % 25 === 0) console.log(`  ${i + 1}/${missing.length} processed`)
     } catch (err) {
       failed++
-      console.log(`  FAILED ${tokenId}: ${err.message}`)
+      console.log(`    FAILED insert ${missing[i]}: ${err.message}`)
     }
+    if ((i + 1) % 25 === 0) console.log(`    ${i + 1}/${missing.length}`)
   }
 
+  console.log(`\n  correcting ${wrongOwner.length} owners...`)
+  for (let i = 0; i < wrongOwner.length; i++) {
+    try {
+      await fixOwner(wrongOwner[i])
+      corrected++
+    } catch (err) {
+      failed++
+      console.log(`    FAILED owner ${wrongOwner[i]}: ${err.message}`)
+    }
+    if ((i + 1) % 25 === 0) console.log(`    ${i + 1}/${wrongOwner.length}`)
+  }
+
+  // Verify against the database rather than trusting the counters.
+  const after = await dbOwnership()
+  const stillMissing = [...live.keys()].filter(id => !after.has(id))
+  const stillWrong = [...live.entries()].filter(([id, o]) => after.has(id) && after.get(id) !== o)
+
   console.log('')
-  console.log(`  inserted: ${inserted}`)
-  console.log(`  failed:   ${failed}`)
+  console.log(`  inserted:  ${inserted}`)
+  console.log(`  corrected: ${corrected}`)
+  console.log(`  failed:    ${failed}`)
+  console.log(`  still missing after run: ${stillMissing.length}`)
+  console.log(`  still wrong after run:   ${stillWrong.length}`)
 
-  // Verify rather than assume.
-  const after = await dbBoards()
-  const stillMissing = onChain.filter(id => !new Set(after).has(id))
-  console.log(`  still missing after backfill: ${stillMissing.length}`)
-
-  return { missing, extra, inserted, failed, stillMissing }
+  return { missing, wrongOwner, ghost, inserted, corrected, failed, stillMissing, stillWrong }
 }
