@@ -11,6 +11,9 @@ import { parseEther, formatEther } from 'ethers/utils'
 // import clovers from '../api/clovers'
 import config from '../config.json'
 
+// Attempts before a clover's view calls are treated as a hard failure.
+const MAX_VIEW_CALL_RETRIES = 5
+
 const nonAtomic = { nonAtomic: true }
 // const oneGwei = '1000000000'
 let db
@@ -447,31 +450,49 @@ async function addNewClover (log, skipOracle = false) {
   debug('adding new Clover', log.data._tokenId)
   let tokenId = log.data._tokenId
   let hasFoundBy = log.userAddresses.filter(u => u.id === '_to')
-  let retry = false
 
-  let [
-    cloverKept,
-    cloverMoves,
-    cloverReward,
-    cloverSymmetries,
-    // cloverBlock,
-    price
-  ] = await Promise.all([
-     events.Clovers.instance.getKeep(log.data._tokenId),
-     events.Clovers.instance.getCloverMoves(log.data._tokenId),
-     events.Clovers.instance.getReward(log.data._tokenId),
-     events.Clovers.instance.getSymmetries(log.data._tokenId),
-    // null, // events.Clovers.instance.getBlockMinted(log.data._tokenId),
-    events.SimpleCloversMarket.instance.sellPrice(log.data._tokenId)
-  ]).catch(async (err) => {
-    // console.log(err)
-    debug(err.responseText)
-    await sleep(30000)
-    retry = true
-    return addNewClover(log, skipOracle)
-  })
+  // These five view calls are retried in a loop rather than by recursing from
+  // inside .catch(). The previous version did:
+  //
+  //   let [a, b, ...] = await Promise.all([...]).catch(async () => {
+  //     retry = true
+  //     return addNewClover(log, skipOracle)   // resolves to undefined
+  //   })
+  //
+  // Destructuring the catch's return value throws "is not iterable" the moment
+  // any one call fails, before the `if (retry) return` guard is ever reached.
+  // So every transient RPC hiccup raised a TypeError instead of retrying
+  // cleanly -- a likely contributor to the ~314 clovers missing from the
+  // database, 96% of which are contract-owned.
+  let cloverKept, cloverMoves, cloverReward, cloverSymmetries, price
 
-  if (retry) return
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const viewCalls = await Promise.all([
+        events.Clovers.instance.getKeep(tokenId),
+        events.Clovers.instance.getCloverMoves(tokenId),
+        events.Clovers.instance.getReward(tokenId),
+        events.Clovers.instance.getSymmetries(tokenId),
+        events.SimpleCloversMarket.instance.sellPrice(tokenId)
+      ])
+      cloverKept = viewCalls[0]
+      cloverMoves = viewCalls[1]
+      cloverReward = viewCalls[2]
+      cloverSymmetries = viewCalls[3]
+      price = viewCalls[4]
+      break
+    } catch (err) {
+      debug(`view calls failed for ${tokenId} (attempt ${attempt + 1}): ${err.message}`)
+      if (attempt >= MAX_VIEW_CALL_RETRIES) {
+        // Surface it rather than silently dropping the clover.
+        throw new Error(
+          `addNewClover: view calls for ${tokenId} failed after ` +
+          `${attempt + 1} attempts: ${err.message}`
+        )
+      }
+      await sleep(Math.min(30000, 2000 * Math.pow(2, attempt)))
+    }
+  }
 
   let foundBy = cloverKept && hasFoundBy.length > 0 ? hasFoundBy[0].address : null
   // var cloverURI = await events.Clovers.instance.tokenURI(log.data._tokenId)
