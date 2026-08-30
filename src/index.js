@@ -54,15 +54,33 @@ initializeDb((db) => {
   } else if (process.argv.findIndex(c => c === 'audit-logs') > -1) {
     auditLogs(db)
       .then(() => process.exit(0))
-      .catch(err => { debug(err); process.exit(1) })
+      .catch(err => {
+        // console.error, not debug: a disabled DEBUG namespace made a real
+        // RethinkDB error vanish and the command look like a silent crash.
+        console.error('\n  COMMAND FAILED: ' + (err && err.message ? err.message : err))
+        if (err && err.stack) console.error(err.stack)
+        process.exit(1)
+      })
   } else if (process.argv.findIndex(c => c === 'backfill-logs') > -1) {
     backfillLogs(db, { write: process.argv.indexOf('--write') > -1 })
       .then(() => process.exit(0))
-      .catch(err => { debug(err); process.exit(1) })
+      .catch(err => {
+        // console.error, not debug: a disabled DEBUG namespace made a real
+        // RethinkDB error vanish and the command look like a silent crash.
+        console.error('\n  COMMAND FAILED: ' + (err && err.message ? err.message : err))
+        if (err && err.stack) console.error(err.stack)
+        process.exit(1)
+      })
   } else if (process.argv.findIndex(c => c === 'reconcile') > -1) {
     reconcile(db, { write: process.argv.indexOf('--write') > -1 })
       .then(() => process.exit(0))
-      .catch(err => { debug(err); process.exit(1) })
+      .catch(err => {
+        // console.error, not debug: a disabled DEBUG namespace made a real
+        // RethinkDB error vanish and the command look like a silent crash.
+        console.error('\n  COMMAND FAILED: ' + (err && err.message ? err.message : err))
+        if (err && err.stack) console.error(err.stack)
+        process.exit(1)
+      })
   } else {
     const io = require('socket.io')(app.server)
     commentListener(app.server, db)

@@ -49,31 +49,86 @@ function fromBlockFor () {
 const coordKey = l => `${Number(l.blockNumber)}:${Number(l.logIndex)}`
 const txKey = l => `${String(l.transactionHash).toLowerCase()}:${Number(l.logIndex)}`
 
-/** Every tracked event on chain, keyed both ways. */
-async function chainLogs (fromBlock, toBlock) {
-  const byCoord = new Map()
-  const byTx = new Set()
+/**
+ * Pass 1 over the chain: strings only.
+ *
+ * Deliberately does NOT retain the decoded log objects. Holding 52,000 of them
+ * plus 155,000 database rows is what made the first version of this die.
+ * Returns coordKey -> txHash and the set of txKeys; the handful of logs we
+ * actually need to insert get refetched in pass 2.
+ */
+async function chainIndex (fromBlock, toBlock) {
+  const coordToTx = new Map()
+  const txKeys = new Set()
+  const names = new Set()
   let n = 0
 
   await catchUp(fromBlock, toBlock, log => {
     n++
-    byCoord.set(coordKey(log), log)
-    byTx.add(txKey(log))
+    coordToTx.set(coordKey(log), String(log.transactionHash).toLowerCase())
+    txKeys.add(txKey(log))
+    names.add(log.name)
     if (n % 10000 === 0) debug(`${n} chain logs`)
   })
 
-  debug(`${n} chain logs total`)
-  return { byCoord, byTx }
+  debug(`${n} chain logs over ${txKeys.size} distinct positions`)
+  return { coordToTx, txKeys, names, total: n }
 }
 
-/** Every row in the logs table that came from a contract event. */
-async function dbLogs () {
-  const rows = await r.table('logs')
+/**
+ * Stream the logs table rather than coerceTo('array').
+ *
+ * RethinkDB caps arrays at 100,000 elements by default and the table holds
+ * ~155,000 rows, so coercing threw -- and the CLI logged that into a disabled
+ * debug namespace, so it looked like a silent crash. Streaming avoids both the
+ * limit and the memory.
+ */
+async function scanDbLogs (chain) {
+  const cursor = await r.table('logs')
     .pluck('id', 'name', 'blockNumber', 'logIndex', 'transactionHash')
-    .filter(l => l.hasFields('transactionHash'))
-    .coerceTo('array')
     .run(db)
-  return rows
+
+  const seenTx = new Set()
+  const dupes = []
+  const misplaced = []
+  let considered = 0
+
+  await cursor.eachAsync(row => {
+    if (!row.transactionHash || !chain.names.has(row.name)) return
+    considered++
+
+    const tk = txKey(row)
+    if (seenTx.has(tk)) dupes.push(row.id)
+    else seenTx.add(tk)
+
+    const txAtCoord = chain.coordToTx.get(coordKey(row))
+    if (!txAtCoord || txAtCoord !== String(row.transactionHash).toLowerCase()) {
+      misplaced.push(row.id)
+    }
+  })
+
+  return { seenTx, dupes, misplaced, considered }
+}
+
+/** Pass 2: refetch only the blocks that actually contain missing events. */
+async function refetchMissing (missingTxKeys, chain) {
+  const blocks = new Set()
+  for (const [coord, tx] of chain.coordToTx) {
+    const idx = coord.split(':')[1]
+    if (missingTxKeys.has(`${tx}:${idx}`)) blocks.add(Number(coord.split(':')[0]))
+  }
+
+  debug(`refetching ${blocks.size} blocks for ${missingTxKeys.size} missing events`)
+
+  const out = []
+  let done = 0
+  for (const b of blocks) {
+    await catchUp(b, b, log => {
+      if (missingTxKeys.has(txKey(log))) out.push(log)
+    })
+    if (++done % 25 === 0) debug(`refetched ${done}/${blocks.size} blocks`)
+  }
+  return out
 }
 
 export async function audit (_db) {
@@ -82,74 +137,44 @@ export async function audit (_db) {
   const head = await getBlockNumber()
 
   console.log(`\n  AUDIT logs table, blocks ${from.toLocaleString()} to ${head.toLocaleString()}`)
-  console.log('  (walks the full chain history — a few minutes)\n')
+  console.log('  (walks the full chain history - a few minutes)\n')
 
-  const [chain, rows] = await Promise.all([chainLogs(from, head), dbLogs()])
+  const chain = await chainIndex(from, head)
+  const scan = await scanDbLogs(chain)
 
-  // Only compare event types we actually track; synthetic rows (Comment_Added,
-  // CloverName_Changed, Album_*) have no chain counterpart by design.
-  const tracked = new Set()
-  for (const l of chain.byCoord.values()) tracked.add(l.name)
+  const missingTxKeys = new Set()
+  for (const tk of chain.txKeys) if (!scan.seenTx.has(tk)) missingTxKeys.add(tk)
 
-  const candidates = rows.filter(x => tracked.has(x.name))
-
-  const seenTx = new Map()
-  const dupes = []
-  const misplaced = []
-
-  for (const row of candidates) {
-    const tk = txKey(row)
-    if (seenTx.has(tk)) dupes.push(row)
-    else seenTx.set(tk, row)
-
-    const atCoord = chain.byCoord.get(coordKey(row))
-    if (!atCoord || String(atCoord.transactionHash).toLowerCase() !== String(row.transactionHash).toLowerCase()) {
-      misplaced.push(row)
-    }
-  }
-
-  const missing = []
-  for (const [, log] of chain.byCoord) {
-    if (!seenTx.has(txKey(log))) missing.push(log)
-  }
-
-  console.log(`  chain events (tracked types): ${chain.byCoord.size.toLocaleString()}`)
-  console.log(`  db rows (tracked types):      ${candidates.length.toLocaleString()}`)
+  console.log(`  chain events (tracked types): ${chain.total.toLocaleString()}`)
+  console.log(`  db rows (tracked types):      ${scan.considered.toLocaleString()}`)
   console.log('')
-  console.log(`  missing from db:              ${missing.length}`)
-  console.log(`  duplicate rows:               ${dupes.length}`)
-  console.log(`  wrong blockNumber/logIndex:   ${misplaced.length}`)
-  console.log('')
-
-  const byName = {}
-  missing.forEach(l => { byName[l.name] = (byName[l.name] || 0) + 1 })
-  if (missing.length) {
-    console.log('  missing, by event:')
-    Object.entries(byName).sort((a, b) => b[1] - a[1])
-      .forEach(([k, v]) => console.log(`    ${k}: ${v}`))
-  }
-
+  console.log(`  missing from db:              ${missingTxKeys.size}`)
+  console.log(`  duplicate rows:               ${scan.dupes.length}`)
+  console.log(`  wrong blockNumber/logIndex:   ${scan.misplaced.length}`)
   console.log('')
   console.log('  Duplicates and misplaced rows are NOT removed by backfill-logs.')
   console.log('  Deleting rows is destructive; decide before acting on those two counts.')
 
-  return { missing, dupes, misplaced }
+  return { chain, missingTxKeys, dupes: scan.dupes, misplaced: scan.misplaced }
 }
 
 export async function backfill (_db, { write = false } = {}) {
   db = _db
 
-  const { missing } = await audit(db)
+  const { chain, missingTxKeys } = await audit(db)
 
-  if (!missing.length) {
+  if (!missingTxKeys.size) {
     console.log('\n  nothing to insert')
     return { inserted: 0 }
   }
 
   if (!write) {
-    console.log(`\n  dry run — would insert ${missing.length} log rows; pass --write to apply`)
-    return { inserted: 0, missing: missing.length }
+    console.log(`\n  dry run - would insert ${missingTxKeys.size} log rows; pass --write to apply`)
+    return { inserted: 0, missing: missingTxKeys.size }
   }
+
+  const missing = await refetchMissing(missingTxKeys, chain)
+  console.log(`\n  refetched ${missing.length} of ${missingTxKeys.size} missing events`)
 
   console.log(`\n  inserting ${missing.length} missing log rows...`)
   console.log('  (log rows only — the clovers table was already reconciled, so')
@@ -181,11 +206,17 @@ export async function backfill (_db, { write = false } = {}) {
   console.log(`  inserted: ${inserted}`)
   console.log(`  failed:   ${failed}`)
 
-  // Verify rather than trust the counter.
-  const after = await dbLogs()
-  const afterTx = new Set(after.map(txKey))
-  const still = missing.filter(l => !afterTx.has(txKey(l)))
-  console.log(`  still missing after run: ${still.length}`)
+  // Verify against the database rather than trusting the counter. Checked
+  // per-row via the unique_log index, so no large array is materialised.
+  let still = 0
+  for (const l of missing) {
+    const rows = await r.table('logs')
+      .getAll([l.transactionHash, l.logIndex], { index: 'unique_log' })
+      .coerceTo('array')
+      .run(db)
+    if (!rows.length) still++
+  }
+  console.log(`  still missing after run: ${still}`)
 
-  return { inserted, failed, stillMissing: still.length }
+  return { inserted, failed, stillMissing: still }
 }
