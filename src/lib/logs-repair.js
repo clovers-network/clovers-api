@@ -71,7 +71,11 @@ async function chainIndex (fromBlock, toBlock) {
     n++
     const tx = String(log.transactionHash).toLowerCase()
     const ck = coordKey(log)
-    coordToTx.set(ck, tx)
+    // Store the name too. Matching on transaction hash alone is not enough: a
+    // transaction that emits both a Clovers_Transfer and a ClubToken_Transfer
+    // has several positions sharing one hash, so a row filed under the wrong
+    // event name at a sibling position would silently pass validation.
+    coordToTx.set(ck, tx + '|' + log.name)
     txKeys.add(txKey(log))
     names.add(log.name)
     if (!txToCoords.has(tx)) txToCoords.set(tx, [])
@@ -109,8 +113,8 @@ async function scanDbLogs (chain) {
     if (seenTx.has(tk)) dupes.push(row.id)
     else seenTx.add(tk)
 
-    const txAtCoord = chain.coordToTx.get(coordKey(row))
-    if (!txAtCoord || txAtCoord !== String(row.transactionHash).toLowerCase()) {
+    const atCoord = chain.coordToTx.get(coordKey(row))
+    if (atCoord !== String(row.transactionHash).toLowerCase() + '|' + row.name) {
       misplaced.push(row.id)
     }
   })
@@ -284,7 +288,7 @@ export async function cleanup (_db, { write = false } = {}) {
     const ck = coordKey(row)
     const tx = String(row.transactionHash).toLowerCase()
 
-    if (chain.coordToTx.get(ck) === tx) {
+    if (chain.coordToTx.get(ck) === tx + '|' + row.name) {
       if (!placed.has(ck)) placed.set(ck, [])
       placed.get(ck).push(row.id)
     } else if (chain.txToCoords.has(tx)) {
@@ -386,7 +390,7 @@ export async function cleanup (_db, { write = false } = {}) {
   await c2.eachAsync(row => {
     if (!row.transactionHash || !chain.names.has(row.name)) return
     const ck = coordKey(row)
-    if (chain.coordToTx.get(ck) === String(row.transactionHash).toLowerCase()) after.add(ck)
+    if (chain.coordToTx.get(ck) === String(row.transactionHash).toLowerCase() + '|' + row.name) after.add(ck)
   })
 
   const lost = []
