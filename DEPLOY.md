@@ -304,7 +304,7 @@ Clovers_Transfer and a ClubToken_Transfer holds several positions under one
 hash, so a row filed under the wrong name at a sibling position passed. Fixed
 to compare both; that is what surfaced the 59 below.
 
-### Still outstanding: 59 mislabeled rows
+### Mislabeled rows — DONE 2026-08-30
 
 Correct transaction and logIndex, **wrong event name** — and therefore a
 payload decoded against the wrong event, so the `data` is also wrong.
@@ -313,7 +313,29 @@ row. Example, block 8389028 logIndex 115: chain holds a `ClubToken_Transfer`
 (tx `0xdb553124852a5e…`), the table holds `SimpleCloversMarket_updatePrice`
 for the same transaction and position.
 
-They predate this work — 762 such positions existed before it, 59 remain.
+They predated this work — 762 such positions existed before it.
+
+Fixed by making presence detection name-aware rather than adding another tool:
+`backfill-logs` inserted the 59 correct rows, then `cleanup-logs` removed the
+59 superseded ones. 0 failed each way, and the precondition guard confirmed
+every chain position was covered before any delete.
+
+Final state of the `logs` table:
+
+| | Count |
+|---|---|
+| Chain events (tracked types) | 144,087 |
+| DB rows (tracked types) | 144,090 |
+| Missing | **0** |
+| Duplicates | **0** |
+| Wrong coordinates | **3** — the reverted/dropped-tx orphans, kept deliberately |
+
+The whole repair, end to end: 762 uncovered chain positions and 2,065
+duplicates reduced to 0 and 0, with no chain event lost at any step.
+
+The 3 orphans are records of transactions that reverted or never landed, so
+there is no chain event for them to match. They are inert rows in the activity
+feed; removing them is a product decision, not a correctness one.
 
 **Also outstanding, deliberately not automated** — both require deleting
 or rewriting rows:
