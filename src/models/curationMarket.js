@@ -9,7 +9,7 @@ import {
   oneEthInWei,
   userTemplate
 } from '../lib/util'
-import { events } from '../lib/ethers-utils'
+import { events } from '../lib/chain'
 
 let db, io
 

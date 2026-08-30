@@ -1,14 +1,12 @@
 const debug = require('debug')('app:socketing')
-import { provider, events } from './lib/ethers-utils'
+import { events, startLiveStreams } from './lib/chain'
 import { network } from './config'
-import ethers from 'ethers'
 import * as clovers from './models/clovers'
 import * as clubToken from './models/clubToken'
 import * as cloversController from './models/cloversController'
 import * as clubTokenController from './models/clubTokenController'
 // import * as curationMarket from './models/curationMarket'
 import * as simpleCloversMarket from './models/simpleCloversMarket'
-import { transformLog } from './lib/build'
 import r from 'rethinkdb'
 import { Clovers } from 'clovers-contracts'
 import { dodb } from './lib/util'
@@ -16,6 +14,9 @@ import { dodb } from './lib/util'
 const CLOVER_DB = `clovers_chain_${network.chainId}`
 
 let io, db
+
+// Keep track of live stream controllers for cleanup
+let liveControllers = []
 
 export var socketing = function ({ _io, _db }) {
   debug('socketing?')
@@ -28,79 +29,88 @@ export var socketing = function ({ _io, _db }) {
 
   io = _io
   db = _db
-  // var connections = 0
+
   io.on('connection', (socket) => {
-    // connections += 1
-    // debug('opened, now ' + connections + ' connections')
-    // socket.on('data', (data) => {
-    //   debug(data)
-    // })
-    // socket.on('disconnect', () => {
-    //   connections -= 1
-    //   debug('closed, now ' + connections + ' connections')
-    // })
     socket.on('error', (err) => {
       debug('socketing error')
       debug(err)
     })
   })
-  beginListen('Clovers')
-  beginListen('ClubToken')
-  // beginListen('CloversController') // no events to listen to
-  beginListen('SimpleCloversMarket')
-  // beginListen('CurationMarket')
-  beginListen('ClubTokenController')
+
+  // Use IndexSupply SSE live streams instead of ethers.js event listeners
+  beginLiveListening().catch(err => {
+    debug('Failed to start live streams')
+    debug(err)
+  })
 }
 
-async function beginListen (contract, key = 0) {
-  let eventTypes = events[contract].eventTypes
-  if (key > eventTypes.length - 1) return
-  beginListen(contract, key + 1)
-  let eventType = events[contract].instance.interface.events[eventTypes[key]]
-  if (!eventType) {
-    debug(eventTypes[key] + ' doesnt exists')
-    return
+/**
+ * Highest block already persisted, so live streams resume exactly where the
+ * historical sync left off instead of replaying history or skipping a gap.
+ */
+async function lastStoredBlock () {
+  try {
+    const res = await dodb(db, r.table('logs')
+      .max({ index: 'blockNumber' })('blockNumber')
+      .default(null))
+    return res === null ? undefined : Number(res)
+  } catch (err) {
+    debug('Could not read last stored block, starting from chain head')
+    debug(err)
+    return undefined
   }
-  const eventName = events[contract].eventTypes[key]
-  if (!eventName) {
-    debug('key ' + key + ' doesnt exists on contract events')
-    debug(events[contract].eventTypes)
-    return
-  }
-  debug('make a listener on ' + contract + ' ' + eventName)
-  events[contract].instance.on(eventName, async (...foo) => {
-    let log = foo[foo.length - 1]
-    // filter out events from different contracts
-    let address = events[contract].address.toLowerCase()
-    if (log.address.toLowerCase() !== address) {
-      console.log('heard event from wrong address')
-      return
+}
+
+/**
+ * Start live event streaming via IndexSupply SSE.
+ * Routes decoded events to the same model handlers as before.
+ */
+async function beginLiveListening () {
+  debug('Starting IndexSupply live event streams...')
+
+  const fromBlock = await lastStoredBlock()
+
+  liveControllers = await startLiveStreams(async (log) => {
+    try {
+      // Filter out events from wrong contract addresses
+      const contractName = log.name.split('_')[0]
+      const expectedAddress = events[contractName]
+        ? events[contractName].address.toLowerCase()
+        : null
+
+      if (expectedAddress && log.address.toLowerCase() !== expectedAddress) {
+        debug('heard event from wrong address')
+        return
+      }
+
+      // Check for duplicates
+      const check = r.table('logs').getAll([
+        log.transactionHash,
+        log.logIndex
+      ], { index: 'unique_log' }).coerceTo('array')
+      const res = await dodb(db, check)
+
+      if (res.length) {
+        debug('Log already stored')
+        return
+      }
+
+      debug('Inserting new log', log.transactionHash)
+
+      r.table('logs')
+        .insert(log)
+        .run(db, async (err, results) => {
+          debug((err ? 'ERROR ' : 'SUCCESS ') + 'saving ' + log.name)
+          if (err) throw new Error(err)
+          log.userAddresses = await getUsers(log.userAddresses)
+          handleEvent({ io, db, log })
+        })
+    } catch (err) {
+      debug('Error handling live event:', err.message)
     }
-    log = transformLog(log, contract, key)
+  }, fromBlock)
 
-    // no duplicates, hopefully
-    const check = r.table('logs').getAll([
-      log.transactionHash,
-      log.logIndex
-    ], { index: 'unique_log' }).coerceTo('array')
-    const res = await dodb(db, check)
-
-    if (res.length) {
-      debug('Log already stored')
-      return
-    }
-
-    debug('Inserting new log', log.transactionHash)
-
-    r.table('logs')
-      .insert(log)
-      .run(db, async (err, results) => {
-        debug((err ? 'ERROR ' : 'SUCCESS ') + 'saving ' + log.name)
-        if (err) throw new Error(err)
-        log.userAddresses = await getUsers(log.userAddresses)
-        handleEvent({ io, db, log })
-      })
-  })
+  debug(`Started ${liveControllers.length} live streams`)
 }
 
 async function getUsers(userAddresses, key = 0, newUserAddresses = []) {

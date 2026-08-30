@@ -1,5 +1,5 @@
 import r from 'rethinkdb'
-import { events } from '../lib/ethers-utils'
+import { events } from '../lib/chain'
 
 const ZERO = '0000000000000000000000000000000000000000000000000000000000000000'
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'

@@ -1,12 +1,12 @@
 const debug = require('debug')('app:api:albums')
 import resource from 'resource-router-middleware'
 import r from 'rethinkdb'
-import { toRes, userTemplate, albumTemplate } from '../lib/util'
+import { toRes, userTemplate, albumTemplate, makeUser } from '../lib/util'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
 import uuid from 'uuid/v4'
-import { provider } from '../lib/ethers-utils'
+import { provider } from '../lib/chain'
 import escapeRegex from 'escape-string-regexp'
 
 // addresses that can moderate comments :)
@@ -194,7 +194,9 @@ export default ({ config, db, io }) => {
 
     // if user doesn't exist make them
     if (!user.address) {
-      user = await makeUser(userAddress)
+      // The local makeUser was scoped inside the POST handler, so the PUT
+      // handler below called an undefined name. Both now use the shared helper.
+      user = await makeUser(db, io, userAddress, await provider.getBlockNumber())
     }
 
     if (!albumName) {
@@ -260,28 +262,6 @@ export default ({ config, db, io }) => {
         })
     })
 
-
-    async function makeUser (userAddress) {
-      const modified = await provider.getBlockNumber()
-      var user = userTemplate(userAddress.toLowerCase())
-      user.created = modified
-      user.modified = modified
-
-      // db update
-      const { changes } = await r.table('users')
-        .insert(user, { returnChanges: true })
-        .run(db)
-        .catch((err) => {
-            console.error(err)
-            res.sendStatus(500).end()
-            return
-        })
-        if (changes[0]) {
-          user = changes[0].new_val
-        }
-        io.emit('updateUser', user)
-        return user
-    }
   })
 
   router.put('/:id', async (req, res) => {
@@ -304,7 +284,9 @@ export default ({ config, db, io }) => {
 
     // if user doesnt exist add them to db
     if (!user.address) {
-      user = await makeUser(userAddress)
+      // The local makeUser was scoped inside the POST handler, so the PUT
+      // handler below called an undefined name. Both now use the shared helper.
+      user = await makeUser(db, io, userAddress, await provider.getBlockNumber())
     }
 
     let albums = await r.table('albums').getAll(albumName.toLowerCase(), { index: 'name' }).pluck('id').coerceTo('array').run(db)

@@ -11,6 +11,8 @@ import api from './api'
 import config from './config.json'
 import { socketing } from './socketing'
 import { build, mine, syncChain, copyLogs, syncBalances } from './lib/build'
+import { reconcile } from './lib/reconcile'
+import { audit as auditLogs, backfill as backfillLogs, cleanup as cleanupLogs } from './lib/logs-repair'
 import { commentListener } from './api/chats'
 
 let app = express()
@@ -49,6 +51,44 @@ initializeDb((db) => {
     copyLogs(db)
   } else if (process.argv.findIndex(c => c === 'users') > -1) {
     syncBalances(db)
+  } else if (process.argv.findIndex(c => c === 'audit-logs') > -1) {
+    auditLogs(db)
+      .then(() => process.exit(0))
+      .catch(err => {
+        // console.error, not debug: a disabled DEBUG namespace made a real
+        // RethinkDB error vanish and the command look like a silent crash.
+        console.error('\n  COMMAND FAILED: ' + (err && err.message ? err.message : err))
+        if (err && err.stack) console.error(err.stack)
+        process.exit(1)
+      })
+  } else if (process.argv.findIndex(c => c === 'backfill-logs') > -1) {
+    backfillLogs(db, { write: process.argv.indexOf('--write') > -1 })
+      .then(() => process.exit(0))
+      .catch(err => {
+        // console.error, not debug: a disabled DEBUG namespace made a real
+        // RethinkDB error vanish and the command look like a silent crash.
+        console.error('\n  COMMAND FAILED: ' + (err && err.message ? err.message : err))
+        if (err && err.stack) console.error(err.stack)
+        process.exit(1)
+      })
+  } else if (process.argv.findIndex(c => c === 'cleanup-logs') > -1) {
+    cleanupLogs(db, { write: process.argv.indexOf('--write') > -1 })
+      .then(() => process.exit(0))
+      .catch(err => {
+        console.error('\n  COMMAND FAILED: ' + (err && err.message ? err.message : err))
+        if (err && err.stack) console.error(err.stack)
+        process.exit(1)
+      })
+  } else if (process.argv.findIndex(c => c === 'reconcile') > -1) {
+    reconcile(db, { write: process.argv.indexOf('--write') > -1 })
+      .then(() => process.exit(0))
+      .catch(err => {
+        // console.error, not debug: a disabled DEBUG namespace made a real
+        // RethinkDB error vanish and the command look like a silent crash.
+        console.error('\n  COMMAND FAILED: ' + (err && err.message ? err.message : err))
+        if (err && err.stack) console.error(err.stack)
+        process.exit(1)
+      })
   } else {
     const io = require('socket.io')(app.server)
     commentListener(app.server, db)
