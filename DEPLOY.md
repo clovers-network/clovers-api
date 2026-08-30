@@ -75,11 +75,31 @@ ssh clover-main 'cd ~/apps/api2 && rm -rf node_modules && tar xzf ~/node_modules
 
 One is already at `~/node_modules-known-good.tar.gz` (53 MB, 998 packages).
 
-### Also note: the hook reloads without `--env production`
+### Two hook bugs, both fixed 2026-08-30
 
-`npm run reload` runs plain `pm2 reload ecosystem.config.js`, so the app comes
-up with `node env: development` — which changes `SYNC_TOKEN` and `NODE_ENV`.
-Reload manually with `--env production` after a hook deploy, or fix the script.
+**It checked out no explicit ref.** The hook ran `checkout -f` with no branch,
+which follows the bare repo's `HEAD` — and any `--git-dir=… checkout` performed
+elsewhere moves that HEAD. A verification checkout of a temp branch left HEAD
+pointing at it, so the next master push silently deployed the **stale branch
+and its old package.json**, which still ran `npm i` and broke production. Now
+pins `checkout -f master`.
+
+**It reloaded without an env.** `npm run reload` was plain
+`pm2 reload ecosystem.config.js`, bringing the app up as
+`node env: development` and so changing `NODE_ENV` and `SYNC_TOKEN`. The script
+now passes `--env production`.
+
+### Nightly backups — added 2026-08-30
+
+`~/backup-cron.sh` at 03:20 daily, logging to `~/backups/backup.log`, retaining
+the newest 14 runs (~36 MB each) and pruning the rest.
+
+```sh
+ssh clover-main 'crontab -l'
+ssh clover-main 'tail -20 ~/backups/backup.log'
+```
+
+Before this the most recent backup on the host was from **February 2021**.
 
 ### Historical note: `npm install` also fails on modern Node
 
