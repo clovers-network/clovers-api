@@ -101,6 +101,7 @@ async function scanDbLogs (chain) {
     .run(db)
 
   const seenTx = new Set()
+  const covered = new Set()   // chain coordinates holding a correctly-named row
   const dupes = []
   const misplaced = []
   let considered = 0
@@ -113,30 +114,29 @@ async function scanDbLogs (chain) {
     if (seenTx.has(tk)) dupes.push(row.id)
     else seenTx.add(tk)
 
-    const atCoord = chain.coordToTx.get(coordKey(row))
-    if (atCoord !== String(row.transactionHash).toLowerCase() + '|' + row.name) {
+    const ck = coordKey(row)
+    if (chain.coordToTx.get(ck) === String(row.transactionHash).toLowerCase() + '|' + row.name) {
+      covered.add(ck)
+    } else {
       misplaced.push(row.id)
     }
   })
 
-  return { seenTx, dupes, misplaced, considered }
+  return { seenTx, covered, dupes, misplaced, considered }
 }
 
 /** Pass 2: refetch only the blocks that actually contain missing events. */
-async function refetchMissing (missingTxKeys, chain) {
+async function refetchMissing (missingCoords, chain) {
   const blocks = new Set()
-  for (const [coord, tx] of chain.coordToTx) {
-    const idx = coord.split(':')[1]
-    if (missingTxKeys.has(`${tx}:${idx}`)) blocks.add(Number(coord.split(':')[0]))
-  }
+  for (const ck of missingCoords) blocks.add(Number(ck.split(':')[0]))
 
-  debug(`refetching ${blocks.size} blocks for ${missingTxKeys.size} missing events`)
+  debug(`refetching ${blocks.size} blocks for ${missingCoords.size} missing events`)
 
   const out = []
   let done = 0
   for (const b of blocks) {
     await catchUp(b, b, log => {
-      if (missingTxKeys.has(txKey(log))) out.push(log)
+      if (missingCoords.has(coordKey(log))) out.push(log)
     })
     if (++done % 25 === 0) debug(`refetched ${done}/${blocks.size} blocks`)
   }
@@ -154,39 +154,43 @@ export async function audit (_db) {
   const chain = await chainIndex(from, head)
   const scan = await scanDbLogs(chain)
 
-  const missingTxKeys = new Set()
-  for (const tk of chain.txKeys) if (!scan.seenTx.has(tk)) missingTxKeys.add(tk)
+  // A chain position counts as present only when a row there carries both the
+  // right transaction and the right event name. Keying on (tx, logIndex) alone
+  // treats a mislabelled row as coverage, which is how 59 positions stayed
+  // broken through an earlier pass.
+  const missingCoords = new Set()
+  for (const ck of chain.coordToTx.keys()) if (!scan.covered.has(ck)) missingCoords.add(ck)
 
   console.log(`  chain events (tracked types): ${chain.total.toLocaleString()}`)
   console.log(`  db rows (tracked types):      ${scan.considered.toLocaleString()}`)
   console.log('')
-  console.log(`  missing from db:              ${missingTxKeys.size}`)
+  console.log(`  missing from db:              ${missingCoords.size}`)
   console.log(`  duplicate rows:               ${scan.dupes.length}`)
   console.log(`  wrong blockNumber/logIndex:   ${scan.misplaced.length}`)
   console.log('')
   console.log('  Duplicates and misplaced rows are NOT removed by backfill-logs.')
   console.log('  Deleting rows is destructive; decide before acting on those two counts.')
 
-  return { chain, missingTxKeys, dupes: scan.dupes, misplaced: scan.misplaced }
+  return { chain, missingCoords, dupes: scan.dupes, misplaced: scan.misplaced }
 }
 
 export async function backfill (_db, { write = false } = {}) {
   db = _db
 
-  const { chain, missingTxKeys } = await audit(db)
+  const { chain, missingCoords } = await audit(db)
 
-  if (!missingTxKeys.size) {
+  if (!missingCoords.size) {
     console.log('\n  nothing to insert')
     return { inserted: 0 }
   }
 
   if (!write) {
-    console.log(`\n  dry run - would insert ${missingTxKeys.size} log rows; pass --write to apply`)
-    return { inserted: 0, missing: missingTxKeys.size }
+    console.log(`\n  dry run - would insert ${missingCoords.size} log rows; pass --write to apply`)
+    return { inserted: 0, missing: missingCoords.size }
   }
 
-  const missing = await refetchMissing(missingTxKeys, chain)
-  console.log(`\n  refetched ${missing.length} of ${missingTxKeys.size} missing events`)
+  const missing = await refetchMissing(missingCoords, chain)
+  console.log(`\n  refetched ${missing.length} of ${missingCoords.size} missing events`)
 
   console.log(`\n  inserting ${missing.length} missing log rows...`)
   console.log('  (log rows only — the clovers table was already reconciled, so')
@@ -197,13 +201,15 @@ export async function backfill (_db, { write = false } = {}) {
 
   for (let i = 0; i < missing.length; i++) {
     try {
-      // Guard against a concurrent insert by the live listener.
+      // Guard against a concurrent insert by the live listener. Must compare
+      // the name too: a mislabelled row shares (transactionHash, logIndex)
+      // with the correct one, so an existence check alone would skip it.
       const existing = await r.table('logs')
         .getAll([missing[i].transactionHash, missing[i].logIndex], { index: 'unique_log' })
         .coerceTo('array')
         .run(db)
 
-      if (existing.length) continue
+      if (existing.some(e => e.name === missing[i].name)) continue
 
       await r.table('logs').insert(missing[i]).run(db)
       inserted++
@@ -226,7 +232,7 @@ export async function backfill (_db, { write = false } = {}) {
       .getAll([l.transactionHash, l.logIndex], { index: 'unique_log' })
       .coerceTo('array')
       .run(db)
-    if (!rows.length) still++
+    if (!rows.some(e => e.name === l.name)) still++
   }
   console.log(`  still missing after run: ${still}`)
 
