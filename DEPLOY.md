@@ -40,7 +40,48 @@ npm, convert it back before deploying:
 npm install --package-lock-only --lockfile-version 1 --ignore-scripts
 ```
 
-### Known trap: `npm install` fails on modern Node
+### Do not run `npm install` on that server
+
+**The deploy path no longer runs it, and that is deliberate.** `prereload` is
+now `npm run -s build` only; use `npm run reload:install` if you ever
+genuinely intend to reinstall.
+
+Running `npm i` there broke production twice in one session:
+
+1. It pruned `ethjs`, and `src/middleware/auth.js` imported it. The API
+   crash-looped on `Cannot find module 'ethjs'` and returned 502 until
+   node_modules was restored from a tarball. The import was unused and is now
+   removed.
+2. It installed `debug@4.4.3`, which calls `util.formatWithOptions` — added in
+   Node 10. The server runs **Node 9.4.0**, so startup died with
+   `TypeError: util.formatWithOptions is not a function`. `debug` is now pinned
+   to exactly `4.1.0`.
+
+The underlying reason is structural: the working `node_modules` contains
+packages present in **neither package.json nor the lockfile** —
+`ethjs`, `ethjs-abi`, `ethjs-query`, `web3`, `web3-provider-engine`. It is a
+five-year-old artifact with undeclared drift, so no install can reproduce it;
+an install prunes those packages and the app breaks. Regenerating the lockfile
+with a modern npm made this worse by resolving newer versions than the
+original pinned, which is how `debug` moved.
+
+**Before ever running an install there, take a restore point:**
+
+```sh
+ssh clover-main 'cd ~/apps/api2 && tar czf ~/node_modules-known-good.tar.gz node_modules'
+# to recover:
+ssh clover-main 'cd ~/apps/api2 && rm -rf node_modules && tar xzf ~/node_modules-known-good.tar.gz && npm run -s build && pm2 reload ecosystem.config.js --env production'
+```
+
+One is already at `~/node_modules-known-good.tar.gz` (53 MB, 998 packages).
+
+### Also note: the hook reloads without `--env production`
+
+`npm run reload` runs plain `pm2 reload ecosystem.config.js`, so the app comes
+up with `node env: development` — which changes `SYNC_TOKEN` and `NODE_ENV`.
+Reload manually with `--env production` after a hook deploy, or fix the script.
+
+### Historical note: `npm install` also fails on modern Node
 
 The native module `sha3` cannot compile on current Node/toolchains. It arrives
 transitively and **nothing loads it** — `eth-sig-util` works without it. Use
