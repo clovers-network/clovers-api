@@ -61,18 +61,26 @@ async function chainIndex (fromBlock, toBlock) {
   const coordToTx = new Map()
   const txKeys = new Set()
   const names = new Set()
+  // txHash -> [coordKey]. Needed by cleanup to prove that every chain event
+  // belonging to a transaction already has a correctly-placed row before any
+  // misplaced copy of it is deleted.
+  const txToCoords = new Map()
   let n = 0
 
   await catchUp(fromBlock, toBlock, log => {
     n++
-    coordToTx.set(coordKey(log), String(log.transactionHash).toLowerCase())
+    const tx = String(log.transactionHash).toLowerCase()
+    const ck = coordKey(log)
+    coordToTx.set(ck, tx)
     txKeys.add(txKey(log))
     names.add(log.name)
+    if (!txToCoords.has(tx)) txToCoords.set(tx, [])
+    txToCoords.get(tx).push(ck)
     if (n % 10000 === 0) debug(`${n} chain logs`)
   })
 
   debug(`${n} chain logs over ${txKeys.size} distinct positions`)
-  return { coordToTx, txKeys, names, total: n }
+  return { coordToTx, txKeys, names, txToCoords, total: n }
 }
 
 /**
@@ -219,4 +227,174 @@ export async function backfill (_db, { write = false } = {}) {
   console.log(`  still missing after run: ${still}`)
 
   return { inserted, failed, stillMissing: still }
+}
+
+/**
+ * Remove the duplicate rows and the rows stored at wrong coordinates.
+ *
+ * This deletes production rows, so it is built around one precondition and one
+ * per-row proof:
+ *
+ *   PRECONDITION — every chain event must already have a correctly-placed row
+ *   (audit reports `missing: 0`). Without that, deleting a misplaced row could
+ *   drop the only copy of an event. Refuses to run otherwise.
+ *
+ *   PER-ROW PROOF — a misplaced row is only deleted once every chain event
+ *   belonging to its transaction is confirmed present at its correct
+ *   coordinates. Rows whose transaction has no tracked chain event at all are
+ *   reported and never touched.
+ *
+ * Duplicates keep the first row seen and delete the rest, and only after
+ * confirming the survivor sits at a genuine chain position.
+ *
+ * Every deleted id is written to ~/logs-cleanup-<timestamp>.json so the action
+ * is auditable and reversible against a backup.
+ *
+ * Usage:
+ *   node dist/index.js cleanup-logs           # dry run
+ *   node dist/index.js cleanup-logs --write   # apply
+ */
+export async function cleanup (_db, { write = false } = {}) {
+  db = _db
+
+  const from = fromBlockFor()
+  const head = await getBlockNumber()
+
+  console.log(write
+    ? '\n  CLEANUP LOGS — applying changes'
+    : '\n  CLEANUP LOGS — dry run, pass --write to apply')
+  console.log(`  blocks ${from.toLocaleString()} to ${head.toLocaleString()}\n`)
+
+  const chain = await chainIndex(from, head)
+
+  // ---- scan, classifying every tracked row -------------------------------
+  const placed = new Map()      // coordKey -> [row ids] for rows at a real chain position
+  const misplaced = []          // rows whose (block, logIndex) is not a chain position
+  const orphaned = []           // rows whose tx has no tracked chain event at all
+  let considered = 0
+
+  const cursor = await r.table('logs')
+    .pluck('id', 'name', 'blockNumber', 'logIndex', 'transactionHash')
+    .run(db)
+
+  await cursor.eachAsync(row => {
+    if (!row.transactionHash || !chain.names.has(row.name)) return
+    considered++
+
+    const ck = coordKey(row)
+    const tx = String(row.transactionHash).toLowerCase()
+
+    if (chain.coordToTx.get(ck) === tx) {
+      if (!placed.has(ck)) placed.set(ck, [])
+      placed.get(ck).push(row.id)
+    } else if (chain.txToCoords.has(tx)) {
+      misplaced.push({ id: row.id, tx, ck })
+    } else {
+      orphaned.push({ id: row.id, tx, ck, name: row.name })
+    }
+  })
+
+  // ---- precondition ------------------------------------------------------
+  const uncovered = []
+  for (const ck of chain.coordToTx.keys()) if (!placed.has(ck)) uncovered.push(ck)
+
+  console.log(`  chain events:                 ${chain.total.toLocaleString()}`)
+  console.log(`  db rows (tracked types):      ${considered.toLocaleString()}`)
+  console.log(`  chain positions covered:      ${placed.size.toLocaleString()}`)
+  console.log(`  chain positions NOT covered:  ${uncovered.length}`)
+  console.log('')
+
+  if (uncovered.length) {
+    console.log('  REFUSING TO RUN: some chain events have no correctly-placed row.')
+    console.log('  Run `backfill-logs --write` first, then retry.')
+    uncovered.slice(0, 5).forEach(ck => console.log(`    uncovered: ${ck}`))
+    return { refused: true, uncovered: uncovered.length }
+  }
+
+  // ---- decide deletions --------------------------------------------------
+  const dupeIds = []
+  for (const [, ids] of placed) {
+    if (ids.length > 1) dupeIds.push(...ids.slice(1)) // keep the first
+  }
+
+  const misplacedDeletable = []
+  const misplacedKept = []
+  for (const m of misplaced) {
+    const coords = chain.txToCoords.get(m.tx) || []
+    const allCovered = coords.every(ck => placed.has(ck))
+    if (allCovered) misplacedDeletable.push(m)
+    else misplacedKept.push(m)
+  }
+
+  console.log(`  duplicate rows to delete:     ${dupeIds.length}`)
+  console.log(`  misplaced rows to delete:     ${misplacedDeletable.length}`)
+  console.log(`  misplaced rows KEPT (their tx`)
+  console.log(`    is not fully covered):      ${misplacedKept.length}`)
+  console.log(`  orphaned rows (tx has no`)
+  console.log(`    tracked chain event) KEPT:  ${orphaned.length}`)
+  console.log('')
+
+  orphaned.slice(0, 6).forEach(o => console.log(`    orphan: ${o.name} at ${o.ck} tx=${o.tx.slice(0, 14)}`))
+  if (orphaned.length > 6) console.log(`    ...and ${orphaned.length - 6} more orphans`)
+
+  const toDelete = dupeIds.concat(misplacedDeletable.map(m => m.id))
+  console.log('')
+  console.log(`  TOTAL rows to delete: ${toDelete.length}`)
+  console.log(`  rows remaining after: ${(considered - toDelete.length).toLocaleString()}  (chain has ${chain.total.toLocaleString()})`)
+
+  if (!write) {
+    console.log('\n  dry run — nothing deleted')
+    return { dupeIds, misplacedDeletable, misplacedKept, orphaned, toDelete }
+  }
+
+  // ---- record before deleting -------------------------------------------
+  const fs = require('fs')
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  const manifest = process.env.HOME + '/logs-cleanup-' + stamp + '.json'
+  fs.writeFileSync(manifest, JSON.stringify({
+    when: stamp,
+    duplicates: dupeIds,
+    misplaced: misplacedDeletable
+  }, null, 1))
+  console.log(`\n  wrote manifest of every id to be deleted: ${manifest}`)
+
+  // ---- delete in batches -------------------------------------------------
+  let deleted = 0
+  let failed = 0
+  const BATCH = 100
+
+  for (let i = 0; i < toDelete.length; i += BATCH) {
+    const batch = toDelete.slice(i, i + BATCH)
+    try {
+      const res = await r.table('logs').getAll(r.args(batch)).delete().run(db)
+      deleted += res.deleted || 0
+    } catch (err) {
+      failed += batch.length
+      console.log(`    FAILED batch at ${i}: ${err.message}`)
+    }
+    if ((i + BATCH) % 500 === 0) console.log(`    ${Math.min(i + BATCH, toDelete.length)}/${toDelete.length}`)
+  }
+
+  console.log('')
+  console.log(`  deleted: ${deleted}`)
+  console.log(`  failed:  ${failed}`)
+
+  // ---- verify the invariant still holds ----------------------------------
+  console.log('\n  re-checking that every chain position still has a row...')
+  const after = new Set()
+  const c2 = await r.table('logs').pluck('name', 'blockNumber', 'logIndex', 'transactionHash').run(db)
+  await c2.eachAsync(row => {
+    if (!row.transactionHash || !chain.names.has(row.name)) return
+    const ck = coordKey(row)
+    if (chain.coordToTx.get(ck) === String(row.transactionHash).toLowerCase()) after.add(ck)
+  })
+
+  const lost = []
+  for (const ck of chain.coordToTx.keys()) if (!after.has(ck)) lost.push(ck)
+  console.log(`  chain positions covered after: ${after.size.toLocaleString()} of ${chain.coordToTx.size.toLocaleString()}`)
+  console.log(lost.length
+    ? `  *** ${lost.length} POSITIONS LOST -- restore from ${manifest} and the backup ***`
+    : '  no chain event lost')
+
+  return { deleted, failed, lost: lost.length, manifest }
 }
