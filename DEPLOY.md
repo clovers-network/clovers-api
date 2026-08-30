@@ -283,7 +283,39 @@ wrong `blockNumber`/`logIndex`.
 newest `Clovers_Transfer` now reads block 25,764,344, matching chain exactly
 (it read 25,761,840 before).
 
-**Still outstanding, and deliberately not automated** — both require deleting
+### Cleanup — DONE 2026-08-30
+
+3,962 rows deleted (2,048 duplicates, 1,914 misplaced), 0 failed.
+
+| | Rows | Chain positions uncovered |
+|---|---|---|
+| Before any of this work | 154,913 | 762 |
+| After backfill | 155,616 | 59 |
+| After cleanup | 144,090 | 59 |
+
+Verified against the pre-deletion backup and the deletion manifest: of the
+3,962 rows removed, 2,048 were themselves correctly placed — but every one of
+those positions retained a surviving correct row, so **0 positions lost their
+only correct row.** They were true duplicates.
+
+The audit initially validated coordinate → transaction hash but not the event
+name, which under-reported misplacement: a transaction emitting both a
+Clovers_Transfer and a ClubToken_Transfer holds several positions under one
+hash, so a row filed under the wrong name at a sibling position passed. Fixed
+to compare both; that is what surfaced the 59 below.
+
+### Still outstanding: 59 mislabeled rows
+
+Correct transaction and logIndex, **wrong event name** — and therefore a
+payload decoded against the wrong event, so the `data` is also wrong.
+Relabelling is not sufficient; these need replacing with a correctly decoded
+row. Example, block 8389028 logIndex 115: chain holds a `ClubToken_Transfer`
+(tx `0xdb553124852a5e…`), the table holds `SimpleCloversMarket_updatePrice`
+for the same transaction and position.
+
+They predate this work — 762 such positions existed before it, 59 remain.
+
+**Also outstanding, deliberately not automated** — both require deleting
 or rewriting rows:
 
 - **2,065 duplicates**: identical rows sharing (transactionHash, logIndex).
