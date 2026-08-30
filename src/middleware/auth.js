@@ -1,4 +1,8 @@
-import eth from 'ethjs'
+// `ethjs` was imported here but never used -- its only reference is a
+// commented-out isAddress check below. It was also absent from
+// package.json and the lockfile, surviving only as a stale entry in
+// node_modules, so `npm install` correctly pruned it and the API then
+// crash-looped on 'Cannot find module ethjs'. Removed rather than declared.
 import sigUtil from 'eth-sig-util'
 import debug from 'debug'
 // import utils from 'ethereumjs-util'
