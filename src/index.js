@@ -12,6 +12,7 @@ import config from './config.json'
 import { socketing } from './socketing'
 import { build, mine, syncChain, copyLogs, syncBalances } from './lib/build'
 import { reconcile } from './lib/reconcile'
+import { audit as auditLogs, backfill as backfillLogs } from './lib/logs-repair'
 import { commentListener } from './api/chats'
 
 let app = express()
@@ -50,6 +51,14 @@ initializeDb((db) => {
     copyLogs(db)
   } else if (process.argv.findIndex(c => c === 'users') > -1) {
     syncBalances(db)
+  } else if (process.argv.findIndex(c => c === 'audit-logs') > -1) {
+    auditLogs(db)
+      .then(() => process.exit(0))
+      .catch(err => { debug(err); process.exit(1) })
+  } else if (process.argv.findIndex(c => c === 'backfill-logs') > -1) {
+    backfillLogs(db, { write: process.argv.indexOf('--write') > -1 })
+      .then(() => process.exit(0))
+      .catch(err => { debug(err); process.exit(1) })
   } else if (process.argv.findIndex(c => c === 'reconcile') > -1) {
     reconcile(db, { write: process.argv.indexOf('--write') > -1 })
       .then(() => process.exit(0))
