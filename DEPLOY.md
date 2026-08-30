@@ -265,6 +265,47 @@ option of resurrecting it.
 
 ---
 
+## Logs table repair — partially DONE 2026-08-30
+
+Audited the `logs` table against a full `eth_getLogs` walk of all tracked
+events. Three symptoms of one historical bug: some rows were written with the
+wrong `blockNumber`/`logIndex`.
+
+| | Before | After |
+|---|---|---|
+| Chain events (tracked types) | 144,087 | 144,087 |
+| DB rows (tracked types) | 147,349 | 148,052 |
+| **Missing from DB** | **703** | **0** ✅ |
+| Duplicate rows | 2,065 | 2,065 ⚠️ |
+| Wrong blockNumber/logIndex | 1,917 | 1,917 ⚠️ |
+
+703 missing rows inserted, 0 failed, verified by an independent re-audit. The
+newest `Clovers_Transfer` now reads block 25,764,344, matching chain exactly
+(it read 25,761,840 before).
+
+**Still outstanding, and deliberately not automated** — both require deleting
+or rewriting rows:
+
+- **2,065 duplicates**: identical rows sharing (transactionHash, logIndex).
+  `unique_log` is a plain secondary index, not a uniqueness constraint, so the
+  manual pre-insert check could race. Deleting all but one of each is
+  low-risk deduplication.
+- **1,917 misplaced**: correct transaction and decoded data, wrong
+  coordinates. Preferable to *correct* these in place rather than delete them —
+  and check first whether a correctly-positioned row now exists, because rows
+  whose `logIndex` was right but `blockNumber` wrong were not treated as
+  missing and so have no replacement.
+
+Evidence it is a coordinate bug: the row at block 8766804 / logIndex 78 carries
+tx `0x83c37cb9…d42d3ce`, which on chain sits in block 8766824 with its Clovers
+logs at logIndexes 46 and 47.
+
+```sh
+ssh clover-main 'cd ~/apps/api2 && node dist/index.js audit-logs'
+```
+
+---
+
 ## Deferred, deliberately
 
 - **Node 9 is eight years EOL.** It should be upgraded, but not during this
