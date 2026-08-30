@@ -40,13 +40,24 @@ npm, convert it back before deploying:
 npm install --package-lock-only --lockfile-version 1 --ignore-scripts
 ```
 
-### Do not run `npm install` on that server
+### `npm install` is safe again — dependencies are pinned
 
-**The deploy path no longer runs it, and that is deliberate.** `prereload` is
-now `npm run -s build` only; use `npm run reload:install` if you ever
-genuinely intend to reinstall.
+**Fixed 2026-08-30.** Every direct dependency is now pinned to an exact
+version — specifically the version that was installed and working on Node
+9.4.0 — rather than a caret range. `prereload` runs `npm i` again.
 
-Running `npm i` there broke production twice in one session:
+Verified by installing from scratch in an isolated directory on that host
+before restoring it to the deploy path: 1,141 packages, clean build, all 29
+built modules load, `debug` formats correctly, and a live-chain smoke test
+passes (head, `totalSupply` 44,326, `catchUp`).
+
+Only `eslint` is left as a range. It requires Node >= 12 and can therefore
+never run on this server; it exists for local and CI use only.
+
+`eventsource` was removed — declared in package.json, never installed, and
+referenced nowhere in `src/`.
+
+This matters because running `npm i` there previously broke production twice:
 
 1. It pruned `ethjs`, and `src/middleware/auth.js` imported it. The API
    crash-looped on `Cannot find module 'ethjs'` and returned 502 until
@@ -57,13 +68,15 @@ Running `npm i` there broke production twice in one session:
    `TypeError: util.formatWithOptions is not a function`. `debug` is now pinned
    to exactly `4.1.0`.
 
-The underlying reason is structural: the working `node_modules` contains
+The underlying reason was structural: the working `node_modules` contained
 packages present in **neither package.json nor the lockfile** —
-`ethjs`, `ethjs-abi`, `ethjs-query`, `web3`, `web3-provider-engine`. It is a
-five-year-old artifact with undeclared drift, so no install can reproduce it;
-an install prunes those packages and the app breaks. Regenerating the lockfile
-with a modern npm made this worse by resolving newer versions than the
-original pinned, which is how `debug` moved.
+`ethjs`, `ethjs-abi`, `ethjs-query`, `web3`, `web3-provider-engine` — a
+five-year-old artifact with undeclared drift that no install could reproduce.
+Regenerating the lockfile with a modern npm made it worse by resolving newer
+versions than the original pinned, which is how `debug` moved.
+
+Both are now resolved: the only genuinely-needed undeclared package (`ethjs`)
+had an unused import that was removed, and exact pins stop version drift.
 
 **Before ever running an install there, take a restore point:**
 
