@@ -35,3 +35,7 @@ email.clovers.network.	3600	IN	CNAME	eu.mailgun.org.
 ; ---- DKIM ----
 mailo._domainkey.mail.clovers.network. 3600 IN TXT "k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxSzX33rCi8b77ef9TLJnhetEDrUlmIR1k9CpwsVrDPo/4ToTf4pvLssC7NhyX7FkWsuNL0uHWbY7tfKNIaXy8tHBzskRbkGjnJrVvi0inwfQtPcChjuyRbpvZbKLm5Ptyyx2D5gMZoQ0SqZB3yPssohGoer92+mKiz0ZXgHdJjzrPKJIKn93+snS+baBheb3moGMlxxao8" "+dj4dBM8vvmScbMFLpOLElWfdEtGc7RVlrTY1sWXuHf/9IbLruLzv+Wc3m0k7OWlnKCNrNc6rcH6zslsEeBP+59Fpj7jdUWTAzD2ew7pmMx9NnoHqjzYS071doHBOOQqu86/0F+lMV6QIDAQAB"
 pic._domainkey.clovers.network.	3600 IN	TXT	"k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsdc7BOzwveQJLZTYx8KErcKn18I+3BSFew5VhMDqq6TKRTYnxbfBqswVxEe4AbOavT+o5NPoDwnlN7O+GcKEw87wgtDH1yrSiavqov3rRSGE3QswgP3k/YFiczzHbc03x0RPA4MQKhX4t6anzUKlQGvPstnWgQWuhcCbVTRq9CO0/tg6pwXZuHvB8oROY6ixw2Ve3VrJjG" "iqv9c/v/cqkQ5GYRqvdNBKbXkPCaTVPxJbQoCXyFGa1RB8qlR94Vpo9kPh+3rg5TAhkr1xVkW9iO5XrI4pjaydBxw2bbdVhDnq+u/B3/naDU6vCcyTQxXuauvVz9oT5gOgY5akv+kK5wIDAQAB"
+
+; ---- ACME (leftover DNS-01 validation token; harmless to carry over) ----
+_acme-challenge.clovers.network. 1 IN	TXT	"quBVwEPgPXRwWdpuwaszJ4Uxx8zgj0suN-aP7JoSRIw"
+_acme-challenge.clovers.network. 1 IN	TXT	"7z944VkQ7iOkEErB48nY_eSkKXgMN2JkHzH0b6V2zCc"

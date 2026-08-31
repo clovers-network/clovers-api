@@ -39,27 +39,54 @@ authoritatively. Summary:
 | `mailo._domainkey.mail` | TXT | DKIM |
 | email | CNAME | eu.mailgun.org *(Mailgun tracking)* |
 
-## The one honest caveat
+## Why AXFR cannot solve this for us
 
-**This reconstruction cannot be proven complete.** DNS offers no enumeration —
-`AXFR` is refused, as expected — so every record above was found by *guessing a
-name and asking*. Two finds show that is a real gap, not a theoretical one:
+`AXFR` — a zone transfer — is the canonical way to obtain a *complete* record
+list, with no guessing. It is refused here, and correctly so.
 
-- `pic._domainkey.clovers.network` — an unusual selector, found only because the
-  guess list was broad. Nothing would have suggested "pic".
-- A **second** `google-site-verification` TXT on the apex, initially hidden by
-  truncated output.
+Authorization for AXFR is one of: an **IP allowlist** on the authoritative
+server, a **TSIG** shared secret (RFC 8945), or occasionally SIG(0)/mutual TLS.
+All three are configured **server-side by whoever controls the zone**. There is
+nothing to sign up for, and there cannot be: a zone transfer exposes a domain's
+entire infrastructure, so outsider access would be a vulnerability rather than a
+feature. Confirmed refused on both NS1 pools, while ordinary TCP queries to the
+same servers succeed — so it is an authorization denial, not a network problem.
 
-If a record exists under a name nobody guessed, it will be silently dropped.
-Likely candidates and impact: a verification TXT (a third-party integration
-quietly stops trusting the domain) or an obscure subdomain (that host becomes
-unreachable). Neither is catastrophic; both are annoying and hard to diagnose
-later.
+Cloudflare's onboarding does **not** close the gap either. Their own docs: "the
+quick scan is not guaranteed to find all existing DNS records", and you "need to
+review your records." It is the same best-effort name-guessing approach.
 
-**So try NS1 recovery once more first.** A real zone export makes this whole
-exercise risk-free. NS1 is now part of IBM, so support may be reachable through
-IBM channels even if self-service recovery is broken. One attempt is worth more
-than any amount of guessing.
+## How complete is this reconstruction?
+
+Better than pure guessing, thanks to two independent sources.
+
+**Certificate Transparency gives near-certainty on the HTTPS surface.** Every
+publicly-trusted certificate is logged, so any subdomain that ever served HTTPS
+is discoverable. Across **765 certificates** for `%.clovers.network`, crt.sh
+returns exactly **7 names** — apex, www, dev, api, api2, img, forum — every one
+of which is already in the zone file. No hostname was missed.
+
+**What CT cannot see** is anything that never had a certificate: mail-only names
+and TXT-only records. Those were swept explicitly — ~20 further DKIM selectors,
+DMARC, MTA-STS, BIMI, PSL, ACME, common SRV names, CAA, and a wildcard. That
+found one more record (`_acme-challenge`, a stale DNS-01 token, now included)
+and nothing else.
+
+So the residual risk is narrow but real: a TXT or non-HTTPS record under a name
+neither the CT logs nor a ~60-name sweep surfaced. Two earlier finds show why it
+is not zero — `pic._domainkey` sits on a selector nothing would suggest, and a
+**second** `google-site-verification` TXT was initially hidden by truncated
+output. Impact if something is missed: a third-party integration quietly stops
+trusting the domain, or a mail-only name breaks. Recoverable, but hard to
+diagnose later.
+
+**NS1 recovery is still worth one real attempt**, because it converts "narrow
+residual risk" into "none". And there is a strong lever for it: **the registrar
+is Name.com and it is accessible**, which is proof of domain control — exactly
+what a DNS provider needs to justify account recovery or a zone export. That is
+a far better case than a forgotten password. NS1 is IBM-owned, so escalate
+through IBM support. Ask for either account access *or* AXFR allowlisted to an
+IP you control; either one ends the guessing.
 
 ## If proceeding anyway
 
@@ -84,9 +111,22 @@ than any amount of guessing.
    ```
    Do the same for `MX`, `TXT`, and both `_domainkey` names. Only switch when
    every answer matches.
-5. **Change nameservers at the registrar**, keeping the NS1 names recorded:
-   `dns1.p07.nsone.net`, `dns2.p07.nsone.net`, `dns3.p07.nsone.net`,
-   `dns4.p07.nsone.net`.
+5. **Change nameservers at the registrar — Name.com** (IANA 625; domain expires
+   2027-08-12; status `client transfer prohibited`, which is a normal anti-hijack
+   lock and does *not* block a nameserver change).
+
+   **Note the delegation oddity.** The registry delegates to the **p03** pool,
+   while the zone's own NS records name **p07**:
+
+   ```
+   parent delegation (.network registry) -> dns1-4.p03.nsone.net
+   in-zone NS records                    -> dns1-4.p07.nsone.net
+   ```
+
+   Both pools answer correctly, so nothing is broken — NS1 evidently moved the
+   zone and one side was never updated. Resolvers follow the parent, so **p03 is
+   what you are actually replacing**. Record both sets for rollback:
+   `dns1-4.p03.nsone.net` and `dns1-4.p07.nsone.net`.
 6. **Afterwards, send a test email** both directions and check the Mailgun
    dashboard for SPF/DKIM alignment. Mail is the failure most likely to go
    unnoticed.
