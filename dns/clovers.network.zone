@@ -1,0 +1,37 @@
+; clovers.network — reconstructed from authoritative queries against dns1.p07.nsone.net
+; Generated 2026-08-31T09:18:38Z. NOT proven complete — see DNS-MIGRATION.md.
+; DNSSEC: not enabled (no DS at parent), so a nameserver change is safe in that respect.
+$TTL 3600
+
+; ---- apex ----
+clovers.network.	120	IN	A	35.157.26.135
+clovers.network.	120	IN	A	63.176.8.218
+clovers.network.	311	IN	AAAA	2a05:d014:58f:6200::259
+clovers.network.	311	IN	AAAA	2a05:d014:58f:6200::258
+clovers.network.	3600	IN	MX	10 mxb.eu.mailgun.org.
+clovers.network.	3600	IN	MX	10 mxa.eu.mailgun.org.
+clovers.network.	3600	IN	TXT	"google-site-verification=8uQyZ1Sa7cM1gu0dEP8KrnHbcKg1CuHoNB01ZwO5K_A"
+clovers.network.	3600	IN	TXT	"fortmatic-site-verification=741LuAEkMxIXBVPE"
+clovers.network.	3600	IN	TXT	"brave-ledger-verification=3b2366f9e6b50e03b543b4a03c9b7b3353f58b9e99848b57c95512bebf1fab55"
+clovers.network.	3600	IN	TXT	"v=spf1 include:eu.mailgun.org ~all"
+clovers.network.	3600	IN	TXT	"google-site-verification=jlWhV1LxjUnElnLS6D06UVtpYJpAxlaD6UcqO8OwlwA"
+
+; ---- hosts ----
+www.clovers.network.	120	IN	A	63.176.8.218
+www.clovers.network.	120	IN	A	35.157.26.135
+dev.clovers.network.	120	IN	A	35.157.26.135
+dev.clovers.network.	120	IN	A	63.176.8.218
+api.clovers.network.	3600	IN	A	206.81.16.230
+api2.clovers.network.	3600	IN	A	104.131.181.241
+img.clovers.network.	3600	IN	A	165.22.72.114
+forum.clovers.network.	3600	IN	A	68.183.74.37
+
+; ---- mail (Mailgun, EU region) ----
+mail.clovers.network.	3600	IN	MX	10 mxb.eu.mailgun.org.
+mail.clovers.network.	3600	IN	MX	10 mxa.eu.mailgun.org.
+mail.clovers.network.	3600	IN	TXT	"v=spf1 include:eu.mailgun.org ~all"
+email.clovers.network.	3600	IN	CNAME	eu.mailgun.org.
+
+; ---- DKIM ----
+mailo._domainkey.mail.clovers.network. 3600 IN TXT "k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxSzX33rCi8b77ef9TLJnhetEDrUlmIR1k9CpwsVrDPo/4ToTf4pvLssC7NhyX7FkWsuNL0uHWbY7tfKNIaXy8tHBzskRbkGjnJrVvi0inwfQtPcChjuyRbpvZbKLm5Ptyyx2D5gMZoQ0SqZB3yPssohGoer92+mKiz0ZXgHdJjzrPKJIKn93+snS+baBheb3moGMlxxao8" "+dj4dBM8vvmScbMFLpOLElWfdEtGc7RVlrTY1sWXuHf/9IbLruLzv+Wc3m0k7OWlnKCNrNc6rcH6zslsEeBP+59Fpj7jdUWTAzD2ew7pmMx9NnoHqjzYS071doHBOOQqu86/0F+lMV6QIDAQAB"
+pic._domainkey.clovers.network.	3600 IN	TXT	"k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsdc7BOzwveQJLZTYx8KErcKn18I+3BSFew5VhMDqq6TKRTYnxbfBqswVxEe4AbOavT+o5NPoDwnlN7O+GcKEw87wgtDH1yrSiavqov3rRSGE3QswgP3k/YFiczzHbc03x0RPA4MQKhX4t6anzUKlQGvPstnWgQWuhcCbVTRq9CO0/tg6pwXZuHvB8oROY6ixw2Ve3VrJjG" "iqv9c/v/cqkQ5GYRqvdNBKbXkPCaTVPxJbQoCXyFGa1RB8qlR94Vpo9kPh+3rg5TAhkr1xVkW9iO5XrI4pjaydBxw2bbdVhDnq+u/B3/naDU6vCcyTQxXuauvVz9oT5gOgY5akv+kK5wIDAQAB"

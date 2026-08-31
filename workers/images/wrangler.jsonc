@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "clovers-images",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-31",
+  // clovers-reversi depends on bn.js, which reaches for Node built-ins.
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}
