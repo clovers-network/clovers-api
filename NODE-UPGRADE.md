@@ -1,7 +1,21 @@
 # Node upgrade: what's possible on this server
 
-**Investigated 2026-08-31.** Production runs **Node 9.4.0**, released January 2018,
-EOL June 2018. Roughly eight years of unpatched runtime CVEs.
+**Investigated and applied 2026-08-31.** The API now runs on **Node 16.20.2**.
+It previously ran **Node 9.4.0** — released January 2018, EOL that June, so
+roughly eight years of unpatched runtime CVEs.
+
+> **Done.** `ecosystem.config.js` sets
+> `interpreter: '/home/billy/node/bin/node'`, so the app runs on Node 16 while
+> the pm2 daemon stays on the system Node 9. Confirmed by resolving
+> `/proc/<pid>/exe`, which points at that binary and reports `v16.20.2`.
+>
+> Post-switch verification: every endpoint 200 (`/`, `/clovers`, `/logs`,
+> `/users`, `/clovers/metadata/:id`, `/clovers/svg/:id`), socket.io answering,
+> both WebSocket subscriptions connected, catch-up clean, and the clover count
+> still matching chain at 44,326.
+>
+> **Rollback:** delete the `interpreter` line and reload. Node 16 lives at
+> `~/node` on the server; the system Node is untouched at 9.4.0.
 
 ## The blocker is the OS, not Node
 
@@ -93,11 +107,22 @@ Whenever that happens, the constraint disappears: everything here already runs o
 Node 22 locally, and the `fetch`/`WebSocket` fallbacks make the code
 version-agnostic from Node 9 through 22.
 
+## Known cosmetic warning
+
+Startup logs one deprecation notice:
+
+```
+[DEP0066] DeprecationWarning: OutgoingMessage.prototype._headers is deprecated
+```
+
+Cosmetic on Node 16 — verified the property still returns headers correctly. It
+comes from transitive dependencies (`send`, `http-signature`, `timed-out`,
+`event-loop-inspector`), not from this codebase, so there is nothing to fix
+here. Worth remembering for the eventual move to a supported Node, where the
+property may be gone: the fix then is updating those dependencies, most of which
+arrive via express 4.16 and pm2 3.0.
+
 ## Cleanup
 
-The test tarballs and extracted builds live in `~/node-test` on the server
-(~350 MB). Remove them once a decision is made:
-
-```sh
-ssh clover-main 'rm -rf ~/node-test'
-```
+Done — the Node test tarballs (733 MB) were removed from the server. `~/node`
+holds the Node 16 build now in use.
