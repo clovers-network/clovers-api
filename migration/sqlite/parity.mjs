@@ -13,6 +13,12 @@
  */
 
 import { DatabaseSync } from 'node:sqlite'
+import { createRequire } from 'module'
+
+// Use the store's own predicates rather than a copy of them, so this validates
+// the production filter logic instead of a parallel reimplementation that can
+// drift. (It already had: price_num survived here after the schema dropped it.)
+const { cloverFilterSql } = createRequire(import.meta.url)('../../dist/lib/store/sqlite.js')
 
 const dbPath = process.argv[2] || '/tmp/clovers.db'
 const API = 'https://api.clovers.network'
@@ -24,20 +30,13 @@ const PAGE = 24
 
 // Each case mirrors one ReQL index. `where` is the translated predicate.
 const CLOVER_FILTERS = [
-  { filter: '',          label: 'all',       where: `owner_lc <> '${ZERO}'` },
-  { filter: 'contract',  label: 'contract',  where: `owner_lc = '${CLOVERS}'` },
-  { filter: 'public',    label: 'public',    where: `owner_lc NOT IN ('${CLOVERS}','${ZERO}')` },
-  { filter: 'market',    label: 'market',    where: `price_num <> 0` },
-  { filter: 'pending',   label: 'pending',   where: `owner_lc = '${CLOVERS}' AND price_num = 0` },
-  { filter: 'Sym',       label: 'Sym',       where: `sym_total > 0` },
-  { filter: 'NonSym',    label: 'NonSym',    where: `sym_total = 0 AND owner_lc <> '${ZERO}'` },
-  { filter: 'RotSym',    label: 'RotSym',    where: `json_extract(symmetries,'$.RotSym') = 1` },
-  { filter: 'X0Sym',     label: 'X0Sym',     where: `json_extract(symmetries,'$.X0Sym') = 1` },
-  { filter: 'XYSym',     label: 'XYSym',     where: `json_extract(symmetries,'$.XYSym') = 1` },
-  { filter: 'XnYSym',    label: 'XnYSym',    where: `json_extract(symmetries,'$.XnYSym') = 1` },
-  { filter: 'Y0Sym',     label: 'Y0Sym',     where: `json_extract(symmetries,'$.Y0Sym') = 1` },
-  { filter: 'commented', label: 'commented', where: `commentCount > 0` }
-]
+  '', 'contract', 'public', 'market', 'pending', 'Sym', 'NonSym',
+  'RotSym', 'X0Sym', 'XYSym', 'XnYSym', 'Y0Sym', 'commented'
+].map(f => ({
+  filter: f,
+  label: f || 'all',
+  where: cloverFilterSql(f || 'all', CLOVERS)
+}))
 
 const LOG_FILTERS = [
   { filter: '',                              label: 'active feed', where: `is_active = 1` },

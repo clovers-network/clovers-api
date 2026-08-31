@@ -50,7 +50,12 @@ CREATE TABLE clovers (
                    COALESCE(json_extract(symmetries,'$.XnYSym'),0) +
                    COALESCE(json_extract(symmetries,'$.Y0Sym'),0)
                  ) VIRTUAL,
-  price_num      INTEGER GENERATED ALWAYS AS (CAST(price AS INTEGER)) VIRTUAL,
+  -- NOT CAST(price AS INTEGER): price is wei, so 1 ETH is 1e18, past JS's
+  -- 2^53 safe-integer range. SQLite stores it fine but node:sqlite refuses to
+  -- return it rather than lose precision, so any SELECT * on a priced clover
+  -- throws. Since price is zero-padded decimal, stripping zeros tests the same
+  -- thing exactly and never leaves SQLite's integer domain.
+  price_is_zero  INTEGER GENERATED ALWAYS AS (ltrim(COALESCE(price,''),'0') = '') VIRTUAL,
   is_named       INTEGER GENERATED ALWAYS AS (lower(name) <> lower(board)) VIRTUAL
 );
 
@@ -83,14 +88,14 @@ CREATE INDEX clovers_public_price ON clovers(price)
 -- pending: owned by the contract and unpriced
 CREATE INDEX clovers_pending_modified ON clovers(modified)
   WHERE owner_lc = '0xb55c5cac5014c662fdbf21a2c59cd45403c482fd'
-    AND price_num = 0;
+    AND price_is_zero = 1;
 CREATE INDEX clovers_pending_price ON clovers(price)
   WHERE owner_lc = '0xb55c5cac5014c662fdbf21a2c59cd45403c482fd'
-    AND price_num = 0;
+    AND price_is_zero = 1;
 
 -- market: priced
-CREATE INDEX clovers_market_modified ON clovers(modified) WHERE price_num <> 0;
-CREATE INDEX clovers_market_price    ON clovers(price)    WHERE price_num <> 0;
+CREATE INDEX clovers_market_modified ON clovers(modified) WHERE price_is_zero = 0;
+CREATE INDEX clovers_market_price    ON clovers(price)    WHERE price_is_zero = 0;
 
 -- symmetry families. NOTE the deliberate asymmetry, which is in the original
 -- and is reproduced rather than tidied away: NonSym is
@@ -127,8 +132,8 @@ CREATE INDEX clovers_owner_modified   ON clovers(owner_lc, modified);
 CREATE INDEX clovers_owner_price      ON clovers(owner_lc, price);
 CREATE INDEX clovers_ownersym_modified  ON clovers(owner_lc, sym_total > 0, modified);
 CREATE INDEX clovers_ownersym_price     ON clovers(owner_lc, sym_total > 0, price);
-CREATE INDEX clovers_ownersale_modified ON clovers(owner_lc, price_num <> 0, modified);
-CREATE INDEX clovers_ownersale_price    ON clovers(owner_lc, price_num <> 0, price);
+CREATE INDEX clovers_ownersale_modified ON clovers(owner_lc, price_is_zero = 0, modified);
+CREATE INDEX clovers_ownersale_price    ON clovers(owner_lc, price_is_zero = 0, price);
 
 CREATE INDEX clovers_modified ON clovers(modified);
 CREATE INDEX clovers_created  ON clovers(created);
