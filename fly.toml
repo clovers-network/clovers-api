@@ -1,0 +1,37 @@
+# Fly deployment -- a preview/staging app, not production.
+#
+# Named -preview deliberately: this exists to test the ported backend and to
+# point the dapp at something real. Tear down with .
+app = "clovers-api-preview"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  SQLITE_PATH = "/data/clovers_chain_1.db"
+  PORT = "4444"
+  # Verbose on the preview app so the chain listener's behaviour is visible.
+  # A disabled DEBUG namespace is how the HOME-guard bug stayed hidden.
+  DEBUG = "app:chain,app:socketing"
+
+# One machine, always on. Both are load-bearing:
+#   * the chain listener holds eth_subscribe websockets, so a machine that
+#     suspends misses blocks;
+#   * SQLite here is single-writer and the changefeed replacement in
+#     src/lib/store/changes.js is an in-process EventEmitter, so a second
+#     machine would get its own volume and its own divergent database.
+[http_service]
+  internal_port = 4444
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+
+[[mounts]]
+  source = "clovers_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

@@ -51,6 +51,9 @@
   },
   "author": "Billy Rennekamp <billy.rennekamp@gmail.com>",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.4"
+  },
   "dependencies": {
     "bignumber.js": "7.2.1",
     "body-parser": "1.18.3",
@@ -70,7 +73,7 @@
     "pm2": "3.0.3",
     "resource-router-middleware": "0.6.0",
     "rethinkdb": "2.3.3",
-    "socket.io": "2.1.1",
+    "socket.io": "^4.8.1",
     "svg-to-png": "3.1.2",
     "uuid": "3.3.2",
     "web3-utils": "1.0.0-beta.35",

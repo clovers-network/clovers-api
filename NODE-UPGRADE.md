@@ -96,12 +96,34 @@ Node 9 immediately.
 **Verify after switching:** `pm2 describe API` shows the interpreter in use, and
 the startup log should show catch-up plus two subscriptions, exactly as on Node 9.
 
-## The real fix
+## The real fix — now required, not just advisable
 
 A current OS. That means a new droplet (or Fly, or the Cloudflare direction) —
 not an in-place upgrade, because Ubuntu 16.04 → 24.04 in place on a box with
 1,900+ days uptime and undeclared `node_modules` drift is far riskier than
 building alongside and cutting over.
+
+**The SQLite migration turns this from a preference into a requirement.** The
+store needs a SQLite driver. `node:sqlite` is built into Node 22.4+, but Node 16
+does not have it, so on this box it would fall back to `better-sqlite3` — a
+native module. Tested in a Node 16 container rather than assumed:
+
+| | result |
+|---|---|
+| `better-sqlite3@9.6.0` | no prebuilt binary exists for Node 16 at all — falls through to `node-gyp`, which needs Python and a C++17 toolchain |
+| `better-sqlite3@8.7.0` | a prebuild downloads, then fails to load: requires `GLIBC_2.29`, and this box has **2.23** |
+
+So on Ubuntu 16.04 the only route is compiling from source with gcc 5.4 against
+a library that wants C++17. That is not a deploy step anyone should sign up for.
+
+On Ubuntu 24.04 with Node 22 the problem disappears completely: `node:sqlite` is
+built in and **there is no native module to build**. That is also the path all
+264 tests already exercise. `better-sqlite3` is therefore declared as an
+*optional* dependency — if it fails to build, npm continues and the built-in
+driver is used.
+
+`SQLITE_DRIVER=better-sqlite3` forces the fallback so the non-default path can
+still be tested on a modern Node; the HTTP suite passes 40/40 on it.
 
 Whenever that happens, the constraint disappears: everything here already runs on
 Node 22 locally, and the `fetch`/`WebSocket` fallbacks make the code
