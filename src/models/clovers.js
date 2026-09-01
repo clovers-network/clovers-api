@@ -233,24 +233,31 @@ export async function doSyncOracle (_db, _io, tokenId) {
   if (clover) {
     await syncClover(db, io, clover)
   }
-  const movesHash = await events.CloversController.instance.getMovesHash(tokenId)
-  const commits = await events.CloversController.instance.commits(movesHash)
-  console.log({commits})
-  if (!commits.collected) {
-    if (!clover) {
-      console.log("dont have clover yet")
-      await doSyncContract(db, tokenId)
-    }
-    clover = store.getClover(tokenId.toLowerCase()) || null
-    if (!clover) {
-      debug('still no clover')
-      return
-    }
-    const symmetries = await events.Clovers.instance.getSymmetries(tokenId)
-    // await oracleVerify(clover, symmetries)
-  } else {
-    debug(`${tokenId} already collected`)
+  // This used to gate the backfill on `commits.collected`, at the cost of two
+  // RPC calls per clover. There has never been a `collected` field:
+  // CloversController declares `mapping(bytes32 => address) commits`, so the
+  // call returns an address and `.collected` is always undefined -- meaning the
+  // branch always ran and the "already collected" path was dead code.
+  //
+  // It cannot be repaired either. A successful claim *deletes* the entry, so
+  // address(0) means "never committed" and "already collected"
+  // indistinguishably; the question the check was asking is not answerable
+  // from this mapping.
+  //
+  // Removed rather than rewritten. Behaviour is identical, because the branch
+  // always ran -- and a sweep over tens of thousands of clovers stops making
+  // two calls each for a value nothing could use.
+  if (!clover) {
+    debug('no clover row for %s yet; building it from the chain', tokenId)
+    await doSyncContract(db, tokenId)
   }
+  clover = store.getClover(tokenId.toLowerCase()) || null
+  if (!clover) {
+    debug('still no clover')
+    return
+  }
+  // getSymmetries was read into a variable used only by oracleVerify, which is
+  // commented out below. Dropped with it: another call per clover, discarded.
 
   // `clover` is null whenever the token is already collected, or when
   // doSyncContract could not build a row. Dereferencing .owner here threw a

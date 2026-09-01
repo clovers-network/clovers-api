@@ -185,19 +185,65 @@ export function createStore (db, { cloversAddress }) {
    * Measured on the clover search: 279 ms against 2.1 ms. The redundant-looking
    * lower() on the right is load-bearing.
    */
-  const joinUser = (table, ownerField, sql, ...args) =>
-    prep(sql).all(...args).map(raw => {
-      const base = {}
-      const user = {}
-      let hasUser = false
-      for (const [k, v] of Object.entries(raw)) {
-        if (k.startsWith('u_')) {
-          if (v !== null) hasUser = true
-          user[k.slice(2)] = v
-        } else base[k] = v
+  const orderCols = () => columnsOf('orders').map(c => `o.${c} AS o_${c}`).join(', ')
+
+  /**
+   * Regroup a joined row by column prefix.
+   *
+   * Aliased columns come back flat -- u_address, o_created -- so they are
+   * split out here. A group whose every column is null means the LEFT JOIN
+   * matched nothing, which is a null relation rather than an object of nulls.
+   */
+  const splitJoined = (table, raw, groups) => {
+    const base = {}
+    const acc = {}
+    for (const g of Object.keys(groups)) acc[g] = { has: false, obj: {} }
+    outer: for (const [k, v] of Object.entries(raw)) {
+      for (const [g, spec] of Object.entries(groups)) {
+        if (k.startsWith(spec.prefix)) {
+          if (v !== null) acc[g].has = true
+          acc[g].obj[k.slice(spec.prefix.length)] = v
+          continue outer
+        }
       }
-      return { ...decode(table, base), user: hasUser ? decode('users', user) : null }
-    })
+      base[k] = v
+    }
+    const row = decode(table, base)
+    for (const [g, spec] of Object.entries(groups)) {
+      row[g] = acc[g].has ? decode(spec.table, acc[g].obj) : null
+    }
+    return row
+  }
+
+  const USER_GROUP = { user: { prefix: 'u_', table: 'users' } }
+  const USER_ORDER_GROUPS = {
+    user: { prefix: 'u_', table: 'users' },
+    lastOrder: { prefix: 'o_', table: 'orders' }
+  }
+  const stripUser = (row) => {
+    if (row.user) { delete row.user.clovers; delete row.user.curationMarket }
+    return row
+  }
+
+  const joinUser = (table, ownerField, sql, ...args) =>
+    prep(sql).all(...args).map(raw => splitJoined(table, raw, USER_GROUP))
+
+  // The clover listings all want the same thing: a page, its owners, and each
+  // clover's most recent order. lastOrder is a correlated subquery rather than
+  // a join on `market` because it needs the single latest row, not all of them
+  // -- and it is still one statement, which is the whole point.
+  const cloverPage = (where, args, col, dir, pageSize, offset) =>
+    prep(`SELECT ${cols('clovers')}, ${userCols()}, ${orderCols()}
+          FROM clovers
+          LEFT JOIN users u ON lower(u.address) = lower(clovers.owner)
+          LEFT JOIN orders o ON o.id = (
+            SELECT id FROM orders WHERE market = clovers.board
+            ORDER BY created DESC, transactionIndex DESC LIMIT 1)
+          WHERE ${where}
+          ORDER BY clovers.${col} ${dir}, clovers.board ${dir}
+          LIMIT ? OFFSET ?`)
+      .all(...args, pageSize, offset)
+      .map(raw => stripUser(splitJoined('clovers', raw, USER_ORDER_GROUPS)))
 
   function insert (table, doc, { conflict } = {}) {
     if (ID_TABLES.has(table) && (doc.id === undefined || doc.id === null)) {
@@ -316,18 +362,33 @@ export function createStore (db, { cloversAddress }) {
      * clover exists today (checked: 0 of 44,589), but the filter is kept so the
      * endpoint cannot start returning half-formed rows if one ever appears.
      */
-    listCloversWithUsers (opts) {
-      return this.listClovers(opts).map(c => {
-        const user = this.getUser(c.owner)
-        if (user) { delete user.clovers; delete user.curationMarket }
-        // A clover whose owner has no user row used to vanish here: the ReQL
-        // was an *inner* eqJoin applied after paging, so the row was dropped
-        // from its page while still being counted in allResults -- a page that
-        // silently returned 23 of 24 rows. It is a left join now, so the count
-        // and the page agree. No such clover exists today (0 of 44,589), which
-        // is why it was never noticed.
-        return { ...c, lastOrder: this.lastOrderForMarket(c.board) || null, user: user || null }
-      })
+    /**
+     * A page of clovers with their owner and latest order, in one statement.
+     *
+     * This was the page query plus a getUser and a lastOrderForMarket per row:
+     * 50 statements for a page of 24. Each is fast now that the users index
+     * exists -- about 58 us in total -- so locally it barely showed. It matters
+     * structurally: 50 statements is 50 round trips anywhere the database is
+     * not in-process, and it forced the query audit's N+1 threshold up to the
+     * size of the N+1 already present, which made the guard useless.
+     *
+     * A LEFT JOIN, not the inner eqJoin the ReQL used: that ran after paging,
+     * so a clover whose owner had no user row vanished from its page while
+     * still being counted in allResults -- a page silently returning 23 of 24.
+     */
+    listCloversWithUsers ({ filter = 'all', sort = 'modified', asc = false, page = 1, pageSize = 24, x } = {}) {
+      const where = cloverFilterSql(filter, cloversAddress) +
+        (filter === 'multi' ? ` AND sym_total = ${Number(x) || 1}` : '')
+      return cloverPage(where, [], sort === 'price' ? 'price' : 'modified',
+        asc ? 'ASC' : 'DESC', pageSize, Math.max(0, page - 1) * pageSize)
+    },
+
+    /** The same shape for one owner's clovers. */
+    cloversByOwnerWithUsers (owner, { page = 1, pageSize = 12, sort = 'modified', asc = false, filter } = {}) {
+      const where = 'clovers.owner_lc = ?' +
+        (filter === 'forsale' ? ' AND price_is_zero = 0' : filter === 'Sym' ? ' AND sym_total > 0' : '')
+      return cloverPage(where, [String(owner).toLowerCase()], sort === 'price' ? 'price' : 'modified',
+        asc ? 'ASC' : 'DESC', pageSize, Math.max(0, page - 1) * pageSize)
     },
 
     /** Every clover, for the /sync/all sweep. */
@@ -650,14 +711,18 @@ export function createStore (db, { cloversAddress }) {
     countAlbums: () =>
       prep('SELECT count(*) n FROM albums WHERE cloverCount > 0').get().n,
 
+    /** A page of albums with their owner attached, in one statement. */
     listAlbums ({ sort = 'modified', asc = false, page = 1, pageSize = 12 } = {}) {
-      const cols = ['name', 'userAddress', 'created', 'modified', 'cloverCount']
-      const col = cols.includes(sort) ? sort : 'modified'
+      const sortable = ['name', 'userAddress', 'created', 'modified', 'cloverCount']
+      const col = sortable.includes(sort) ? sort : 'modified'
       const dir = asc ? 'ASC' : 'DESC'
-      return many('albums',
-        `SELECT * FROM albums WHERE cloverCount > 0
-         ORDER BY ${col} ${dir}, id ${dir} LIMIT ? OFFSET ?`,
-        pageSize, Math.max(0, page - 1) * pageSize)
+      return prep(
+        `SELECT ${cols('albums')}, ${userCols()} FROM albums
+         LEFT JOIN users u ON lower(u.address) = lower(albums.userAddress)
+         WHERE albums.cloverCount > 0
+         ORDER BY albums.${col} ${dir}, albums.id ${dir} LIMIT ? OFFSET ?`)
+        .all(pageSize, Math.max(0, page - 1) * pageSize)
+        .map(raw => stripUser(splitJoined('albums', raw, USER_GROUP)))
     },
 
     /** The `clovers` multi-index: albums whose clovers array contains a board. */
@@ -771,18 +836,50 @@ export function createStore (db, { cloversAddress }) {
      * {address} rather than null, matching ReQL's .default({address: ...}).
      */
     hydrateLogUsers (log) {
-      if (Array.isArray(log.userAddresses)) {
-        return {
-          ...log,
-          userAddresses: log.userAddresses.map(u => {
-            const user = this.getUser(u.address)
-            if (user) { delete user.clovers; delete user.curationMarket }
-            return { id: u.id, address: user || { address: u.address } }
-          })
+      return this.hydrateLogsUsers([log])[0]
+    },
+
+    /**
+     * Expand userAddresses across a page of logs with one lookup, not one per
+     * address. A page of 24 logs referenced up to 14 users individually; the
+     * addresses repeat heavily, so fetching the distinct set in a single IN
+     * query is both fewer statements and less work.
+     */
+    hydrateLogsUsers (logs) {
+      const wanted = new Set()
+      for (const l of logs) {
+        if (Array.isArray(l.userAddresses)) {
+          for (const u of l.userAddresses) if (u && u.address) wanted.add(String(u.address).toLowerCase())
         }
       }
-      if (log.userAddress) return { ...log, userAddresses: log.userAddress }
-      return { ...log, userAddresses: [] }
+      const byAddress = new Map()
+      if (wanted.size) {
+        const list = [...wanted]
+        // Chunked: SQLite's default parameter ceiling is high but not infinite,
+        // and an activity feed can reference a lot of distinct addresses.
+        for (let i = 0; i < list.length; i += 400) {
+          const chunk = list.slice(i, i + 400)
+          const ph = chunk.map(() => '?').join(',')
+          for (const row of prep(`SELECT * FROM users WHERE lower(address) IN (${ph})`).all(...chunk)) {
+            const u = decode('users', row)
+            delete u.clovers; delete u.curationMarket
+            byAddress.set(String(u.address).toLowerCase(), u)
+          }
+        }
+      }
+      return logs.map(log => {
+        if (Array.isArray(log.userAddresses)) {
+          return {
+            ...log,
+            userAddresses: log.userAddresses.map(u => ({
+              id: u.id,
+              address: byAddress.get(String(u.address).toLowerCase()) || { address: u.address }
+            }))
+          }
+        }
+        if (log.userAddress) return { ...log, userAddresses: log.userAddress }
+        return { ...log, userAddresses: [] }
+      })
     }
   }
 }

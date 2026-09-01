@@ -21,8 +21,7 @@ export default ({ config, db, io }) => {
       try {
         const store = getStore()
         count = store.countLogs(filter)
-        results = store.listLogs({ filter, page, pageSize, asc })
-          .map(l => store.hydrateLogUsers(l))
+        results = store.hydrateLogsUsers(store.listLogs({ filter, page, pageSize, asc }))
       } catch (err) {
         debug('query error')
         debug(err)

@@ -85,20 +85,61 @@ const network = config.network
 // Contracts — identical shape to the modules this replaces
 // ---------------------------------------------------------------------------
 
+/**
+ * Contract addresses, overridable by environment.
+ *
+ * The defaults come from the pinned clovers-contracts package, which is right
+ * until something is redeployed -- and then the address is wrong until a new
+ * package is published, the dependency bumped, and the API rebuilt. On a deploy
+ * day that is a slow loop with no quick way back.
+ *
+ * An override makes repointing a restart, and rolling back the same. It logs
+ * loudly when one is in effect, because an API silently talking to a different
+ * contract than the one you think is a bad way to spend an afternoon.
+ *
+ *   CLOVERS_ADDRESS
+ *   CLUB_TOKEN_ADDRESS
+ *   CLOVERS_CONTROLLER_ADDRESS
+ *   SIMPLE_CLOVERS_MARKET_ADDRESS
+ *   CLUB_TOKEN_CONTROLLER_ADDRESS
+ */
+function contractAddress (envVar, artifact, label) {
+  const override = process.env[envVar]
+  const fromPackage = artifact.networks[network.chainId] &&
+    artifact.networks[network.chainId].address
+  if (override) {
+    if (!/^0x[0-9a-fA-F]{40}$/.test(override)) {
+      throw new Error(`${envVar} is not an address: ${override}`)
+    }
+    if (fromPackage && override.toLowerCase() !== fromPackage.toLowerCase()) {
+      console.log(`${label}: using ${override} from ${envVar} (package says ${fromPackage})`)
+    }
+    return override
+  }
+  if (!fromPackage) {
+    throw new Error(`No address for ${label} on chain ${network.chainId}. ` +
+      `Set ${envVar}, or use a clovers-contracts build that knows this network.`)
+  }
+  return fromPackage
+}
+
 const cloversABI = Clovers.abi
-export const cloversAddress = Clovers.networks[network.chainId].address
+export const cloversAddress = contractAddress('CLOVERS_ADDRESS', Clovers, 'Clovers')
 
 const clubTokenABI = ClubToken.abi
-const clubTokenAddress = ClubToken.networks[network.chainId].address
+const clubTokenAddress = contractAddress('CLUB_TOKEN_ADDRESS', ClubToken, 'ClubToken')
 
 const cloversControllerABI = CloversController.abi
-const cloversControllerAddress = CloversController.networks[network.chainId].address
+const cloversControllerAddress = contractAddress(
+  'CLOVERS_CONTROLLER_ADDRESS', CloversController, 'CloversController')
 
 const simpleCloversMarketABI = SimpleCloversMarket.abi
-const simpleCloversMarketAddress = SimpleCloversMarket.networks[network.chainId].address
+const simpleCloversMarketAddress = contractAddress(
+  'SIMPLE_CLOVERS_MARKET_ADDRESS', SimpleCloversMarket, 'SimpleCloversMarket')
 
 const clubTokenControllerABI = ClubTokenController.abi
-const clubTokenControllerAddress = ClubTokenController.networks[network.chainId].address
+const clubTokenControllerAddress = contractAddress(
+  'CLUB_TOKEN_CONTROLLER_ADDRESS', ClubTokenController, 'ClubTokenController')
 
 /**
  * View-function provider. FallbackProvider tries each endpoint in turn, so a

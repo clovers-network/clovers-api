@@ -61,21 +61,19 @@ const ENDPOINTS = [
   ['GET /clovers/:id', () => store.getCloverWithUser(boards[0])],
   ['GET /clovers/:id/activity', () => {
     store.countLogsForClover(boards[0])
-    store.logsForClover(boards[0], { page: 1, pageSize: 12 }).map(l => store.hydrateLogUsers(l))
+    store.hydrateLogsUsers(store.logsForClover(boards[0], { page: 1, pageSize: 12 }))
   }],
   ['GET /logs', () => {
     store.countLogs(null)
-    store.listLogs({ page: 1, pageSize: 24 }).map(l => store.hydrateLogUsers(l))
+    store.hydrateLogsUsers(store.listLogs({ page: 1, pageSize: 24 }))
   }],
   ['GET /users', () => { store.countUsers(); store.listUsers({ sort: 'balance', page: 1, pageSize: 24 }) }],
   ['GET /users/:id/clovers', () => {
     store.countCloversByOwner(owner, null)
-    store.cloversByOwner(owner, { page: 1, pageSize: 12 }).map(c => {
-      store.getUser(c.owner); store.lastOrderForMarket(c.board)
-    })
+    store.cloversByOwnerWithUsers(owner, { page: 1, pageSize: 12 })
   }],
   ['GET /users/:id/albums', () => { store.countAlbumsByUser(owner); store.albumsByUser(owner, { page: 1, pageSize: 12 }) }],
-  ['GET /albums', () => { store.countAlbums(); store.listAlbums({ page: 1, pageSize: 12 }).map(a => store.withAlbumUser(a)) }],
+  ['GET /albums', () => { store.countAlbums(); store.listAlbums({ page: 1, pageSize: 12 }) }],
   ['GET /chats/:board', () => {
     store.countChatsForBoard(chatBoard)
     store.chatsBefore(chatBoard, new Date().toISOString(), { pageSize: 16 })
@@ -128,6 +126,11 @@ let scans = 0, sorts = 0
 for (const e of log) {
   if (seen.has(e.sql)) continue
   seen.add(e.sql)
+  // pragma_table_info is schema introspection, memoised at startup so the join
+  // helpers know which columns to alias. It "scans" a twelve-row virtual table
+  // once per process and never serves a request; counting it as a table scan
+  // would just mean carrying a permanently raised threshold.
+  if (/pragma_table_info/.test(e.sql)) continue
   let plan
   try {
     plan = real.prepare('EXPLAIN QUERY PLAN ' + e.sql).all().map(r => r.detail).join(' | ')
@@ -158,8 +161,10 @@ console.log(`\n  ${seen.size} distinct statements: ${scans} full table scans, ${
 // the expected values are arguments rather than constants -- the defaults are
 // the production figures, and CI passes the fixture's.
 //
-// The repeat threshold is different: 24 user lookups per page of 24 rows is
-// structural, not statistical, so the same number holds on any dataset.
+// The repeat threshold is 1: after the join work no statement should be issued
+// twice for one request. It was 24 -- one user lookup per row of a 24-row page
+// -- which meant the guard tolerated exactly the N+1 that already existed and
+// could never have caught a new one.
 //
 // The one scan that is inherent at any size is substring search: LIKE
 // '%needle%' has no index that can help it, and it sorts what it finds.
@@ -169,7 +174,7 @@ const flag = (k, d) => {
 }
 const ALLOWED_SCANS = flag('max-scans', 1)
 const ALLOWED_SORTS = flag('max-sorts', 1)
-const ALLOWED_REPEATS = flag('max-repeat', 24)
+const ALLOWED_REPEATS = flag('max-repeat', 1)
 
 let failed = 0
 const assert = (ok, msg) => { console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${msg}`); if (!ok) failed++ }

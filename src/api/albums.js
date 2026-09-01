@@ -70,7 +70,6 @@ export default ({ config, db, io }) => {
         const store = getStore()
         count = store.countAlbums()
         results = store.listAlbums({ sort: orderBy, asc, page: currentPage, pageSize })
-          .map(a => store.withAlbumUser(a))
       } catch (err) {
         debug('query error')
         debug(err)

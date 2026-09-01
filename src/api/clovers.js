@@ -200,8 +200,7 @@ export default ({ config, db, io }) => {
     try {
       const store = getStore()
       count = store.countLogsForClover(id)
-      results = store.logsForClover(id, { page: currentPage, pageSize, asc })
-        .map(l => store.hydrateLogUsers(l))
+      results = store.hydrateLogsUsers(store.logsForClover(id, { page: currentPage, pageSize, asc }))
     } catch (err) {
       debug('query error')
       debug(err)

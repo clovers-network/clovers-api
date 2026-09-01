@@ -140,14 +140,8 @@ export default ({ config, db, io }) => {
     try {
       const store = getStore()
       count = store.countCloversByOwner(owner, cloverFilter)
-      results = store.cloversByOwner(owner, {
+      results = store.cloversByOwnerWithUsers(owner, {
         page: currentPage, pageSize, sort: sort.substr(1), asc, filter: cloverFilter
-      }).map(c => {
-        const u = store.getUser(c.owner)
-        if (u) { delete u.clovers; delete u.curationMarket }
-        // Left join, not the inner eqJoin the original used -- see
-        // store.listCloversWithUsers for why that silently shortened pages.
-        return { ...c, lastOrder: store.lastOrderForMarket(c.board) || null, user: u || null }
       })
     } catch (err) {
       debug('query error')
