@@ -7,25 +7,44 @@ import * as cloversController from './models/cloversController'
 import * as clubTokenController from './models/clubTokenController'
 // import * as curationMarket from './models/curationMarket'
 import * as simpleCloversMarket from './models/simpleCloversMarket'
-import r from 'rethinkdb'
 import { Clovers } from 'clovers-contracts'
-import { dodb } from './lib/util'
+import { getStore } from './lib/store'
 
-const CLOVER_DB = `clovers_chain_${network.chainId}`
-
+// `db` is kept only because the exported signatures still take it; every read
+// and write below now goes through the store.
+// FUTURE: drop it from socketing()/handleEvent() once no caller passes it.
 let io, db
 
 // Keep track of live stream controllers for cleanup
 let liveControllers = []
 
+/**
+ * Whether to run the chain listener in this process.
+ *
+ * This was `process.env.HOME !== '/home/billy'` -- a check against one
+ * developer's home directory on one server. Anywhere else, and that is every
+ * container, every new droplet and Fly (HOME=/root), the listener silently did
+ * nothing: the API answered reads perfectly and never ingested another event.
+ * Confirmed on the Fly deploy, where it was off and nothing said so.
+ *
+ * Now explicit, and defaulting to ON so a forgotten variable cannot silently
+ * stop indexing. Set CHAIN_LISTENER=off to disable -- which is what tests and
+ * local development want, since otherwise every run opens websockets to public
+ * RPC providers and writes to whatever database it is pointed at.
+ */
+function listenerEnabled () {
+  return String(process.env.CHAIN_LISTENER || '').toLowerCase() !== 'off'
+}
+
 export var socketing = function ({ _io, _db }) {
-  debug('socketing?')
-  if (process.env.HOME !== '/home/billy') {
-    debug('do not socket')
+  // console.log, not debug: the decision has to be visible in the startup log
+  // whether or not a DEBUG namespace happens to be enabled. A disabled debug
+  // namespace is exactly how this stayed invisible.
+  if (!listenerEnabled()) {
+    console.log('chain listener DISABLED (CHAIN_LISTENER=off)')
     return
   }
-
-  debug('yes')
+  console.log('chain listener enabled')
 
   io = _io
   db = _db
@@ -50,10 +69,8 @@ export var socketing = function ({ _io, _db }) {
  */
 async function lastStoredBlock () {
   try {
-    const res = await dodb(db, r.table('logs')
-      .max({ index: 'blockNumber' })('blockNumber')
-      .default(null))
-    return res === null ? undefined : Number(res)
+    const res = getStore().maxLogBlock()
+    return res === null || res === undefined ? undefined : Number(res)
   } catch (err) {
     debug('Could not read last stored block, starting from chain head')
     debug(err)
@@ -83,28 +100,24 @@ async function beginLiveListening () {
         return
       }
 
-      // Check for duplicates
-      const check = r.table('logs').getAll([
-        log.transactionHash,
-        log.logIndex
-      ], { index: 'unique_log' }).coerceTo('array')
-      const res = await dodb(db, check)
-
-      if (res.length) {
+      // Check for duplicates. (transactionHash, logIndex) is a UNIQUE index in
+      // SQLite, so this is now a guard rather than the only line of defence --
+      // a racing insert is rejected instead of silently duplicated.
+      const store = getStore()
+      if (store.findLog(log.transactionHash, log.logIndex)) {
         debug('Log already stored')
         return
       }
 
       debug('Inserting new log', log.transactionHash)
 
-      r.table('logs')
-        .insert(log)
-        .run(db, async (err, results) => {
-          debug((err ? 'ERROR ' : 'SUCCESS ') + 'saving ' + log.name)
-          if (err) throw new Error(err)
-          log.userAddresses = await getUsers(log.userAddresses)
-          handleEvent({ io, db, log })
-        })
+      store.insertLog(log)
+      debug('SUCCESS saving ' + log.name)
+      log.userAddresses = getUsers(log.userAddresses)
+      // Awaited now. The insert callback fired handleEvent without awaiting it,
+      // so a handler that threw produced an unhandled rejection instead of
+      // being caught by the try/catch this sits in.
+      await handleEvent({ io, db, log })
     } catch (err) {
       debug('Error handling live event:', err.message)
     }
@@ -113,17 +126,14 @@ async function beginLiveListening () {
   debug(`Started ${liveControllers.length} live streams`)
 }
 
-async function getUsers(userAddresses, key = 0, newUserAddresses = []) {
+function getUsers (userAddresses) {
   try {
-    if (key >= userAddresses.length) {
-      return newUserAddresses
-    }
-    const user = userAddresses[key]
-    const u = await r.table('users').get(user.address).run(db)
-    newUserAddresses.push({id: user.id, address: u})
-    return await getUsers(userAddresses, key + 1, newUserAddresses)
+    const store = getStore()
+    // Note the shape: `address` becomes the whole user document, or null when
+    // the user is unknown. That is what the socket payload has always carried.
+    return userAddresses.map(u => ({ id: u.id, address: store.getUser(u.address) }))
   } catch (error) {
-    debug({error})
+    debug({ error })
     return userAddresses
   }
 }
@@ -202,7 +212,11 @@ export var handleEvent = async ({ io, db, log }, skipOracle = false) => {
       await modifyClover(log, db)
       break
     default:
-      return new Error('Contract ' + contract + ' not found')
+      // Returned rather than thrown, so an event from an unknown contract was
+      // reported by resolving with an Error object -- which every caller here
+      // treats as success. Thrown now, so processLog's retry and the live
+      // listener's catch actually see it.
+      throw new Error('Contract ' + contract + ' not found')
   }
 }
 
@@ -211,7 +225,5 @@ async function modifyClover ({ name, data, blockNumber }, db) {
   if (!board || !blockNumber) return
 
   debug('updating clover modified value after', name)
-  await r.db(CLOVER_DB).table('clovers').get(board).update({
-    modified: blockNumber
-  }).run(db)
+  getStore().updateClover(board, { modified: blockNumber })
 }

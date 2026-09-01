@@ -1,5 +1,4 @@
 const debug = require('debug')('app:util')
-import r from 'rethinkdb'
 import Reversi from 'clovers-reversi'
 import svg_to_png from 'svg-to-png'
 import fs from 'fs-extra'
@@ -7,6 +6,7 @@ import path from 'path'
 import xss from 'xss'
 import BigNumber from 'bignumber.js'
 import { bigNumberify } from 'ethers/utils';
+import { getStore } from './store'
 var utils = require('ethers').utils
 
 export const oneEthInWei = utils.parseEther('1').toString(10)
@@ -17,17 +17,17 @@ export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
  * albums.js used to call a `makeUser` that only existed in chats.js, which was
  * a guaranteed ReferenceError for any album created by an unknown address.
  */
+// `db` is unused now that this writes through the store; it stays in the
+// signature because several callers still pass it positionally.
+// FUTURE: drop it once those callers are updated.
 export async function makeUser (db, io, address, blockNumber) {
   let user = userTemplate(String(address).toLowerCase())
   user.created = blockNumber
   user.modified = blockNumber
 
-  const { changes } = await r
-    .table('users')
-    .insert(user, { returnChanges: true })
-    .run(db)
+  const { new_val } = getStore().insertUser(user)
 
-  if (changes && changes[0]) user = changes[0].new_val
+  if (new_val) user = new_val
   if (io) io.emit('updateUser', user)
   return user
 }
@@ -72,15 +72,6 @@ export function commentTemplate (user, board, comment = '') {
     deleted: false,
     flagged: false
   }
-}
-
-export function dodb(db, command) {
-  return new Promise((resolve, reject) => {
-    command.run(db, (err, result) => {
-      if (err) return reject(err)
-      resolve(result)
-    })
-  })
 }
 
 export async function getLowestPrice (

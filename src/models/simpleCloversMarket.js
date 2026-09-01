@@ -1,8 +1,8 @@
 const debug = require('debug')('app:models:simpleCloversMarket')
-import r from 'rethinkdb'
 import utils from 'web3-utils'
 import BigNumber from 'bignumber.js'
-import { dodb, padBigNum } from '../lib/util'
+import { padBigNum } from '../lib/util'
+import { getStore } from '../lib/store'
 
 let db, io
 
@@ -39,8 +39,8 @@ export async function changeCloverPrice (db, io, _tokenId, log) {
 
   // price = BigInt(price.toString()).toString(16)
 
-  let command = r.table('clovers').get(_tokenId)
-  let clover = await dodb(db, command)
+  const store = getStore()
+  let clover = store.getClover(_tokenId)
   if (!clover) {
     console.log("no clover " + _tokenId)
     return
@@ -55,25 +55,12 @@ export async function changeCloverPrice (db, io, _tokenId, log) {
   debug(`Clover price changed to ${price}`)
   clover.price = price
   clover.modified = log.blockNumber
-  command = r.table('clovers')
-    .insert(clover, { conflict: 'update' })
-  await dodb(db, command)
+  store.insertClover(clover, { conflict: 'update' })
 
-  // get clover again, with comments and orders
-  r.table('clovers')
-    .get(_tokenId)
-    .do((doc) => {
-      return doc.merge({
-        lastOrder: r.table('orders')
-          .getAll(doc('board'), { index: 'market' })
-          .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          .limit(1).fold(null, (l, r) => r),
-        user: r.table('users').get(doc('owner'))
-          .without('clovers', 'curationMarket').default(null)
-      })
-    })
-    .run(db, (err, result) => {
-      io && io.emit('updateClover', result)
-      debug(io ? 'emit updateClover' : 'do not emit updateClover')
-    })
+  // re-read with the owner and latest order attached, as the socket payload
+  // expects. getCloverWithUser runs the real lastOrder lookup -- see the note
+  // there for why four call sites used to hardcode it.
+  const result = store.getCloverWithUser(_tokenId)
+  io && io.emit('updateClover', result)
+  debug(io ? 'emit updateClover' : 'do not emit updateClover')
 }

@@ -1,7 +1,8 @@
 const debug = require('debug')('app:api:chats')
 import resource from 'resource-router-middleware'
-import r from 'rethinkdb'
-import { toRes, commentTemplate, makeUser as createUser } from '../lib/util'
+import { commentTemplate, makeUser as createUser } from '../lib/util'
+import { getStore } from '../lib/store'
+import { onChange } from '../lib/store/changes'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -33,27 +34,16 @@ export default ({ config, db, io }) => {
 
       // debug('get chat by board id', boardId, before)
 
-      const [results, count] = await Promise.all([
-        r.table('chats').between(
-          [boardId, r.minval],
-          [boardId, before],
-          { index: 'dates' }
-        ).orderBy(r.desc('created'))
-          .limit(pageSize)
-          .run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          }),
-        r.table('chats').getAll(boardId, { index: 'board' })
-          .count().run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          })
-      ]).catch((err) => {
+      let results, count
+      try {
+        const store = getStore()
+        count = store.countChatsForBoard(boardId)
+        results = store.chatsBefore(boardId, before.toISOString(), { pageSize })
+      } catch (err) {
         debug('query error')
         debug(err)
         return res.status(500).end()
-      })
+      }
 
       const response = {
         before,
@@ -87,9 +77,9 @@ export default ({ config, db, io }) => {
       return
     }
 
-    let user = await r.table('users')
-      .get(userAddress.toLowerCase()).default({})
-      .pluck('address', 'name').run(db)
+    const store = getStore()
+    const dbUser = store.getUser(userAddress)
+    let user = dbUser ? { address: dbUser.address, name: dbUser.name } : {}
 
     if (!user.address) {
       user = await  makeUser(userAddress)
@@ -108,48 +98,50 @@ export default ({ config, db, io }) => {
       debug(err.toString())
       return 0
     })
-    // save it
-    r.table('chats')
-      .insert(chat).run(db, async (err, { generated_keys }) => {
-        if (err) {
-          debug('db run error')
-          res.sendStatus(500).end()
-          return
-        }
-        // emit an event pls
-        const log = {
-          id: uuid(),
-          name: 'Comment_Added',
-          removed: false,
-          blockNumber: blockNum,
-          userAddress: null, // necessary data below
-          data: {
-            userAddress: chat.userAddress,
-            userName: chat.userName,
-            board: chat.board,
-            createdAt: new Date()
-          },
-          userAddresses: []
-        }
-        r.table('clovers').get(chat.board).update({
-          commentCount: r.row('commentCount').add(1).default(0),
-          modified: blockNum
-        }).run(db, (err) => {
-          if (err) {
-            debug(err.message)
-          }
-          r.table('logs').insert(log)
-            .run(db, (err) => {
-              if (err) {
-                debug('chat log not saved')
-                debug(err)
-              } else {
-                io.emit('newLog', log)
-              }
-              res.json({ ...chat, id: generated_keys[0] }).end()
-            })
-        })
-      })
+    // save it. RethinkDB generated the chat's primary key and handed it back
+    // as generated_keys[0]; the store assigns one up front instead, so it is
+    // already on the row it returns.
+    let saved
+    try {
+      saved = store.insertChat(chat).new_val
+    } catch (err) {
+      debug('db run error')
+      debug(err)
+      res.sendStatus(500).end()
+      return
+    }
+
+    // emit an event pls
+    const log = {
+      id: uuid(),
+      name: 'Comment_Added',
+      removed: false,
+      blockNumber: blockNum,
+      userAddress: null, // necessary data below
+      data: {
+        userAddress: chat.userAddress,
+        userName: chat.userName,
+        board: chat.board,
+        createdAt: new Date()
+      },
+      userAddresses: []
+    }
+
+    try {
+      store.bumpCommentCount(chat.board, 1)
+      store.updateClover(chat.board, { modified: blockNum })
+    } catch (err) {
+      debug(err.message)
+    }
+
+    try {
+      store.insertLog(log)
+      io.emit('newLog', log)
+    } catch (err) {
+      debug('chat log not saved')
+      debug(err)
+    }
+    res.json(saved).end()
   })
 
   router.delete('/:id', async (req, res) => {
@@ -160,34 +152,28 @@ export default ({ config, db, io }) => {
       return
     }
 
-    const comment = await r.table('chats')
-      .get(id).default({}).without('clovers').run(db)
+    const store = getStore()
+    const comment = store.getChat(id)
 
-    if (!comment.id) {
+    if (!comment) {
       res.status(404).end()
       return
     }
 
+    // r.now() is a RethinkDB timestamp; `edited` is stored as an ISO string
+    // everywhere else in this table, so write one.
+    const now = new Date().toISOString()
+
     if (userAddress.toLowerCase() === comment.userAddress) {
-      await r.table('chats')
-      .get(id).update({
-        deleted: true,
-        comment: 'Deleted',
-        edited: r.now()
-      }).run(db)
+      store.updateChat(id, { deleted: true, comment: 'Deleted', edited: now })
     } else {
-      const board = await r.table('clovers')
-      .get(comment.board).run(db)
+      const board = store.getClover(comment.board)
 
       if (
-        userAddress.toLowerCase() === board.owner ||
+        (board && userAddress.toLowerCase() === board.owner) ||
         whitelist.includes(userAddress.toLowerCase())
       ) {
-        await r.table('chats')
-        .get(id).update({
-          flagged: true,
-          edited: r.now()
-        }).run(db)
+        store.updateChat(id, { flagged: true, edited: now })
       } else {
         res.status(401).end()
         return
@@ -209,7 +195,8 @@ export default ({ config, db, io }) => {
 }
 
 export function commentListener (server, db) {
-  const io = require('socket.io')(server, { path: '/comments' })
+  const { Server: SocketServer } = require('socket.io')
+  const io = new SocketServer(server, { path: '/comments', cors: { origin: '*' } })
   // let connections = 0
   // io.on('connection', (socket) => {
   //   debug('+1 comment subscribers: ', connections += 1)
@@ -220,28 +207,22 @@ export function commentListener (server, db) {
   // })
 
   // listen to chat changes :)
-  r.table('chats').changes().run(db, (err, cursor) => {
-    if (err) {
-      console.error(err)
-      return
+  //
+  // This was r.table('chats').changes(). The store now emits the same
+  // {new_val, old_val} shape after every write, so the body below is unchanged
+  // -- see lib/store/changes.js for what that does and does not cover.
+  onChange('chats', (doc) => {
+    if (doc.new_val && !doc.old_val) {
+      debug('new comment', doc.new_val.id)
+      io.emit('new comment', doc.new_val)
+    } else if (!doc.new_val) {
+      // deleted comment
+      debug('comment deleted', doc.old_val.id)
+      io.emit('delete comment', doc.old_val)
+    } else {
+      // probably an update
+      debug('update comment', doc.new_val.id)
+      io.emit('edit comment', doc.new_val)
     }
-    cursor.each((err, doc) => {
-      if (err) {
-        console.error(err)
-        return
-      }
-      if (doc.new_val && !doc.old_val) {
-        debug('new comment', doc.new_val.id)
-        io.emit('new comment', doc.new_val)
-      } else if (!doc.new_val) {
-        // deleted comment
-        debug('comment deleted', doc.old_val.id)
-        io.emit('delete comment', doc.old_val)
-      } else {
-        // probably an update
-        debug('update comment', doc.new_val.id)
-        io.emit('edit comment', doc.new_val)
-      }
-    })
   })
 }

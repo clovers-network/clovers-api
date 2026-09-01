@@ -1,14 +1,13 @@
 const debug = require('debug')('app:models:curationMarket')
-import r from 'rethinkdb'
 import utils from 'web3-utils'
 import BigNumber from 'bignumber.js'
 import {
-  dodb,
   padBigNum,
   getLowestPrice,
   oneEthInWei,
   userTemplate
 } from '../lib/util'
+import { getStore } from '../lib/store'
 import { events } from '../lib/chain'
 
 let db, io
@@ -35,30 +34,26 @@ async function addBuySell(log, user, isBuy, io, db) {
     poolBalance: padBigNum(log.data.poolBalance),
     tokenSupply: padBigNum(log.data.tokenSupply)
   }
-  let command = r.table('orders').insert(order)
-  await dodb(db, command)
+  const store = getStore()
+  store.insertOrder(order)
   // io && io.emit('addOrder', order)
 
-  // get clover again, with comments and orders
-  r.table('clovers')
-    .get(log.data._tokenId)
-    .do((doc) => {
-      return doc.merge({
-        commentCount: r.table('chats')
-          .getAll(doc('board'), { index: 'board' })
-          .count(),
-        lastOrder: r.table('orders')
-          .getAll(doc('board'), { index: 'market' })
-          .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          .limit(1).fold(false, (l, r) => r),
-        user: r.table('users').get(doc('owner'))
-          .without('clovers', 'curationMarket').default(null)
-      })
-    })
-    .run(db, (err, result) => {
-      io && io.emit('updateClover', result)
-      debug(io ? 'emit updateClover' : 'do not emit updateClover')
-    })
+  // This is the path that makes lastOrder mean something: curation-market
+  // orders store the tokenId -- which is the board -- in `market`, so the order
+  // written just above is findable. None exist in production because
+  // CurationMarket events are commented out of socketing.js, not because the
+  // query is wrong.
+  //
+  // The empty value is null, matching every other clover payload. The original
+  // folded from `false` here and from `null` in simpleCloversMarket, so the
+  // dapp received two different shapes for the same field depending on which
+  // contract emitted the event.
+  const clover = store.getCloverWithUser(log.data._tokenId)
+  if (clover) {
+    const result = { ...clover, commentCount: store.countChats(clover.board) }
+    io && io.emit('updateClover', result)
+  }
+  debug(io ? 'emit updateClover' : 'do not emit updateClover')
 }
 
 // event Burn(uint256 _tokenId, address indexed burner, uint256 value);
@@ -103,13 +98,16 @@ async function changeUserBalance(user_id, amount, _tokenId, add, log) {
   user_id = user_id.toLowerCase()
   amount = typeof amount == 'object' ? amount : new BigNumber(amount)
   add = add == 'add'
-  let command = r.table('users').get(user_id)
-  let user = await dodb(db, command)
+  const store = getStore()
+  let user = store.getUser(user_id)
   if (!user) {
     user = userTemplate(user_id, log)
     user.balance = '0'
   }
 
+  // curationMarket is a JSON column, so a row written before it existed reads
+  // back null rather than the {} RethinkDB's schemaless documents carried.
+  if (!user.curationMarket) user.curationMarket = {}
   if (!user.curationMarket[_tokenId]) {
     user.curationMarket[_tokenId] = 0
   }
@@ -118,8 +116,6 @@ async function changeUserBalance(user_id, amount, _tokenId, add, log) {
   balance = add ? balance.plus(amount) : balance.minus(amount)
   user.curationMarket[_tokenId] = padBigNum(balance)
   user.modified = log.blockNumber
-  command = r.table('users')
-    .insert(user, { returnChanges: true, conflict: 'update' })
-  let changes = await dodb(db, command)
+  store.insertUser(user, { conflict: 'update' })
   io && io.emit('updateUser', user)
 }

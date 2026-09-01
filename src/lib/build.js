@@ -1,17 +1,30 @@
-import r from 'rethinkdb'
+import fs from 'fs'
+import path from 'path'
 import config from '../config.json'
 import { handleEvent } from '../socketing'
 import reversi from 'clovers-reversi'
 import { parseLogForStorage } from './util'
 import { provider, events, fetchHistoricalEvents } from './chain'
-import tables from './db-tables'
 import { checkUserBalance } from '../models/clubToken'
+import { getStore, initStore, closeStore, getDbPath, defaultDbPath } from './store'
 
 const debug = require('debug')('app:build')
 
-const CLOVER_DB = `clovers_chain_${config.network.chainId}`
-
 let db, io, running, syncing
+
+/**
+ * Where the pre-rebuild snapshot lives.
+ *
+ * RethinkDB's rebuild renamed the live database aside, built a fresh one, and
+ * copied the human-authored rows back out of a `sync` database. SQLite has no
+ * server to hold two databases, but it does have ATTACH -- so the snapshot is
+ * a second file and the copy-back queries are unchanged in shape.
+ *
+ * `build` sets this when it renames the live file. The `logs` and `users`
+ * commands run against an already-live database and need to be told where the
+ * snapshot is; SYNC_DB_PATH is that.
+ */
+let syncDbPath = process.env.SYNC_DB_PATH || null
 
 export function build (_db) {
   db = _db
@@ -105,99 +118,82 @@ function syncLogs () {
   })
 }
 
-let newDBName = null
+// ---------------------------------------------------------------------------
+// Rebuild helpers -- none of these are reachable.
+//
+// `build` calls rebuildDatabases(), which calls processLogs() and nothing else.
+// createDB/createTables/createIndexes/copySyncData and the four copy-back steps
+// (moveChats, moveAlbums, nameClovers, nameUsers) have no callers anywhere in
+// the tree; an earlier version of rebuildDatabases must have chained them. So
+// `build` today replays logs into whatever database is already there rather
+// than recreating one.
+//
+// They are ported rather than deleted because they are the only written record
+// of what a full rebuild is supposed to do, and wiring them up would make
+// `build` destructive -- a product decision, not a migration one. Anyone
+// restoring the rebuild should read the note on nameClovers first.
+// ---------------------------------------------------------------------------
 
-function createDB () {
-  debug('createDB')
-  return new Promise((resolve, reject) => {
-    r.dbList().run(db, (err, res) => {
-      if (err) return reject(err)
-      if (res.findIndex(a => a === CLOVER_DB) > -1) {
-        debug(`rename ${CLOVER_DB}`)
-        newDBName = `${CLOVER_DB}_${new Date().getTime()}`
-        r.db(CLOVER_DB).config().update({
-          name: newDBName
-        }).run(db, (err) => {
-          if (err) return reject(err)
-          createDB().then(resolve)
-        })
-      } else {
-        debug(`dbCreate ${CLOVER_DB}`)
-        r.dbCreate(CLOVER_DB).run(db, (err, res) => {
-          if (err) return reject(err)
-          resolve()
-        })
-      }
-    })
-  })
-}
+/**
+ * Move the live database aside and open a fresh one.
+ *
+ * The three RethinkDB steps -- rename the database, create the tables, create
+ * the 74 secondary indexes -- collapse into "apply schema.sql to a new file",
+ * because the schema and its 30 partial indexes are one declarative artifact
+ * rather than something built imperatively at startup. That also removes the
+ * drift risk the old code had: db-tables.js was the only definition of the
+ * indexes, and it was only ever executed on a full rebuild.
+ *
+ * The renamed file is not deleted. It is the snapshot the copy-back steps read
+ * from, and it is the only way back if a rebuild goes wrong.
+ */
+function createFreshDatabase () {
+  const live = getDbPath() || defaultDbPath()
 
-function createTables (i = 0) {
-  debug('createTables')
-  return new Promise((resolve, reject) => {
-    if (i >= tables.length) {
-      resolve()
-    } else {
-      let table = tables[i]
-      debug('tableCreate ' + table.name)
-      r.tableCreate(table.name, { primaryKey: table.index })
-        .run(db, (err, result) => {
-          if (err) return reject(err)
-          createTables(i + 1).then(() => {
-            resolve()
-          })
-        })
+  // The store holds an open handle; renaming the file under it would leave
+  // every later read pointing at the snapshot.
+  closeStore()
+
+  if (fs.existsSync(live)) {
+    syncDbPath = `${live}.${new Date().getTime()}`
+    debug(`moving ${live} aside to ${syncDbPath}`)
+    fs.renameSync(live, syncDbPath)
+    // WAL and shared-memory sidecars belong to the file that was moved.
+    for (const ext of ['-wal', '-shm']) {
+      if (fs.existsSync(live + ext)) fs.renameSync(live + ext, syncDbPath + ext)
     }
-  })
-}
-
-async function createIndexes (i = 0) {
-  debug(`create index #${i}`)
-  if (i >= tables.length) {
-    return
   } else {
-    let table = tables[i]
-    if (!table.indexes) {
-      debug(`table ${table.name} has no indexes`)
-    } else {
-      debug('createIndexes', table.name)
-      await asyncForEach(table.indexes, async (index) => {
-        const func = index.constructor === Array ? index[1] : undefined
-        const name = func ? index[0] : index
-        await r.table(table.name)
-          .indexCreate(name, func)
-          .run(db)
-        debug('done', table.name)
-      })
-    }
-    await createIndexes(i + 1)
+    debug(`no existing database at ${live}`)
   }
+
+  debug(`creating ${live}`)
+  const store = initStore(live)
+  store.raw.exec(fs.readFileSync(schemaPath(), 'utf8'))
+  return store
+}
+
+function schemaPath () {
+  // dist/lib/build.js -> the repo's migration/sqlite/schema.sql
+  return path.join(__dirname, '..', '..', 'migration', 'sqlite', 'schema.sql')
+}
+
+/** The snapshot to copy human-authored rows back from, or null if there is none. */
+function snapshot () {
+  if (!syncDbPath) {
+    debug('no snapshot to copy from (set SYNC_DB_PATH to name one)')
+    return null
+  }
+  if (!fs.existsSync(syncDbPath)) {
+    debug(`snapshot ${syncDbPath} does not exist`)
+    return null
+  }
+  return syncDbPath
 }
 
 async function asyncForEach (array, callback) {
   for (let index = 0; index < array.length; index++) {
     await callback(array[index], index, array)
   }
-}
-
-async function copySyncData () {
-  const sb = 'sync'
-  await r.dbCreate(sb).run(db)
-  await r.db(sb).tableCreate('logs').run(db)
-  await r.db(sb).tableCreate('chats').run(db)
-  await r.db(sb).tableCreate('users', { primaryKey: 'address' }).run(db)
-  await r.db(sb).tableCreate('albums').run(db)
-  await r.db(sb).tableCreate('clovers', { primaryKey: 'board' }).run(db)
-
-  // do copy
-  await r.db(sb).table('logs').insert(r.db(newDBName).table('logs')).run(db)
-  await r.db(sb).table('chats').insert(r.db(CLOVER_DB).table('chats')).run(db)
-  await r.db(sb).table('users').insert(r.db(CLOVER_DB).table('users')).run(db)
-  await r.db(sb).table('albums').insert(r.db(CLOVER_DB).table('albums')).run(db)
-  await r.db(sb).table('clovers').insert(r.db(CLOVER_DB).table('clovers')).run(db)
-
-  debug('did the copying')
-  return
 }
 
 // Block range size for IndexSupply queries
@@ -242,36 +238,14 @@ async function populateLogs (block) {
 
           if (logs.length === 0) break
 
-          // Deduplicate against existing logs
-          const newOnes = []
-          for (const log of logs) {
-            const existing = await new Promise((resolve, reject) => {
-              r.table('logs')
-                .getAll([log.transactionHash, log.logIndex], { index: 'unique_log' })
-                .coerceTo('array')
-                .run(db, (err, res) => {
-                  if (err) reject(err)
-                  resolve(res[0])
-                })
-            })
-
-            if (!existing) {
-              newOnes.push(log)
-            }
-          }
-
-          if (newOnes.length) {
-            debug(`New logs for ${contract}: ${newOnes.length}`)
-            await new Promise((resolve, reject) => {
-              r.table('logs')
-                .insert(newOnes, { returnChanges: true, conflict: 'update' })
-                .run(db, (err, results) => {
-                  if (err) return reject(err)
-                  resolve(results)
-                })
-            })
+          // Deduplicate against existing logs. insertLogs does the same
+          // (transactionHash, logIndex) check the loop here used to do, in one
+          // transaction, and against a column pair that is actually UNIQUE.
+          const { inserted, skipped } = getStore().insertLogs(logs)
+          if (inserted) {
+            debug(`New logs for ${contract}: ${inserted}`)
           } else {
-            debug(`No new logs for ${contract} in this range`)
+            debug(`No new logs for ${contract} in this range (${skipped} already stored)`)
           }
           break
         } catch (err) {
@@ -382,29 +356,12 @@ export function transformLog (_l, contract, key) {
 function processLogs () {
   debug('processLogs')
 
-  return new Promise((resolve, reject) => {
-    const genesisBlock = config.genesisBlock[config.network.chainId]
-    r.table('logs')
-      .between(genesisBlock, r.maxval, { index: 'blockNumber' })
-      .orderBy({ index: 'blockNumber' })
-      .coerceTo('array')
-      .run(db, { arrayLimit: 200000 }, (err, logs) => {
-        if (logs) {
-          debug('got', logs.length, 'logs')
-        }
-        if (err) return reject(err)
-        processLog(logs)
-          .then(() => {
-            debug('processLog resolved')
-            resolve()
-          })
-          .catch((err) => {
-            debug('processLog rejected')
-            debug(err)
-            reject(err)
-          })
-      })
-  })
+  const genesisBlock = config.genesisBlock[config.network.chainId]
+  // No arrayLimit to raise here: SQLite has no cap on how many rows a query
+  // may return, which is what forced { arrayLimit: 200000 } before.
+  const logs = getStore().logsFromBlock(genesisBlock)
+  debug('got', logs.length, 'logs')
+  return processLog(logs)
 }
 
 export function processLog (logs, i = 0, _db, skipOracle = false) {
@@ -443,10 +400,12 @@ async function moveChats () {
   if (syncing) return
 
   try {
+    const from = snapshot()
+    if (!from) return
     debug('move Chats')
-    await r.db(CLOVER_DB).table('chats').insert(
-      r.db('sync').table('chats')
-    ).run(db)
+    getStore().withAttached(from, (raw) => {
+      raw.exec('INSERT OR IGNORE INTO chats SELECT * FROM sync.chats')
+    })
   } catch (err) {
     debug('move chats error')
     debug(err)
@@ -457,10 +416,15 @@ async function moveAlbums () {
   if (syncing) return
 
   try {
+    const from = snapshot()
+    if (!from) return
     debug('move Albums')
-    await r.db(CLOVER_DB).table('albums').insert(
-      r.db('sync').table('albums')
-    ).run(db)
+    // Column list is explicit because `cloverCount` is a generated column here
+    // and cannot be written; SELECT * would try.
+    getStore().withAttached(from, (raw) => {
+      raw.exec(`INSERT OR IGNORE INTO albums (id, name, userAddress, created, modified, clovers)
+                SELECT id, name, userAddress, created, modified, clovers FROM sync.albums`)
+    })
   } catch (err) {
     debug('move albums error')
     debug(err)
@@ -471,12 +435,18 @@ async function nameClovers () {
   if (syncing) return
 
   try {
+    const from = snapshot()
+    if (!from) return
     debug('rename Clovers')
-    await r.db('sync').table('clovers').pluck('board', 'name', 'modified').forEach((row) => {
-      return r.db(CLOVER_DB).table('clovers').get(row('board')).update({
-        name: row('name'),
-        modified: row('modified')
-      })
+    // The original built this query and never called .run() -- the only one of
+    // the four copy-back steps missing it, so even if the rebuild had been
+    // wired up, clover names would have been dropped. Written to actually run
+    // here, since restoring names is the entire point of the step.
+    getStore().withAttached(from, (raw) => {
+      raw.exec(`UPDATE clovers SET
+                  name = (SELECT s.name FROM sync.clovers s WHERE s.board = clovers.board),
+                  modified = (SELECT s.modified FROM sync.clovers s WHERE s.board = clovers.board)
+                WHERE EXISTS (SELECT 1 FROM sync.clovers s WHERE s.board = clovers.board)`)
     })
   } catch (err) {
     debug('rename clovers error')
@@ -488,10 +458,14 @@ async function nameUsers () {
   if (syncing) return
 
   try {
+    const from = snapshot()
+    if (!from) return
     debug('name Users')
-    await r.db('sync').table('users').pluck('address', 'name').forEach((row) => {
-      return r.db(CLOVER_DB).table('users').get(row('address')).update({ name: row('name') })
-    }).run(db)
+    getStore().withAttached(from, (raw) => {
+      raw.exec(`UPDATE users SET
+                  name = (SELECT s.name FROM sync.users s WHERE s.address = users.address)
+                WHERE EXISTS (SELECT 1 FROM sync.users s WHERE s.address = users.address)`)
+    })
   } catch (err) {
     debug('name users error')
     debug(err)
@@ -502,10 +476,15 @@ async function restoreLogs () {
   if (syncing) return
 
   try {
+    const from = snapshot()
+    if (!from) return
     debug('insert missing logs')
-    await r.db('sync').table('logs').forEach((log) => {
-      return r.db(CLOVER_DB).table('logs').insert(log)
-    }).run(db)
+    // OR IGNORE rather than a plain insert: (transactionHash, logIndex) is
+    // UNIQUE now, so re-running this is idempotent instead of duplicating
+    // every row it touches.
+    getStore().withAttached(from, (raw) => {
+      raw.exec('INSERT OR IGNORE INTO logs SELECT * FROM sync.logs')
+    })
     debug('done!')
     process.exit()
   } catch (err) {
@@ -517,14 +496,13 @@ async function restoreLogs () {
 async function syncUsers () {
   if (syncing) return
 
-  const users = await r.db(CLOVER_DB).table('users').pluck('address')
-    .coerceTo('array').run(db)
+  const users = getStore().allUserAddresses()
 
-  for await (const user of users) {
-    debug('sync', user.address)
+  for (const address of users) {
+    debug('sync', address)
 
     try {
-      const u = await checkUserBalance(user.address, db)
+      const u = await checkUserBalance(address, db)
       debug('done. balance is', u.balance)
     } catch (err) {
       debug(err)

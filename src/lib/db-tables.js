@@ -1,3 +1,23 @@
+/**
+ * The RethinkDB index definitions. NO LONGER EXECUTED.
+ *
+ * These 74 secondary indexes were created by build.js on a full rebuild. The
+ * SQLite schema replaces them with 30 partial indexes in
+ * migration/sqlite/schema.sql, and nothing imports this file any more.
+ *
+ * It is kept because it is the authoritative statement of what each index
+ * actually meant, and several of those meanings are not obvious -- the
+ * deliberate Sym/NonSym asymmetry, the `active` feed's exclusion rules, and
+ * the fact that owner-price sorts on price.coerceTo('number') while all-price
+ * sorts on the raw string. Every one of those is quoted in a comment on the
+ * SQLite side; this is the source they are quoted from.
+ *
+ * FUTURE: once the SQLite deployment has run long enough to be trusted, this
+ * file and the `rethinkdb` dependency it pulls in can both go. Removing the
+ * dependency is deliberately not bundled with the port -- an unnecessary
+ * npm install against the production box is how the last three outages started.
+ */
+
 import r from 'rethinkdb'
 import { events } from '../lib/chain'
 

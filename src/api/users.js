@@ -1,7 +1,7 @@
 const debug = require('debug')('app:api:users')
 import resource from 'resource-router-middleware'
-import r from 'rethinkdb'
-import { toRes, userTemplate, ZERO_ADDRESS } from '../lib/util'
+import { userTemplate } from '../lib/util'
+import { getStore } from '../lib/store'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -20,11 +20,13 @@ export default ({ config, db, io }) => {
     if (typeof id === 'string') {
       id = id.toLowerCase()
     }
-    const defaultUser = userTemplate(id)
-    r.table('users')
-      .get(id)
-      .default(defaultUser)
-      .run(db, callback)
+    try {
+      // ReQL's .default() here means a miss returns a synthetic user rather
+      // than a 404, which PUT /:id relies on to create one.
+      callback(null, getStore().getUser(id) || userTemplate(id))
+    } catch (err) {
+      callback(err)
+    }
   }
 
   // const pageSize = 12;
@@ -44,16 +46,7 @@ export default ({ config, db, io }) => {
       if (s) {
         // debug('search users')
 
-        s = escapeRegex(s)
-
-        let results = await r.table('users').filter((doc) => {
-          return doc('name').match(`(?i)${s}`).and(doc('address').ne(ZERO_ADDRESS))
-        }).coerceTo('array').run(db, (err, data) => {
-          if (err) throw err
-          return data
-        })
-
-        res.status(200).json(results).end()
+        res.status(200).json(getStore().searchUsers(s)).end()
         return
       }
 
@@ -70,29 +63,20 @@ export default ({ config, db, io }) => {
 
       // debug('get', index, sort)
 
-      let [results, count] = await Promise.all([
-        r.table('users')
-          .between([true, r.minval], [true, r.maxval], { index })
-          .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
-          .slice(start, start + pageSize)
-          .coerceTo('array')
-          .run(db, (err, data) => {
-            if (err) throw err
-            return data
-          }),
-        r.table('users')
-          .between([true, r.minval], [true, r.maxval], { index })
-          .count().run(db, (err, data) => {
-            if (err) throw err
-            return data
-          })
-      ]).catch((err) => {
+      const currentPage = Math.max((parseInt(query.page) || 1), 1)
+
+      let results, count
+      try {
+        const store = getStore()
+        // Every all-* index shares the same address <> ZERO predicate, so the
+        // count does not depend on which one the sort picked.
+        count = store.countUsers()
+        results = store.listUsers({ sort, asc, page: currentPage, pageSize })
+      } catch (err) {
         debug('query error')
         debug(err)
         return res.status(500).end()
-      })
-
-      const currentPage = Math.max((parseInt(query.page) || 1), 1)
+      }
       const hasNext = start + pageSize < count
       let prevPage = currentPage - 1 || null
       if (start >= count) {
@@ -149,46 +133,27 @@ export default ({ config, db, io }) => {
 
     const index = (!filter || filter === '' || !indexes.includes(filter)) ? `owner${sort}` : map[filter][0] + sort
 
-    const min = r.minval
-    const max = r.maxval
+    const cloverFilter = (!filter || filter === '' || !indexes.includes(filter)) ? null : filter
+    const currentPage = Math.max((parseInt(req.query.page) || 1), 1)
 
-    // debug(owner, index)
-
-    let [results, count] = await Promise.all([
-      r.table('clovers')
-        .between([owner, true, min], [owner, true, max], { index })
-        .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
-        .slice(start, start + pageSize)
-        .map((doc) => {
-          return doc.merge({
-            lastOrder: r.table('orders')
-              .getAll(doc('board'), { index: 'market' })
-              .orderBy(r.desc('created'), r.desc('transactionIndex'))
-              .limit(1).fold(null, (l, r) => r)
-          })
-        }).eqJoin('owner', r.table('users'), { ordered: true })
-        .without({ right: ['clovers', 'curationMarket'] })
-        .map((doc) => {
-          return doc('left').merge({
-            user: doc('right')
-          })
-        }).coerceTo('array').run(db, (err, data) => {
-          if (err) throw new Error(err)
-          return data
-        }),
-      r.table('clovers')
-        .between([owner, true, min], [owner, true, max], { index })
-        .count().run(db, (err, data) => {
-          if (err) throw new Error(err)
-          return data
-        })
-    ]).catch((err) => {
+    let results, count
+    try {
+      const store = getStore()
+      count = store.countCloversByOwner(owner, cloverFilter)
+      results = store.cloversByOwner(owner, {
+        page: currentPage, pageSize, sort: sort.substr(1), asc, filter: cloverFilter
+      }).map(c => {
+        const u = store.getUser(c.owner)
+        if (u) { delete u.clovers; delete u.curationMarket }
+        // Left join, not the inner eqJoin the original used -- see
+        // store.listCloversWithUsers for why that silently shortened pages.
+        return { ...c, lastOrder: store.lastOrderForMarket(c.board) || null, user: u || null }
+      })
+    } catch (err) {
       debug('query error')
       debug(err)
       return res.status(500).end()
-    })
-
-    const currentPage = Math.max((parseInt(req.query.page) || 1), 1)
+    }
     const hasNext = start + pageSize < count
     let prevPage = currentPage - 1 || null
     if (start >= count) {
@@ -222,28 +187,18 @@ export default ({ config, db, io }) => {
     const sort = query.sort || 'modified'
     const start = Math.max(((parseInt(query.page) || 1) - 1), 0) * pageSize
 
-    let [results, count] = await Promise.all([
-      r.table('albums')
-        .getAll(id, { index })
-        .orderBy(asc ? r.asc(sort) : r.desc(sort))
-        .slice(start, start + pageSize)
-        .run(db, (err, data) => {
-          if (err) throw new Error(err)
-          return data
-        }),
-      r.table('albums')
-        .getAll(id, { index })
-        .count().run(db, (err, data) => {
-          if (err) throw new Error(err)
-          return data
-        })
-    ]).catch((err) => {
+    const currentPage = Math.max((parseInt(query.page) || 1), 1)
+
+    let results, count
+    try {
+      const store = getStore()
+      count = store.countAlbumsByUser(id)
+      results = store.albumsByUser(id, { sort, asc, page: currentPage, pageSize })
+    } catch (err) {
       debug('query error')
       debug(err)
       return res.status(500).end()
-    })
-
-    const currentPage = Math.max((parseInt(query.page) || 1), 1)
+    }
     const hasNext = start + pageSize < count
     let prevPage = currentPage - 1 || null
     if (start >= count) {
@@ -284,12 +239,7 @@ export default ({ config, db, io }) => {
     const { id } = req.params
 
     try {
-      const tokens = await r.table('clovers').filter({
-        owner: id.toLowerCase()
-      }).coerceTo('array').run(db, (err, data) => {
-        if (err) throw err
-        return data
-      })
+      const tokens = getStore().allCloversByOwner(id)
 
       if (tokens && tokens.length) {
         res.status(200).json({ sync: `${tokens.length} tokens`}).end()
@@ -351,19 +301,18 @@ export default ({ config, db, io }) => {
       }
 
       // db update
-      r.table('users')
-        .insert(dbUser, { returnChanges: true, conflict: 'update' })
-        .run(db, (err, { changes }) => {
-          if (err) {
-            res.sendStatus(500).end()
-            return
-          }
-          if (changes[0]) {
-            dbUser = changes[0].new_val
-          }
-          io.emit('updateUser', dbUser)
-          res.json(dbUser).end()
-        })
+      try {
+        const written = getStore().insertUser(dbUser, { conflict: 'update' })
+        if (written.new_val) {
+          dbUser = written.new_val
+        }
+      } catch (err) {
+        debug(err)
+        res.sendStatus(500).end()
+        return
+      }
+      io.emit('updateUser', dbUser)
+      res.json(dbUser).end()
     })
   })
   return router

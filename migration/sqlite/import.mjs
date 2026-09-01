@@ -14,6 +14,7 @@
 import fs from 'fs'
 import path from 'path'
 import zlib from 'zlib'
+import readline from 'readline'
 import { DatabaseSync } from 'node:sqlite'
 
 const backupDir = process.argv[2]
@@ -24,14 +25,29 @@ if (!backupDir) {
   process.exit(1)
 }
 
-function readTable (name) {
+/**
+ * Stream one table's rows, one parsed object at a time.
+ *
+ * This used to gunzip the whole file, .toString() it, split it and map
+ * JSON.parse over the lot -- three full copies of the table resident at once.
+ * On a laptop with a 4 GB default heap that is merely wasteful; on the 1 GB
+ * machine this actually deploys to it is fatal, and `logs` (152k rows, 30 MB
+ * gzipped) killed the import with a V8 OOM inside JsonParse.
+ *
+ * Streaming keeps one line in memory at a time. Peak RSS for the whole import
+ * drops from over a gigabyte to tens of megabytes, and it is no slower --
+ * the work was always the JSON parsing, not the I/O.
+ */
+async function * readTable (name) {
   const file = path.join(backupDir, `${name}.jsonl.gz`)
-  if (!fs.existsSync(file)) return []
-  return zlib.gunzipSync(fs.readFileSync(file))
-    .toString()
-    .split('\n')
-    .filter(Boolean)
-    .map(l => JSON.parse(l))
+  if (!fs.existsSync(file)) return
+  const lines = readline.createInterface({
+    input: fs.createReadStream(file).pipe(zlib.createGunzip()),
+    crlfDelay: Infinity
+  })
+  for await (const line of lines) {
+    if (line) yield JSON.parse(line)
+  }
 }
 
 const json = v => (v === undefined || v === null) ? null : JSON.stringify(v)
@@ -52,6 +68,27 @@ const foundBy = v => {
   return val(v)
 }
 
+// `price` is documented as a 64-char zero-padded decimal, and padBigNum in the
+// API always writes it that way -- but 3,795 legacy clovers hold a bare '0'.
+// That matters because every price sort is a sort on this TEXT column, where
+// lexicographic order is numeric order *only* if every value is the same width:
+// '0' sorts below the 64-char zero-padded value it is numerically equal to, so
+// zero-priced clovers split into two blocks instead of tying. RethinkDB sorted
+// on price.coerceTo('number'), where they tie and fall through to the primary
+// key. Padding restores the invariant the schema already declares.
+//
+// Deliberately not applied to originalPrice and reward, which have unpadded
+// values of many widths: nothing sorts on them, so padding would change
+// payloads to no purpose.
+let pricesPadded = 0
+const price = v => {
+  if (typeof v === 'string' && v.length < 64 && /^[0-9]+$/.test(v)) {
+    pricesPadded++
+    return v.padStart(64, '0')
+  }
+  return val(v)
+}
+
 if (fs.existsSync(outPath)) fs.unlinkSync(outPath)
 const db = new DatabaseSync(outPath)
 db.exec(fs.readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'))
@@ -60,7 +97,7 @@ const TABLES = {
   clovers: {
     cols: ['board','name','owner','price','originalPrice','reward','created','modified',
            'commentCount','kept','foundBy','moves','symmetries'],
-    row: r => [val(r.board), val(r.name), val(r.owner), val(r.price), val(r.originalPrice),
+    row: r => [val(r.board), val(r.name), val(r.owner), price(r.price), val(r.originalPrice),
                val(r.reward), val(r.created), val(r.modified), val(r.commentCount) ?? 0,
                bool(r.kept), foundBy(r.foundBy), json(r.moves), json(r.symmetries)]
   },
@@ -99,15 +136,16 @@ console.log(`importing from ${backupDir}\n`)
 const summary = []
 
 for (const [name, spec] of Object.entries(TABLES)) {
-  const rows = readTable(name)
   const placeholders = spec.cols.map(() => '?').join(',')
   const stmt = db.prepare(`INSERT INTO ${name} (${spec.cols.join(',')}) VALUES (${placeholders})`)
 
   let ok = 0
+  let seen = 0
   const dupes = []      // rejected by a UNIQUE index -- a data-quality finding
   const errors = []     // anything else -- a real problem with the migration
   db.exec('BEGIN')
-  for (const r of rows) {
+  for await (const r of readTable(name)) {
+    seen++
     try { stmt.run(...spec.row(r)); ok++ }
     catch (err) {
       const id = r.id || r.board || r.address
@@ -117,8 +155,8 @@ for (const [name, spec] of Object.entries(TABLES)) {
   }
   db.exec('COMMIT')
 
-  summary.push({ name, source: rows.length, imported: ok, dupes: dupes.length, errors: errors.length })
-  console.log(`  ${name.padEnd(9)} ${String(rows.length).padStart(7)} source → ${String(ok).padStart(7)} imported` +
+  summary.push({ name, source: seen, imported: ok, dupes: dupes.length, errors: errors.length })
+  console.log(`  ${name.padEnd(9)} ${String(seen).padStart(7)} source → ${String(ok).padStart(7)} imported` +
               (dupes.length ? `   ${dupes.length} duplicate-key` : '') +
               (errors.length ? `   ${errors.length} ERRORS` : ''))
   errors.slice(0, 3).forEach(f => console.log(`      ${f.id}: ${f.error}`))
@@ -126,6 +164,9 @@ for (const [name, spec] of Object.entries(TABLES)) {
 
 db.exec('ANALYZE')
 
+if (pricesPadded) {
+  console.log(`  zero-padded ${pricesPadded} clover prices that were stored unpadded`)
+}
 if (foundByNormalised) {
   console.log(`\n  normalised ${foundByNormalised} clovers whose foundBy held a user object instead of an address`)
 }
@@ -144,7 +185,25 @@ for (const s of summary) {
               `  ${good ? 'match' : '*** MISMATCH ***'}`)
 }
 
+// Fold the write-ahead log back into the main file and close cleanly, so what
+// this leaves behind is a single self-contained .db. Without it the import
+// leaves a 225 MB -wal alongside a .db that looks complete but is missing most
+// of its rows -- copy or scp just the .db and you get a database that reports
+// 2,457 albums as 0. The reported size below would lie about it too.
+// Collect index statistics. Without them SQLite picks between overlapping
+// partial indexes by rule of thumb, and it picked a broad one over the exact
+// one for the Sym filter -- an index scan plus a temp b-tree where a seek would
+// do. ANALYZE is cheap here and the stats ship inside the .db file.
+db.exec('ANALYZE')
+db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+db.close()
+
 const bytes = fs.statSync(outPath).size
+const walPath = outPath + '-wal'
+const walBytes = fs.existsSync(walPath) ? fs.statSync(walPath).size : 0
 console.log(`\n  database: ${outPath}  (${(bytes / 1024 / 1024).toFixed(1)} MB)`)
+if (walBytes > 0) {
+  console.log(`  WARNING: ${walPath} still holds ${(walBytes / 1024 / 1024).toFixed(1)} MB -- do not copy the .db alone`)
+}
 console.log(mismatch ? `  ${mismatch} TABLE(S) MISMATCHED` : '  all tables match')
 process.exit(mismatch ? 1 : 0)

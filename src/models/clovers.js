@@ -1,7 +1,7 @@
 const debug = require('debug')('app:models:clovers')
-import r from 'rethinkdb'
 import { events, provider } from '../lib/chain'
-import { dodb, sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
+import { sym, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
+import { getStore } from '../lib/store'
 import Reversi from 'clovers-reversi'
 import { changeCloverPrice } from './simpleCloversMarket'
 import { getLogs, transformLog, processLog } from '../lib/build.js'
@@ -14,8 +14,11 @@ import config from '../config.json'
 // Attempts before a clover's view calls are treated as a hard failure.
 const MAX_VIEW_CALL_RETRIES = 5
 
-const nonAtomic = { nonAtomic: true }
 // const oneGwei = '1000000000'
+// `db` is still threaded through this module's exported signatures because
+// build.js and the sync scripts pass it. It is unused now that reads and writes
+// go through the store; the parameter stays so callers do not all have to
+// change at once. FUTURE: drop `db` from these signatures once nothing passes it.
 let db
 let io
 
@@ -189,7 +192,7 @@ export async function syncClover (_db, _io, clover) {
       debug(`moves don't match making an update to board`)
       debug(`from ${cloverMoves.join(',')} to ${moves.join(',')}`)
       clover.moves = moves
-      await r.table('clovers').get(clover.board).update({ moves }).run(db)
+      getStore().updateClover(clover.board, { moves })
     } else {
       debug('moves are ok')
     }
@@ -224,7 +227,8 @@ export async function syncOracle (_db, _io, totalSupply, key = 1) {
 export async function doSyncOracle (_db, _io, tokenId) {
   db = _db
   io = _io
-  let clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+  const store = getStore()
+  let clover = store.getClover(tokenId.toLowerCase()) || null
   // const exists = await events.Clovers.instance.exists(tokenId)
   if (clover) {
     await syncClover(db, io, clover)
@@ -237,7 +241,7 @@ export async function doSyncOracle (_db, _io, tokenId) {
       console.log("dont have clover yet")
       await doSyncContract(db, tokenId)
     }
-    clover = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+    clover = store.getClover(tokenId.toLowerCase()) || null
     if (!clover) {
       debug('still no clover')
       return
@@ -246,6 +250,15 @@ export async function doSyncOracle (_db, _io, tokenId) {
     // await oracleVerify(clover, symmetries)
   } else {
     debug(`${tokenId} already collected`)
+  }
+
+  // `clover` is null whenever the token is already collected, or when
+  // doSyncContract could not build a row. Dereferencing .owner here threw a
+  // TypeError that syncOracle swallowed into debug(), so the sweep looked like
+  // it had run and had in fact stopped at the first such token.
+  if (!clover) {
+    debug(`no clover row for ${tokenId}; cannot check its sale price`)
+    return
   }
 
   const salePrice = await events.SimpleCloversMarket.instance.sellPrice(tokenId)
@@ -288,7 +301,7 @@ export async function syncContract (_db, _io, totalSupply, key = 1) {
     // so mad idk why tokenId.toString(16) returns in decimal format
     tokenId = tokenId._hex
 
-    const exists = await r.table('clovers').get(tokenId.toLowerCase()).default(false).run(db)
+    const exists = getStore().getClover(tokenId.toLowerCase()) || false
     debug(`------------------------------------------------------------${key} / ${totalSupply}`)
     debug(`${tokenId}---------------------${(exists ? ' exists in db' : ' does not exist in db')}`)
     if (exists) {
@@ -309,13 +322,7 @@ async function doSyncContract (db, tokenId) {
   blockMinted = parseInt(blockMinted.toString())
 
   if (blockMinted === 0) {
-    // let logs = r.table('logs').getAll()
-    let dbLogs = await r.table('logs')
-      .filter({ name: 'Clovers_Transfer' })
-      .filter((l) => l('data')('_tokenId').eq(tokenId))
-      .default([])
-      .run(db)
-    dbLogs = await dbLogs.toArray()
+    const dbLogs = getStore().logsForTokenId('Clovers_Transfer', tokenId)
     if (dbLogs.length > 0) {
       debug(`found ${dbLogs.length} with this tokenID`)
       blockMinted = dbLogs[0].blockNumber
@@ -347,7 +354,7 @@ async function doSyncContract (db, tokenId) {
     debug({address,topics, genesisBlock, latest, limit, offset, previousLogs})
     throw new Error('Log 404')
   }
-  await r.table('logs').insert(logs, { returnChanges: true, conflict: 'update' }).run(db)
+  getStore().insertLogs(logs)
   const skipOracle = true
   await processLog(logs, 0, db, skipOracle)
 }
@@ -357,17 +364,18 @@ async function updateUser (log, user_id, add, _db) {
   if (_db) {
     db = _db
   }
+  const store = getStore()
   user_id = user_id.toLowerCase()
   if (user_id === ZERO_ADDRESS.toLowerCase()) {
     debug('just update zero address')
-    await r.table('users').get(user_id).update({
-      cloverCount: r.table('clovers').getAll(r.row('address'), { index: 'owner' }).count()
-    }, nonAtomic).run(db)
+    // Recount only -- no insert. The original used .update(), which ReQL treats
+    // as a no-op on a missing document, so the zero-address user is never
+    // created here. recomputeCloverCount is an UPDATE for the same reason.
+    store.recomputeCloverCount(user_id)
     return
   }
   add = add === 'add'
-  let command = r.table('users').get(user_id)
-  let user = await dodb(db, command)
+  let user = store.getUser(user_id)
   if (add) {
     if (!user) {
       user = userTemplate(user_id, log)
@@ -381,16 +389,12 @@ async function updateUser (log, user_id, add, _db) {
       user = userTemplate(user_id, log)
     }
   }
-  command = r.table('users')
-    .insert(user, { returnChanges: true, conflict: 'update' })
-  await dodb(db, command)
+  store.insertUser(user, { conflict: 'update' })
   io && io.emit('updateUser', user)
 
   // update counts
   debug('update user\'s clover counts')
-  await r.table('users').get(user.address).update({
-    cloverCount: r.table('clovers').getAll(r.row('address'), { index: 'owner' }).count()
-  }, nonAtomic).run(db)
+  store.recomputeCloverCount(user.address)
 }
 
 async function updateUsers (log, _db) {
@@ -405,9 +409,8 @@ async function updateUsers (log, _db) {
 }
 
 async function updateClover (log) {
-  let command = r.table('clovers')
-    .get(log.data._tokenId)
-  let clover = await dodb(db, command)
+  const store = getStore()
+  let clover = store.getClover(log.data._tokenId)
   if (!clover) throw new Error('clover ' + log.data._tokenId + ' not found')
 
   const modified = log.blockNumber || clover.modified || await provider.getBlockNumber()
@@ -415,26 +418,12 @@ async function updateClover (log) {
   debug('updateClover: new modifed', modified)
 
   clover.owner = log.data._to.toLowerCase()
-  command = r.table('clovers').insert(clover, { returnChanges: true, conflict: 'update' })
-  await dodb(db, command)
+  store.insertClover(clover, { conflict: 'update' })
 
-  // get clover again, with comments and orders
-  r.table('clovers')
-    .get(log.data._tokenId)
-    .do((doc) => {
-      return doc.merge({
-        lastOrder: r.table('orders')
-          .getAll(doc('board'), { index: 'market' })
-          .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          .limit(1).fold(false, (l, r) => r),
-        user: r.table('users').get(doc('owner'))
-          .without('clovers', 'curationMarket').default(null)
-      })
-    })
-    .run(db, (err, result) => {
-      io && io.emit('updateClover', result)
-      debug(io ? 'emit updateClover' : 'do not emit updateClover')
-    })
+  // re-read with the new owner and latest order attached
+  const result = store.getCloverWithUser(log.data._tokenId)
+  io && io.emit('updateClover', result)
+  debug(io ? 'emit updateClover' : 'do not emit updateClover')
 
   debug('update users after updateClover()')
   if (log.data._to) {
@@ -514,10 +503,12 @@ async function addNewClover (log, skipOracle = false) {
     commentCount: 0
   }
   // console.log(clover)
-  let command = r.table('clovers').insert(clover)
-  await dodb(db, command)
+  const store = getStore()
+  store.insertClover(clover)
 
-  clover.user = await r.table('users').get(clover.owner).run(db)
+  // Note this attaches the *whole* user, unlike updateClover's payload which
+  // strips curationMarket. Left as-is: the dapp already handles both shapes.
+  clover.user = store.getUser(clover.owner)
   debug('emit new clover info')
 
   io && io.emit('addClover', clover)

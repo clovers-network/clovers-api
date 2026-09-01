@@ -37,8 +37,8 @@
  */
 
 const debug = require('debug')('app:reconcile')
-import r from 'rethinkdb'
 import config from '../config.json'
+import { getStore } from './store'
 import { catchUp, getBlockNumber, events } from './chain'
 import { ZERO_ADDRESS } from './util'
 import { cloversTransfer, syncClover } from '../models/clovers'
@@ -77,10 +77,7 @@ async function chainOwnership (fromBlock, toBlock) {
 
 /** board -> owner, for every row currently in the table. */
 async function dbOwnership () {
-  const rows = await r.table('clovers')
-    .pluck('board', 'owner')
-    .coerceTo('array')
-    .run(db)
+  const rows = getStore().allClovers()
 
   const map = new Map()
   rows.forEach(row => {
@@ -96,14 +93,9 @@ async function dbOwnership () {
  * used to throw.
  */
 async function findMintLog (tokenId) {
-  const rows = await r.table('logs')
-    .filter(l => l('name').eq('Clovers_Transfer')
-      .and(l('data')('_tokenId').downcase().eq(tokenId)))
-    .orderBy('blockNumber')
-    .limit(1)
-    .coerceTo('array')
-    .run(db)
-  return rows[0] || null
+  // logsForTokenId matches case-insensitively and returns oldest first, which
+  // is the mint.
+  return getStore().logsForTokenId('Clovers_Transfer', tokenId)[0] || null
 }
 
 async function insertMissing (tokenId, chainOwner, mintBlock) {
@@ -144,7 +136,7 @@ async function insertMissing (tokenId, chainOwner, mintBlock) {
  * sale price and moves — and adjusts the users' clover counts as it goes.
  */
 async function fixOwner (tokenId) {
-  const clover = await r.table('clovers').get(tokenId).default(null).run(db)
+  const clover = getStore().getClover(tokenId)
   if (!clover) return false
   await syncClover(db, null, clover)
   return true

@@ -1,7 +1,7 @@
 const debug = require('debug')('app:models:clubToken')
-import r from 'rethinkdb'
 import { events, provider } from '../lib/chain'
-import { dodb, padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
+import { padBigNum, userTemplate, ZERO_ADDRESS } from '../lib/util'
+import { getStore } from '../lib/store'
 let db, io
 const BigNumber = require('bignumber.js')
 
@@ -54,8 +54,8 @@ async function changeUserBalance (user_id, amount, add, log) {
   user_id = user_id.toLowerCase()
   amount = typeof amount == 'object' ? amount : new BigNumber(amount)
   add = add == 'add'
-  let command = r.table('users').get(user_id)
-  let user = await dodb(db, command)
+  const store = getStore()
+  let user = store.getUser(user_id)
   if (!user) {
     user = userTemplate(user_id, log)
   } else if (!user.balance) {
@@ -79,16 +79,17 @@ async function changeUserBalance (user_id, amount, add, log) {
   user.balance = padBigNum(balance)
 
   user.modified = log.blockNumber
-  command = r.table('users')
-    .insert(user, { returnChanges: true, conflict: 'update' })
-  let changes = await dodb(db, command)
+  // insert(..., { conflict: 'update' }) -> INSERT ... ON CONFLICT DO UPDATE.
+  // returnChanges was requested but never read, so it is dropped.
+  store.insertUser(user, { conflict: 'update' })
   debug('update user!')
   io && io.emit('updateUser', user)
 }
 
 export async function checkUserBalance (user_id, _db) {
   user_id = user_id.toLowerCase()
-  let user = await dodb(_db, r.table('users').get(user_id))
+  const store = getStore()
+  let user = store.getUser(user_id)
   const block = await provider.getBlockNumber()
   if (!user) {
     user = userTemplate(user_id)
@@ -99,9 +100,7 @@ export async function checkUserBalance (user_id, _db) {
   const balance = await events.ClubToken.instance.balanceOf(user.address)
   user.balance = padBigNum(balance)
 
-  await r.table('users')
-    .insert(user, { conflict: 'update' })
-    .run(_db)
+  store.insertUser(user, { conflict: 'update' })
 
   return user
 }

@@ -31,8 +31,8 @@
  */
 
 const debug = require('debug')('app:logs-repair')
-import r from 'rethinkdb'
 import config from '../config.json'
+import { getStore } from './store'
 import { catchUp, getBlockNumber, events } from './chain'
 
 // Clovers' first Transfer is at 8,364,713. config.genesisBlock is the last
@@ -96,17 +96,13 @@ async function chainIndex (fromBlock, toBlock) {
  * limit and the memory.
  */
 async function scanDbLogs (chain) {
-  const cursor = await r.table('logs')
-    .pluck('id', 'name', 'blockNumber', 'logIndex', 'transactionHash')
-    .run(db)
-
   const seenTx = new Set()
   const covered = new Set()   // chain coordinates holding a correctly-named row
   const dupes = []
   const misplaced = []
   let considered = 0
 
-  await cursor.eachAsync(row => {
+  getStore().scanLogCoords(row => {
     if (!row.transactionHash || !chain.names.has(row.name)) return
     considered++
 
@@ -196,6 +192,7 @@ export async function backfill (_db, { write = false } = {}) {
   console.log('  (log rows only — the clovers table was already reconciled, so')
   console.log('   re-running the event handlers would double-apply state)')
 
+  const store = getStore()
   let inserted = 0
   let failed = 0
 
@@ -204,14 +201,16 @@ export async function backfill (_db, { write = false } = {}) {
       // Guard against a concurrent insert by the live listener. Must compare
       // the name too: a mislabelled row shares (transactionHash, logIndex)
       // with the correct one, so an existence check alone would skip it.
-      const existing = await r.table('logs')
-        .getAll([missing[i].transactionHash, missing[i].logIndex], { index: 'unique_log' })
-        .coerceTo('array')
-        .run(db)
+      // In SQLite (transactionHash, logIndex) is genuinely UNIQUE, so at most
+      // one row can sit here. If that row carries a different name it is a
+      // mislabelled row occupying the slot, and the insert below will be
+      // rejected rather than adding a second row -- reported as FAILED, which
+      // is the honest outcome: the mislabelled row has to be removed first.
+      const existing = store.findLog(missing[i].transactionHash, missing[i].logIndex)
 
-      if (existing.some(e => e.name === missing[i].name)) continue
+      if (existing && existing.name === missing[i].name) continue
 
-      await r.table('logs').insert(missing[i]).run(db)
+      store.insertLog(missing[i])
       inserted++
     } catch (err) {
       failed++
@@ -228,11 +227,8 @@ export async function backfill (_db, { write = false } = {}) {
   // per-row via the unique_log index, so no large array is materialised.
   let still = 0
   for (const l of missing) {
-    const rows = await r.table('logs')
-      .getAll([l.transactionHash, l.logIndex], { index: 'unique_log' })
-      .coerceTo('array')
-      .run(db)
-    if (!rows.some(e => e.name === l.name)) still++
+    const row = store.findLog(l.transactionHash, l.logIndex)
+    if (!row || row.name !== l.name) still++
   }
   console.log(`  still missing after run: ${still}`)
 
@@ -283,11 +279,7 @@ export async function cleanup (_db, { write = false } = {}) {
   const orphaned = []           // rows whose tx has no tracked chain event at all
   let considered = 0
 
-  const cursor = await r.table('logs')
-    .pluck('id', 'name', 'blockNumber', 'logIndex', 'transactionHash')
-    .run(db)
-
-  await cursor.eachAsync(row => {
+  getStore().scanLogCoords(row => {
     if (!row.transactionHash || !chain.names.has(row.name)) return
     considered++
 
@@ -376,8 +368,7 @@ export async function cleanup (_db, { write = false } = {}) {
   for (let i = 0; i < toDelete.length; i += BATCH) {
     const batch = toDelete.slice(i, i + BATCH)
     try {
-      const res = await r.table('logs').getAll(r.args(batch)).delete().run(db)
-      deleted += res.deleted || 0
+      deleted += getStore().deleteLogs(batch)
     } catch (err) {
       failed += batch.length
       console.log(`    FAILED batch at ${i}: ${err.message}`)
@@ -392,8 +383,7 @@ export async function cleanup (_db, { write = false } = {}) {
   // ---- verify the invariant still holds ----------------------------------
   console.log('\n  re-checking that every chain position still has a row...')
   const after = new Set()
-  const c2 = await r.table('logs').pluck('name', 'blockNumber', 'logIndex', 'transactionHash').run(db)
-  await c2.eachAsync(row => {
+  getStore().scanLogCoords(row => {
     if (!row.transactionHash || !chain.names.has(row.name)) return
     const ck = coordKey(row)
     if (chain.coordToTx.get(ck) === String(row.transactionHash).toLowerCase() + '|' + row.name) after.add(ck)

@@ -59,6 +59,13 @@ CREATE TABLE clovers (
   is_named       INTEGER GENERATED ALWAYS AS (lower(name) <> lower(board)) VIRTUAL
 );
 
+-- Every sort index ends in `board`, the primary key. RethinkDB broke index
+-- ties by primary key in the sort direction, so the queries all end
+-- `ORDER BY <key> <dir>, board <dir>`; without board in the index SQLite
+-- satisfies that with a temp b-tree, which turns a 24-row page into a sort of
+-- the whole filtered set. `board` is a TEXT primary key, so it is not the
+-- rowid and does not come along for free.
+
 -- Predicates, one per ReQL index family. ZERO_ADDRESS and the Clovers contract
 -- address are inlined because SQLite partial indexes require constant
 -- expressions; both are fixed for mainnet.
@@ -66,74 +73,102 @@ CREATE TABLE clovers (
 --   CLOVERS   = 0xb55c5cac5014c662fdbf21a2c59cd45403c482fd
 
 -- all: owner <> ZERO
-CREATE INDEX clovers_all_modified ON clovers(modified)
+CREATE INDEX clovers_all_modified ON clovers(modified, board)
   WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
-CREATE INDEX clovers_all_price ON clovers(price)
+CREATE INDEX clovers_all_price ON clovers(price, board)
   WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
 
 -- contract: owner = CLOVERS
-CREATE INDEX clovers_contract_modified ON clovers(modified)
+CREATE INDEX clovers_contract_modified ON clovers(modified, board)
   WHERE owner_lc = '0xb55c5cac5014c662fdbf21a2c59cd45403c482fd';
-CREATE INDEX clovers_contract_price ON clovers(price)
+CREATE INDEX clovers_contract_price ON clovers(price, board)
   WHERE owner_lc = '0xb55c5cac5014c662fdbf21a2c59cd45403c482fd';
 
 -- public: owner NOT IN (CLOVERS, ZERO)
-CREATE INDEX clovers_public_modified ON clovers(modified)
+CREATE INDEX clovers_public_modified ON clovers(modified, board)
   WHERE owner_lc NOT IN ('0xb55c5cac5014c662fdbf21a2c59cd45403c482fd',
                          '0x0000000000000000000000000000000000000000');
-CREATE INDEX clovers_public_price ON clovers(price)
+CREATE INDEX clovers_public_price ON clovers(price, board)
   WHERE owner_lc NOT IN ('0xb55c5cac5014c662fdbf21a2c59cd45403c482fd',
                          '0x0000000000000000000000000000000000000000');
 
 -- pending: owned by the contract and unpriced
-CREATE INDEX clovers_pending_modified ON clovers(modified)
+CREATE INDEX clovers_pending_modified ON clovers(modified, board)
   WHERE owner_lc = '0xb55c5cac5014c662fdbf21a2c59cd45403c482fd'
     AND price_is_zero = 1;
-CREATE INDEX clovers_pending_price ON clovers(price)
+CREATE INDEX clovers_pending_price ON clovers(price, board)
   WHERE owner_lc = '0xb55c5cac5014c662fdbf21a2c59cd45403c482fd'
     AND price_is_zero = 1;
 
--- market: priced
-CREATE INDEX clovers_market_modified ON clovers(modified) WHERE price_is_zero = 0;
-CREATE INDEX clovers_market_price    ON clovers(price)    WHERE price_is_zero = 0;
+-- market: priced, and not burned
+CREATE INDEX clovers_market_modified ON clovers(modified, board)
+  WHERE price_is_zero = 0 AND owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_market_price    ON clovers(price, board)
+  WHERE price_is_zero = 0 AND owner_lc <> '0x0000000000000000000000000000000000000000';
 
--- symmetry families. NOTE the deliberate asymmetry, which is in the original
--- and is reproduced rather than tidied away: NonSym is
--- `sum = 0 AND owner <> ZERO`, but Sym is just `sum > 0` with no owner check.
--- So burned clovers are counted as symmetrical and excluded from non-symmetrical.
--- Adding the owner check to Sym "for consistency" changes the count by 161 and
--- breaks parity with the live API.
-CREATE INDEX clovers_sym_modified ON clovers(modified) WHERE sym_total > 0;
-CREATE INDEX clovers_sym_price    ON clovers(price)    WHERE sym_total > 0;
-CREATE INDEX clovers_nonsym_modified ON clovers(modified)
+-- Symmetry families.
+--
+-- Every one of these carries the owner check. The ReQL originals did not --
+-- NonSym was `sum = 0 AND owner <> ZERO` but Sym was a bare `sum > 0` -- so
+-- burned clovers counted as symmetrical while being excluded from
+-- non-symmetrical, and 161 of them were listed under Sym. That asymmetry was
+-- reproduced during the port and is now fixed; see the note in
+-- cloverFilterSql. The predicate here must stay identical to the one there, or
+-- SQLite silently falls back to a scan.
+CREATE INDEX clovers_sym_modified ON clovers(modified, board)
+  WHERE sym_total > 0 AND owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_sym_price    ON clovers(price, board)
+  WHERE sym_total > 0 AND owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_nonsym_modified ON clovers(modified, board)
   WHERE sym_total = 0 AND owner_lc <> '0x0000000000000000000000000000000000000000';
-CREATE INDEX clovers_nonsym_price ON clovers(price)
+CREATE INDEX clovers_nonsym_price ON clovers(price, board)
   WHERE sym_total = 0 AND owner_lc <> '0x0000000000000000000000000000000000000000';
 
--- individual symmetries: expression indexes, since the value is in JSON
-CREATE INDEX clovers_rotsym  ON clovers(json_extract(symmetries,'$.RotSym'),  modified);
-CREATE INDEX clovers_x0sym   ON clovers(json_extract(symmetries,'$.X0Sym'),   modified);
-CREATE INDEX clovers_xysym   ON clovers(json_extract(symmetries,'$.XYSym'),   modified);
-CREATE INDEX clovers_xnysym  ON clovers(json_extract(symmetries,'$.XnYSym'),  modified);
-CREATE INDEX clovers_y0sym   ON clovers(json_extract(symmetries,'$.Y0Sym'),   modified);
+-- Individual symmetries: expression indexes, since the value is in JSON.
+-- Partial on the owner check for the same reason as above. One index per sort
+-- key rather than one carrying both: a single (expr, modified, price, board)
+-- index serves ORDER BY modified but leaves ORDER BY price to a temp b-tree,
+-- because price sits after modified in the key.
+CREATE INDEX clovers_rotsym_modified ON clovers(json_extract(symmetries,'$.RotSym'), modified, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_rotsym_price    ON clovers(json_extract(symmetries,'$.RotSym'), price, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_x0sym_modified ON clovers(json_extract(symmetries,'$.X0Sym'), modified, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_x0sym_price    ON clovers(json_extract(symmetries,'$.X0Sym'), price, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_xysym_modified ON clovers(json_extract(symmetries,'$.XYSym'), modified, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_xysym_price    ON clovers(json_extract(symmetries,'$.XYSym'), price, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_xnysym_modified ON clovers(json_extract(symmetries,'$.XnYSym'), modified, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_xnysym_price    ON clovers(json_extract(symmetries,'$.XnYSym'), price, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_y0sym_modified ON clovers(json_extract(symmetries,'$.Y0Sym'), modified, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_y0sym_price    ON clovers(json_extract(symmetries,'$.Y0Sym'), price, board)
+  WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
 
 -- multi: symmetry count, excluding burned. The API filters on x = 1, 3 or 5.
-CREATE INDEX clovers_multi_modified ON clovers(sym_total, modified)
+CREATE INDEX clovers_multi_modified ON clovers(sym_total, modified, board)
   WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
-CREATE INDEX clovers_multi_price ON clovers(sym_total, price)
+CREATE INDEX clovers_multi_price ON clovers(sym_total, price, board)
   WHERE owner_lc <> '0x0000000000000000000000000000000000000000';
 
-CREATE INDEX clovers_commented_modified ON clovers(modified) WHERE commentCount > 0;
-CREATE INDEX clovers_commented_price    ON clovers(price)    WHERE commentCount > 0;
-CREATE INDEX clovers_named              ON clovers(modified) WHERE is_named = 1;
+CREATE INDEX clovers_commented_modified ON clovers(modified, board)
+  WHERE commentCount > 0 AND owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_commented_price    ON clovers(price, board)
+  WHERE commentCount > 0 AND owner_lc <> '0x0000000000000000000000000000000000000000';
+CREATE INDEX clovers_named              ON clovers(modified, board) WHERE is_named = 1;
 
 -- owner-scoped listings, and the two owner+facet composites
-CREATE INDEX clovers_owner_modified   ON clovers(owner_lc, modified);
-CREATE INDEX clovers_owner_price      ON clovers(owner_lc, price);
-CREATE INDEX clovers_ownersym_modified  ON clovers(owner_lc, sym_total > 0, modified);
-CREATE INDEX clovers_ownersym_price     ON clovers(owner_lc, sym_total > 0, price);
-CREATE INDEX clovers_ownersale_modified ON clovers(owner_lc, price_is_zero = 0, modified);
-CREATE INDEX clovers_ownersale_price    ON clovers(owner_lc, price_is_zero = 0, price);
+CREATE INDEX clovers_owner_modified   ON clovers(owner_lc, modified, board);
+CREATE INDEX clovers_owner_price      ON clovers(owner_lc, price, board);
+CREATE INDEX clovers_ownersym_modified  ON clovers(owner_lc, sym_total > 0, modified, board);
+CREATE INDEX clovers_ownersym_price     ON clovers(owner_lc, sym_total > 0, price, board);
+CREATE INDEX clovers_ownersale_modified ON clovers(owner_lc, price_is_zero = 0, modified, board);
+CREATE INDEX clovers_ownersale_price    ON clovers(owner_lc, price_is_zero = 0, price, board);
 
 CREATE INDEX clovers_modified ON clovers(modified);
 CREATE INDEX clovers_created  ON clovers(created);
@@ -152,10 +187,23 @@ CREATE TABLE users (
   image          TEXT,
   curationMarket TEXT             -- JSON
 );
-CREATE INDEX users_modified ON users(modified);
-CREATE INDEX users_balance  ON users(balance);
-CREATE INDEX users_clovers  ON users(cloverCount);
-CREATE INDEX users_albums   ON users(albumCount);
+-- Every user lookup in the application goes through lower(address). The
+-- PRIMARY KEY cannot serve that -- wrapping a column in a function defeats its
+-- index -- so before this existed, `SELECT * FROM users WHERE lower(address)=?`
+-- was a full scan of 3,093 rows, and it is the single most-issued statement in
+-- the codebase: 24 times per clover grid page, 1,782 times for /search?s=a.
+-- Measured: 113.6 us to 2.4 us, a 47x improvement on the hottest query here.
+--
+-- An expression index rather than lowercasing the column, because it is exact:
+-- if a mixed-case address is ever written the semantics do not silently change.
+CREATE INDEX users_address_lc ON users(lower(address));
+
+-- Sort indexes carry `address` so the primary-key tiebreaker is satisfied by
+-- the index instead of a temp b-tree. Same reasoning as the clovers indexes.
+CREATE INDEX users_modified ON users(modified, address);
+CREATE INDEX users_balance  ON users(balance, address);
+CREATE INDEX users_clovers  ON users(cloverCount, address);
+CREATE INDEX users_albums   ON users(albumCount, address);
 
 -- ---------------------------------------------------------------------------
 -- logs
@@ -203,10 +251,18 @@ CREATE TABLE logs (
 
   -- The `clovers` index keys a log to a board: prefer data.board, else
   -- data._tokenId, but never for CurationMarket_Transfer.
+  --
+  -- The json_type guards are load-bearing, not defensive. The ReQL index calls
+  -- .downcase() on the value, which *errors* on a non-string, and RethinkDB
+  -- silently drops a document whose index function errors. 2,388 Album_Created
+  -- and Album_Updated logs carry `board: false` -- so they are absent from the
+  -- live index, and /clovers/0/activity returns nothing. Without the guard
+  -- json_extract turns that false into 0, lower() into '0', and the endpoint
+  -- starts returning 2,388 album logs under a board that does not exist.
   clover_key TEXT GENERATED ALWAYS AS (
     CASE
-      WHEN json_extract(data,'$.board') IS NOT NULL THEN lower(json_extract(data,'$.board'))
-      WHEN json_extract(data,'$._tokenId') IS NOT NULL AND name <> 'CurationMarket_Transfer'
+      WHEN json_type(data,'$.board') = 'text' THEN lower(json_extract(data,'$.board'))
+      WHEN json_type(data,'$._tokenId') = 'text' AND name <> 'CurationMarket_Transfer'
         THEN lower(json_extract(data,'$._tokenId'))
       ELSE NULL
     END
@@ -214,9 +270,12 @@ CREATE TABLE logs (
 );
 
 CREATE UNIQUE INDEX logs_unique_log ON logs(transactionHash, logIndex);
-CREATE INDEX logs_active      ON logs(blockNumber) WHERE is_active = 1;
-CREATE INDEX logs_type        ON logs(feed_type, blockNumber);
-CREATE INDEX logs_clovers     ON logs(clover_key, blockNumber);
+-- `id` completes the ORDER BY. RethinkDB tied on the primary key, so the feeds
+-- sort by (blockNumber, id) -- without id in the index every page of every feed
+-- built a temp b-tree over the whole filtered set to return 24 rows.
+CREATE INDEX logs_active      ON logs(blockNumber, id) WHERE is_active = 1;
+CREATE INDEX logs_type        ON logs(feed_type, blockNumber, id);
+CREATE INDEX logs_clovers     ON logs(clover_key, blockNumber, id);
 CREATE INDEX logs_blockNumber ON logs(blockNumber);
 CREATE INDEX logs_name        ON logs(name);
 
@@ -238,8 +297,11 @@ CREATE TABLE orders (
   tokenSupply      TEXT
 );
 CREATE INDEX orders_market       ON orders(market);
-CREATE INDEX orders_created      ON orders(created);
-CREATE INDEX orders_ordered      ON orders(market, created, transactionIndex);
+CREATE INDEX orders_created      ON orders(created, id);
+CREATE INDEX orders_ordered      ON orders(market, created, logIndex, id);
+-- lastOrder orders by transactionIndex, not logIndex -- the ReQL it replaces
+-- spelled the sort out explicitly rather than riding the `ordered` index.
+CREATE INDEX orders_last        ON orders(market, created, transactionIndex, id);
 CREATE UNIQUE INDEX orders_unique_log ON orders(transactionHash, logIndex);
 
 -- ---------------------------------------------------------------------------
@@ -255,9 +317,15 @@ CREATE TABLE albums (
   cloverCount INTEGER GENERATED ALWAYS AS (json_array_length(COALESCE(clovers,'[]'))) VIRTUAL
 );
 CREATE INDEX albums_name        ON albums(lower(name));
-CREATE INDEX albums_userAddress ON albums(lower(userAddress));
-CREATE INDEX albums_dates       ON albums(created);
-CREATE INDEX albums_cloverCount ON albums(cloverCount);
+-- Carrying the sort key and the primary key, because /users/:id/albums orders
+-- by modified and /albums orders by whichever column the filter names.
+CREATE INDEX albums_userAddress ON albums(lower(userAddress), modified, id);
+CREATE INDEX albums_user_name   ON albums(lower(userAddress), name, id);
+CREATE INDEX albums_user_created ON albums(lower(userAddress), created, id);
+CREATE INDEX albums_dates       ON albums(created, id);
+CREATE INDEX albums_modified    ON albums(modified, id);
+CREATE INDEX albums_name_sort   ON albums(name, id);
+CREATE INDEX albums_cloverCount ON albums(cloverCount, id);
 
 CREATE TABLE chats (
   id          TEXT PRIMARY KEY,
@@ -270,5 +338,5 @@ CREATE TABLE chats (
   deleted     INTEGER DEFAULT 0,
   flagged     INTEGER DEFAULT 0
 );
-CREATE INDEX chats_board ON chats(lower(board), created);
-CREATE INDEX chats_dates ON chats(created);
+CREATE INDEX chats_board ON chats(lower(board), created, id);
+CREATE INDEX chats_dates ON chats(created, id);

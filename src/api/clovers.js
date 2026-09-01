@@ -1,8 +1,8 @@
 const debug = require('debug')('app:api:clovers')
 import resource from 'resource-router-middleware'
 // import clovers from '../models/clovers'
-import r from 'rethinkdb'
-import { dodb, toSVG } from '../lib/util'
+import { toSVG, ZERO_ADDRESS } from '../lib/util'
+import { getStore } from '../lib/store'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import { syncClover, syncContract, syncOracle, syncPending } from '../models/clovers'
@@ -13,6 +13,21 @@ import uuid from 'uuid/v4'
 import { provider, events, ethers, walletProvider, cloversAddress } from '../lib/chain'
 import http from 'https'
 
+/**
+ * Where NFT metadata points for clover images.
+ *
+ * This was hardcoded to api2.clovers.network in two places. api2 is a second,
+ * half-dead copy of this same application on its own droplet: its database side
+ * returns 500/502, and the only endpoint still working there is /clovers/svg,
+ * which happens to need no database because the SVG is computed from the board.
+ *
+ * The same endpoint is served correctly by this API, so retiring api2 is a
+ * matter of changing this one value. It defaults to the current behaviour so
+ * nothing moves until someone decides to move it -- OpenSea caches these URLs,
+ * so the switch should be deliberate.
+ */
+const IMAGE_BASE_URL = process.env.IMAGE_BASE_URL || 'https://api2.clovers.network'
+
 const semiSecretToken = process.env.SYNC_TOKEN
 console.log(`TOKEN ——— ${semiSecretToken}`)
 
@@ -22,30 +37,16 @@ export default ({ config, db, io }) => {
     if (id.substr(0,2) !== '0x') {
       id = '0x' + new BigNumber(id).toString(16).toLowerCase()
     }
-    const c = r.table('clovers')
-    .get(id).do((doc) => {
-      return r.branch(
-        doc.eq(null),
-        r.error('404 Not Found'),
-        // hide NOBODY
-        doc('owner').eq('0x0000000000000000000000000000000000000000'),
-        r.error('404 Not Found'),
-        doc.merge({
-          lastOrder: r.table('orders')
-            .getAll(doc('board'), { index: 'market' })
-            .orderBy(r.desc('created'), r.desc('transactionIndex'))
-            .limit(1).fold(null, (l, r) => r),
-          user: r.table('users').get(doc('owner'))
-            .without('clovers', 'curationMarket').default(null)
-        })
-      )
-    })
-    // .run(db, callback)
     try {
-      const clover = await dodb(db, c)
+      const clover = getStore().getCloverWithUser(id)
+      // hide NOBODY -- burned clovers are 404, not empty results
+      if (!clover || clover.owner === ZERO_ADDRESS) {
+        callback('404 Not Found')
+        return
+      }
       callback(null, clover)
     } catch (err) {
-      callback(err.msg)
+      callback(err.message)
     }
   }
 
@@ -65,47 +66,24 @@ export default ({ config, db, io }) => {
       const multi = query.filter === 'multi'
       const multis = (query.x && parseInt(query.x)) || 1 // 1, 3, 5
 
-      const getVal = multi ? multis : true
+      const filter = (!query.filter || query.filter === '' || !indexes.includes(query.filter)) ? 'all' : query.filter
+      const currentPage = Math.max((parseInt(query.page) || 1), 1)
 
-      let [results, count] = await Promise.all([
-        r.table('clovers')
-          .between([getVal, r.minval], [getVal, r.maxval], { index })
-          .orderBy({ index: asc ? r.asc(index) : r.desc(index) })
-          .slice(start, start + pageSize)
-          // .map((doc) => {
-          //   return doc.merge({
-          //     lastOrder: r.table('orders')
-          //       .getAll(doc('board'), { index: 'market' })
-          //       .orderBy(r.desc('created'), r.desc('transactionIndex'))
-          //       .limit(1).fold(null, (l, r) => r)
-          //   })
-          // })
-          .eqJoin('owner', r.table('users'), { ordered: true })
-          .without({ right: ['clovers', 'curationMarket'] })
-          .map((doc) => {
-            return doc('left').merge({
-              lastOrder: null,
-              user: doc('right').default(null)
-            })
-          })
-          .coerceTo('array')
-          .run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          }),
-        r.table('clovers')
-          .between([getVal, r.minval], [getVal, r.maxval], { index })
-          .count().run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          })
-      ]).catch((err) => {
+      let results, count
+      try {
+        const store = getStore()
+        const opts = { filter, sort: sort.substr(1), asc, page: currentPage, pageSize, x: multis }
+        // `count` deliberately does not apply the owner join -- see
+        // listCloversWithUsers. Matching the original, where allResults came
+        // from an unjoined .count().
+        count = store.countClovers(filter, multis)
+        results = store.listCloversWithUsers(opts)
+      } catch (err) {
         debug('query error')
         debug(err)
         return res.status(500).end()
-      })
+      }
 
-      const currentPage = Math.max((parseInt(query.page) || 1), 1)
       const hasNext = start + pageSize < count
       let prevPage = currentPage - 1 || null
       if (start >= count) {
@@ -147,7 +125,7 @@ export default ({ config, db, io }) => {
         let nft = {}
         nft.name = ''
         nft.description = 'This Clover ' + id + ' was created with the moves: n/a'
-        nft.image = 'https://api2.clovers.network/clovers/svg/' + id
+        nft.image = `${IMAGE_BASE_URL}/clovers/svg/${id}`
         nft.image_url = nft.image
         nft.external_url = 'https://clovers.network/clovers/' + id
         nft.home_url = nft.external_url
@@ -164,7 +142,7 @@ export default ({ config, db, io }) => {
         nft.name = clover.name
         nft.description = 'This Clover ' + clover.board + ' was created with the moves: ' + reversi.byteMovesToStringMoves(...clover.moves)
 
-        nft.image = 'https://api2.clovers.network/clovers/svg/' + clover.board
+        nft.image = `${IMAGE_BASE_URL}/clovers/svg/${clover.board}`
         nft.image_url = nft.image
 
         nft.external_url = 'https://clovers.network/clovers/' + clover.board
@@ -216,48 +194,20 @@ export default ({ config, db, io }) => {
     const index = 'clover'
     // debug('filter by', id)
 
-    let [results, count] = await Promise.all([
-      r.table('logs')
-        .between([id, r.minval], [id, r.maxval], { index: 'clovers' })
-        .orderBy({ index: asc ? r.asc('clovers') : r.desc('clovers') })
-        .slice(start, start + pageSize)
-        // include the users
-        .map((doc) => {
-          return doc.merge({
-            userAddresses: r.branch(
-              doc.hasFields('userAddresses'),
-              doc('userAddresses').map(u => {
-                return {
-                  id: u('id'),
-                  address: r.table('users')
-                    .get(u('address'))
-                    .default({address: u('address')})
-                    .without('clovers', 'curationMarket')}
-              }),
-              doc.hasFields('userAddress'),
-              doc('userAddress'),
-              []
-            )
-          })
-        })
-        .coerceTo('array')
-        .run(db, (err, data) => {
-          if (err) throw new Error(err)
-          return data
-        }),
-      r.table('logs')
-        .between([id, r.minval], [id, r.maxval], { index: 'clovers' })
-        .count().run(db, (err, data) => {
-          if (err) throw new Error(err)
-          return data
-        })
-    ]).catch((err) => {
+    const currentPage = Math.max((parseInt(req.query.page) || 1), 1)
+
+    let results, count
+    try {
+      const store = getStore()
+      count = store.countLogsForClover(id)
+      results = store.logsForClover(id, { page: currentPage, pageSize, asc })
+        .map(l => store.hydrateLogUsers(l))
+    } catch (err) {
       debug('query error')
       debug(err)
       return res.status(500).end()
-    })
+    }
 
-    const currentPage = Math.max((parseInt(req.query.page) || 1), 1)
     const hasNext = start + pageSize < count
     let prevPage = currentPage - 1 || null
     if (start >= count) {
@@ -324,7 +274,10 @@ export default ({ config, db, io }) => {
     if (s !== semiSecretToken) return res.sendStatus(401).end()
 
     const { id } = req.params
-    const clover = await r.table('clovers').get(id).default(false).run(db)
+    // syncPending was handed [false] when the clover did not exist, and read
+    // .board off it one frame later.
+    const clover = getStore().getClover(id)
+    if (!clover) return res.sendStatus(404).end()
     await syncPending(db, io, [clover])
     return res.sendStatus(200).end()
   })
@@ -333,9 +286,7 @@ export default ({ config, db, io }) => {
     const { s } = req.query
     if (s !== semiSecretToken) return res.sendStatus(401).end()
 
-    let pending = await r.table('clovers').between([true, r.minval], [true, r.maxval], {index: 'pending-modified'})
-    .orderBy({ index: r.asc('pending-modified') }).default([]).run(db)
-    pending = await pending.toArray()
+    const pending = getStore().pendingClovers()
     await syncPending(db, io, pending)
     return res.sendStatus(200).end()
   })
@@ -375,7 +326,7 @@ export default ({ config, db, io }) => {
     if (s !== semiSecretToken) return res.sendStatus(401).end()
 
     debug('sync all of em')
-    const allClovers = await dodb(db, r.table('clovers').coerceTo('array'))
+    const allClovers = getStore().allClovers()
 
     debug(`updating ${allClovers.length} clover(s)`)
 
@@ -416,8 +367,14 @@ export default ({ config, db, io }) => {
     let name = req.body.name || ''
     name = xss(name).substring(0, 34)
     load(req, id, async (err, clover) => {
-      const owner = clover.owner.toLowerCase() === user.toLowerCase()
-      if (err || !owner) {
+      // The check used to read clover.owner *before* testing err, so renaming a
+      // clover that does not exist threw a TypeError out of an async callback
+      // -- an unhandled rejection and a hung request -- instead of returning
+      // 404. Order matters here.
+      if (err || !clover) {
+        return res.sendStatus(404).end()
+      }
+      if (clover.owner.toLowerCase() !== user.toLowerCase()) {
         return res.sendStatus(401).end()
       }
 
@@ -427,63 +384,57 @@ export default ({ config, db, io }) => {
 
       // db update
       const modified = await provider.getBlockNumber()
+      const store = getStore()
 
-      r.table('clovers')
-      .get(clover.board)
-      .update({ name, modified }, { returnChanges: true })
-      .run(db, (err, { changes }) => {
-        if (err) {
-          return res.sendStatus(500).end()
+      const oldName = clover.name
+      let updated
+      try {
+        updated = store.updateClover(clover.board, { name, modified })
+      } catch (err) {
+        debug(err)
+        return res.sendStatus(500).end()
+      }
+
+      if (updated.new_val) {
+        // keep lastOrder etc
+        clover = { ...clover, ...updated.new_val }
+      }
+
+      // create log entry
+      const log = {
+        id: uuid(),
+        name: 'CloverName_Changed',
+        removed: false,
+        blockNumber: modified,
+        userAddresses: [],
+        data: {
+          board: clover.board,
+          owner: clover.owner,
+          prevName: oldName,
+          newName: clover.name,
+          changedAt: new Date()
         }
+      }
 
-        const oldName = clover.name
+      try {
+        store.insertLog(log)
+        io.emit('newLog', log)
+      } catch (err) {
+        debug('chat log not saved')
+        debug(err)
+      }
 
-        if (changes[0]) {
-          // keep lastOrder etc
-          clover = { ...clover, ...changes[0].new_val }
-        }
+      try {
+        // force-update OpenSea
+        const tokenId = new BigNumber(id).toFixed()
+        const openseaUrl = `https://api.opensea.io/api/v1/asset/${cloversAddress}/${tokenId}/?force_update=true`
+        http.get(openseaUrl)
+      } catch (err) {
+        console.log(err)
+      }
 
-        // create log entry
-        const log = {
-          id: uuid(),
-          name: 'CloverName_Changed',
-          removed: false,
-          blockNumber: modified,
-          userAddresses: [],
-          data: {
-            board: clover.board,
-            owner: clover.owner,
-            prevName: oldName,
-            newName: clover.name,
-            changedAt: new Date()
-          }
-        }
-
-        r.table('logs').insert(log)
-        .run(db, (err) => {
-          if (err) {
-            debug('chat log not saved')
-            debug(err)
-          } else {
-            io.emit('newLog', log)
-          }
-        })
-
-        try {
-          // force-update OpenSea
-          const tokenId = new BigNumber(id).toFixed()
-          const openseaUrl = `https://api.opensea.io/api/v1/asset/${cloversAddress}/${tokenId}/?force_update=true`
-          http.get(openseaUrl)
-
-          // debug('update OpenSea')
-          // debug(openseaUrl)
-        } catch (err) {
-          console.log(err)
-        }
-
-        io.emit('updateClover', clover)
-        res.sendStatus(200).end()
-      })
+      io.emit('updateClover', clover)
+      res.sendStatus(200).end()
     })
   })
 

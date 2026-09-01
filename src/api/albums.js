@@ -1,7 +1,8 @@
 const debug = require('debug')('app:api:albums')
 import resource from 'resource-router-middleware'
-import r from 'rethinkdb'
-import { toRes, userTemplate, albumTemplate, makeUser } from '../lib/util'
+import { albumTemplate, makeUser } from '../lib/util'
+import { getStore } from '../lib/store'
+import { onChange } from '../lib/store/changes'
 import basicAuth from 'express-basic-auth'
 import { auth } from '../middleware/auth'
 import xss from 'xss'
@@ -13,20 +14,12 @@ import escapeRegex from 'escape-string-regexp'
 // const whitelist = []
 
 export default ({ config, db, io }) => {
-  const load = (req, id, callback) => {
-    r.table('albums')
-    .get(id)
-    .default({})
-    .do((doc) => {
-      return doc.merge({
-        user: r.table('users').get(doc('userAddress'))
-        .without('clovers', 'curationMarket').default(null)
-      })
-    })
-    .run(db, (res) => {
-      callback(res)
-    })
-  }
+  // This ran a query and then passed its result into run()'s *error* argument
+  // -- `(res) => callback(res)` where the signature is (err, result). On
+  // success that argument is null, so the query's result was thrown away and
+  // req.id was never set; `read` below re-fetches by req.params.id anyway. It
+  // was a no-op that cost a join per request, so it is one openly now.
+  const load = (req, id, callback) => callback()
 
   let router = resource({
     load,
@@ -39,33 +32,15 @@ export default ({ config, db, io }) => {
       if (s) {
         // debug('search albums')
 
-        s = escapeRegex(s)
-
-        let results = await r.table('albums').filter((doc) => {
-          return doc('name').match(`(?i)${s}`)
-        }).map((doc) => {
-          return doc.merge({
-            user: r.table('users').get(doc('userAddress'))
-          })
-        }).coerceTo('array').run(db, (err, data) => {
-          if (err) throw new Error(err)
-          return data
-        })
-
-        return res.status(200).json(results).end()
+        return res.status(200).json(getStore().searchAlbums(s)).end()
       }
 
       const { clover } = query
       if (clover) {
         // debug('albums by clover')
 
-        let results = await r.table('albums').getAll(clover.toLowerCase(), { index: 'clovers' })
-          .pluck('id', 'clovers', 'name', 'userAddress').coerceTo('array')
-          .orderBy(r.desc('name'))
-          .run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          })
+        const results = getStore().albumsContainingClover(clover)
+          .map(({ id, clovers, name, userAddress }) => ({ id, clovers, name, userAddress }))
         return res.status(200).json(results).end()
       }
 
@@ -79,34 +54,28 @@ export default ({ config, db, io }) => {
       const index = !query.filter || query.filter === '' || !indexes.includes(query.filter) ? 'all' : query.filter
       // debug('filter by', index, sort)
 
-      let [results, count] = await Promise.all([
-        r.table('albums')
-          .getAll(true, { index })
-          .orderBy(asc ? r.asc(sort) : r.desc(sort))
-          .slice(start, start + pageSize)
-          .map((doc) => {
-            return doc.merge({
-              user: r.table('users').get(doc('userAddress'))
-              .without('clovers', 'curationMarket').default(null)
-            })
-          })
-          .run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          }),
-        r.table('albums')
-          .getAll(true, { index })
-          .count().run(db, (err, data) => {
-            if (err) throw new Error(err)
-            return data
-          })
-      ]).catch((err) => {
+      // Every filter selects the same rows now. `name`, `userAddress`,
+      // `dates` and `cloverCount` used to select nothing at all -- see
+      // store.countAlbums. Where the filter names a real column it doubles as
+      // the sort key, so ?filter=cloverCount orders by clover count instead of
+      // returning an empty 404.
+      const SORTABLE = ['name', 'userAddress', 'created', 'modified', 'cloverCount']
+      const orderBy = SORTABLE.includes(query.sort) ? query.sort
+        : SORTABLE.includes(index) ? index
+        : sort
+      const currentPage = Math.max((parseInt(query.page) || 1), 1)
+
+      let results, count
+      try {
+        const store = getStore()
+        count = store.countAlbums()
+        results = store.listAlbums({ sort: orderBy, asc, page: currentPage, pageSize })
+          .map(a => store.withAlbumUser(a))
+      } catch (err) {
         debug('query error')
         debug(err)
         return res.status(500).end()
-      })
-
-      const currentPage = Math.max((parseInt(query.page) || 1), 1)
+      }
       const hasNext = start + pageSize < count
       let prevPage = currentPage - 1 || null
       if (start >= count) {
@@ -120,7 +89,7 @@ export default ({ config, db, io }) => {
         pageResults: results.length,
         filterBy: index,
         sort: asc ? 'ascending' : 'descending',
-        orderBy: sort,
+        orderBy,
 
         results
       }
@@ -133,21 +102,17 @@ export default ({ config, db, io }) => {
     async read (req, res) {
       const { id } = req.params
 
-      const result = await r.table('albums').get(id)
-        .do((doc) => {
-          return doc.merge({
-            user: r.table('users').get(doc('userAddress'))
-            .without('clovers', 'curationMarket').default(null)
-          })
-        })
-        .default({})
-        .run(db)
-        .catch((err) => {
-          debug('query error')
-          debug(err)
-          return res.status(500).end()
-        })
-
+      let result
+      try {
+        const store = getStore()
+        // .default({}) -- a miss is an empty object, not a 404. Preserved
+        // because the status below tests truthiness, and {} is truthy.
+        result = store.withAlbumUser(store.getAlbum(id)) || {}
+      } catch (err) {
+        debug('query error')
+        debug(err)
+        return res.status(500).end()
+      }
 
       const status = result ? 200 : 404
       res.status(status).json(result).end()
@@ -157,19 +122,18 @@ export default ({ config, db, io }) => {
   router.get('/list/:index', async (req, res) => {
     let { index } = req.params
     index = index || 'all'
-    let result = await r.table('albums')
-      .getAll(true, { index })
-      .pluck('id', 'clovers', 'name', 'userAddress')
-      .map((doc) => {
-        return doc.merge({
-          user: r.table('users').get(doc('userAddress'))
-          .without('clovers', 'curationMarket').default(null)
+    try {
+      const store = getStore()
+      const result = store.listAlbums({ pageSize: -1 })
+        .map(a => {
+          const { id, clovers, name, userAddress } = a
+          return { ...store.withAlbumUser({ id, clovers, name, userAddress }) }
         })
-      }).coerceTo('array').run(db).catch((err) => {
-        console.error(err)
-        res.result(500).end()
-      })
       res.status(200).json(result).end()
+    } catch (err) {
+      console.error(err)
+      res.status(500).end()
+    }
   })
 
   // Authentication header required
@@ -188,9 +152,9 @@ export default ({ config, db, io }) => {
       return res.status(401).end()
     }
 
-    let user = await r.table('users')
-      .get(userAddress.toLowerCase()).default({})
-      .pluck('address', 'name').run(db)
+    const store = getStore()
+    const existing = store.getUser(userAddress)
+    let user = existing ? { address: existing.address, name: existing.name } : {}
 
     // if user doesn't exist make them
     if (!user.address) {
@@ -203,11 +167,7 @@ export default ({ config, db, io }) => {
       return res.status(400).send('No album name provided')
     }
 
-    const albumExists = await r.table('albums')
-    .getAll(albumName.toLowerCase(), { index: 'name' }).count().run(db).catch((err, data) => {
-      if (err) console.error({err})
-      return data
-    })
+    const albumExists = store.albumsByName(albumName).length
 
     if (albumExists > 0) {
       // album already named this
@@ -215,8 +175,8 @@ export default ({ config, db, io }) => {
     }
 
     try {
-      await verifyClovers(clovers, db)
-    } catch(error) {
+      verifyClovers(clovers)
+    } catch (error) {
       res.status(400).send(error.message)
       return
     }
@@ -226,42 +186,56 @@ export default ({ config, db, io }) => {
       debug(err.toString())
       return 0
     })
-    // save it
-    r.table('albums')
-    .insert(album).run(db, async (err, { generated_keys }) => {
-      if (err) {
-        debug('db run error')
-        res.sendStatus(500).end()
-        return
-      }
-      // emit an event pls
-      const log = {
-        id: uuid(),
-        name: 'Album_Created',
-        removed: false,
-        blockNumber: blockNum,
-        userAddress: null, // necessary data below
-        data: {
-          id: generated_keys[0],
-          userAddress: album.userAddress,
-          name: album.name,
-          board: album.clovers.length > 0 && album.clovers[0],
-          createdAt: new Date()
-        },
-        userAddresses: []
-      }
-      r.table('logs').insert(log)
-        .run(db, (err) => {
-          if (err) {
-            debug('album log not saved')
-            debug(err)
-          } else {
-            io.emit('newLog', log)
-          }
-          res.json({ ...album, id: generated_keys[0] }).end()
-        })
-    })
+    // save it. The store assigns the primary key, so there is no
+    // generated_keys to read back -- the saved row already carries it.
+    let saved
+    try {
+      saved = store.insertAlbum(album).new_val
+    } catch (err) {
+      debug('db run error')
+      debug(err)
+      res.sendStatus(500).end()
+      return
+    }
 
+    // DELIBERATE CHANGE, not a port artifact: the original recomputed
+    // albumCount on PUT and DELETE but not on POST, so creating an album left
+    // the owner's count stale until they next edited or deleted one -- which
+    // is what /users?filter=albums sorts on. Recomputing here is idempotent
+    // and makes the three write paths agree. Revert this one line to restore
+    // the old behaviour exactly.
+    store.recomputeAlbumCount(album.userAddress)
+
+    // emit an event pls
+    const log = {
+      id: uuid(),
+      name: 'Album_Created',
+      removed: false,
+      blockNumber: blockNum,
+      userAddress: null, // necessary data below
+      data: {
+        id: saved.id,
+        userAddress: album.userAddress,
+        name: album.name,
+        // `x.length > 0 && x[0]` yields the boolean `false` for an empty
+        // album, not a missing field. 2,388 rows in production carry
+        // `board: false`, and ReQL's clovers index called .downcase() on it,
+        // errored, and dropped the row -- so album logs are silently absent
+        // from every clover's activity feed. null keeps them out of a board's
+        // feed without lying about the type.
+        board: album.clovers.length > 0 ? album.clovers[0] : null,
+        createdAt: new Date()
+      },
+      userAddresses: []
+    }
+    try {
+      store.insertLog(log)
+      io.emit('newLog', log)
+    } catch (err) {
+      debug('album log not saved')
+      debug(err)
+    }
+    res.json(saved).end()
   })
 
   router.put('/:id', async (req, res) => {
@@ -278,9 +252,9 @@ export default ({ config, db, io }) => {
       return
     }
 
-    let user = await r.table('users')
-      .get(userAddress.toLowerCase()).default({})
-      .pluck('address', 'name').run(db)
+    const store = getStore()
+    const existingUser = store.getUser(userAddress)
+    let user = existingUser ? { address: existingUser.address, name: existingUser.name } : {}
 
     // if user doesnt exist add them to db
     if (!user.address) {
@@ -289,14 +263,17 @@ export default ({ config, db, io }) => {
       user = await makeUser(db, io, userAddress, await provider.getBlockNumber())
     }
 
-    let albums = await r.table('albums').getAll(albumName.toLowerCase(), { index: 'name' }).pluck('id').coerceTo('array').run(db)
+    const albums = store.albumsByName(albumName)
 
     // check if album already exists with name but with different id
     if (albums.length > 0 && albums[0].id !== id) {
       return res.status(401).send('Different album with that name already exists')
     }
 
-    let album = await r.table('albums').get(id).run(db)
+    const album = store.getAlbum(id)
+    if (!album) {
+      return res.status(404).end()
+    }
 
     albumName = xss(albumName)
     // check if albumName was changed
@@ -306,7 +283,7 @@ export default ({ config, db, io }) => {
     }
 
     try {
-      await verifyClovers(clovers, db)
+      verifyClovers(clovers)
     } catch (error) {
       return res.status(500).send(error.message)
     }
@@ -333,58 +310,51 @@ export default ({ config, db, io }) => {
     })
     album.name = albumName
     album.clovers = clovers
-    album.modified = new Date()
+    // `modified` is an ISO string everywhere else in this table; a Date object
+    // only worked because the driver serialised it. Write the string.
+    album.modified = new Date().toISOString()
     // update it
-    r.table('albums').get(id).update({
-      name: album.name,
-      clovers: album.clovers,
-      modified: album.modified
-    }).run(db, async (err,  _) => {
-      if (err) {
-        console.error('db run error')
-        res.status(500).end()
-        return
-      }
-
-      // update the user
-      await r.table('users').get(user.address).update({
-        albumCount: r.table('albums')
-          .getAll(user.address, { index: 'userAddress' })
-          .count()
-      }, { nonAtomic: true }).run(db)
-
-      // emit an event pls
-      const log = {
-        id: uuid(),
-        name: 'Album_Updated',
-        removed: false,
-        blockNumber: blockNum,
-        userAddress: null, // necessary data below
-        data: {
-          id,
-          userAddress: user.address,
-          name: albumName,
-          board: clovers.length > 0 && clovers[0],
-          createdAt: new Date()
-        },
-        userAddresses: []
-      }
-
-      r.table('logs').insert(log)
-        .run(db, (err) => {
-          if (err) {
-            debug('album log not saved')
-            debug(err)
-          } else {
-            try {
-              io.emit('newLog', log)
-            } catch (error) {
-              console.error(error)
-            }
-          }
-          res.status(200).json({ ...album, id }).end()
-        })
+    try {
+      store.updateAlbum(id, {
+        name: album.name,
+        clovers: album.clovers,
+        modified: album.modified
       })
+    } catch (err) {
+      console.error('db run error')
+      console.error(err)
+      res.status(500).end()
+      return
+    }
+
+    // update the user
+    store.recomputeAlbumCount(user.address)
+
+    // emit an event pls
+    const log = {
+      id: uuid(),
+      name: 'Album_Updated',
+      removed: false,
+      blockNumber: blockNum,
+      userAddress: null, // necessary data below
+      data: {
+        id,
+        userAddress: user.address,
+        name: albumName,
+        board: clovers.length > 0 ? clovers[0] : null,
+        createdAt: new Date()
+      },
+      userAddresses: []
+    }
+
+    try {
+      store.insertLog(log)
+      io.emit('newLog', log)
+    } catch (err) {
+      debug('album log not saved')
+      debug(err)
+    }
+    res.status(200).json({ ...album, id }).end()
   })
 
   router.delete('/:id', async (req, res) => {
@@ -394,22 +364,17 @@ export default ({ config, db, io }) => {
       return res.status(401).end()
     }
 
-    const album = await r.table('albums')
-      .get(id).run(db)
+    const store = getStore()
+    const album = store.getAlbum(id)
 
     if (!album || !album.id || album.userAddress !== userAddress.toLowerCase()) {
       return res.status(404).end()
     }
 
-    await r.table('albums')
-      .get(id).delete().run(db)
+    store.deleteAlbum(id)
 
     // update the user
-    await r.table('users').get(userAddress.toLowerCase()).update({
-      albumCount: r.table('albums')
-        .getAll(userAddress.toLowerCase(), { index: 'userAddress' })
-        .count()
-    }, { nonAtomic: true }).run(db)
+    store.recomputeAlbumCount(userAddress)
 
     res.status(200).end()
   })
@@ -418,7 +383,8 @@ export default ({ config, db, io }) => {
 }
 
 export function albumListener (server, db) {
-  const io = require('socket.io')(server, { path: '/albums' })
+  const { Server: SocketServer } = require('socket.io')
+  const io = new SocketServer(server, { path: '/albums', cors: { origin: '*' } })
   // let connections = 0
   // io.on('connection', (socket) => {
   //   debug('+1 album subscribers: ', connections += 1)
@@ -429,34 +395,27 @@ export function albumListener (server, db) {
   // })
 
   // listen to album changes :)
-  r.table('albums').changes().run(db, (err, cursor) => {
-    if (err) {
-      console.error(err)
-      return
+  //
+  // Was r.table('albums').changes(); the store emits the same {new_val,
+  // old_val} shape after every write. See lib/store/changes.js.
+  onChange('albums', (doc) => {
+    if (doc.new_val && !doc.old_val) {
+      debug('new album', doc.new_val.id)
+      io.emit('new album', doc.new_val)
+    } else if (!doc.new_val) {
+      // deleted comment
+      debug('album deleted', doc.old_val.id)
+      io.emit('delete album', doc.old_val)
+    } else {
+      // probably an update
+      debug('update album', doc.new_val.id)
+      io.emit('edit album', doc.new_val)
     }
-    cursor.each((err, doc) => {
-      if (err) {
-        console.error(err)
-        return
-      }
-      if (doc.new_val && !doc.old_val) {
-        debug('new album', doc.new_val.id)
-        io.emit('new album', doc.new_val)
-      } else if (!doc.new_val) {
-        // deleted comment
-        debug('album deleted', doc.old_val.id)
-        io.emit('delete album', doc.old_val)
-      } else {
-        // probably an update
-        debug('update album', doc.new_val.id)
-        io.emit('edit album', doc.new_val)
-      }
-    })
   })
 
 }
 
-async function verifyClovers(clovers, db) {
+function verifyClovers (clovers) {
   const regex = /\b(0x[0-9a-fA-F]+|[0-9]+)\b/g;
   clovers.forEach(c => {
     if (c.slice(0, 2) !== '0x') {
@@ -474,16 +433,10 @@ async function verifyClovers(clovers, db) {
 
   })
 
-  await asyncForEach(clovers, async (c) => {
-    var count = await r.table('clovers').getAll(c).count().run(db)
-    if (count !== 1) {
+  const store = getStore()
+  clovers.forEach(c => {
+    if (store.cloverExists(c) !== 1) {
       throw new Error(c + ' does not exist')
     }
   })
-}
-
-async function asyncForEach(array, callback) {
-  for (let index = 0; index < array.length; index++) {
-    await callback(array[index], index, array);
-  }
 }
