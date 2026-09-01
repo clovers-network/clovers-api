@@ -25,6 +25,12 @@ const API = 'https://api.clovers.network'
 const db = new DatabaseSync(dbPath)
 
 const ZERO = '0x0000000000000000000000000000000000000000'
+
+// Deliberate divergences: the port excludes burned clovers from the symmetry
+// filters, which the ReQL indexes did not. The exact expected delta is asserted
+// rather than the check being loosened, so a fix that changes more than it was
+// meant to still fails here. See migration/sqlite/README.md.
+const EXPECTED_DELTA = { Sym: -161, RotSym: -38, X0Sym: -68, XYSym: -8, XnYSym: -11, Y0Sym: -44 }
 const CLOVERS = '0xb55c5cac5014c662fdbf21a2c59cd45403c482fd'
 const PAGE = 24
 
@@ -58,6 +64,9 @@ const report = (ok, label, detail) => {
   ok ? pass++ : fail++
 }
 
+const burned = new Set(db.prepare(
+  `SELECT board FROM clovers WHERE lower(owner) = '${ZERO}'`).all().map(r => r.board))
+
 console.log('\nCLOVERS  (count, then ordered first page by modified desc)\n')
 for (const c of CLOVER_FILTERS) {
   let live
@@ -65,8 +74,11 @@ for (const c of CLOVER_FILTERS) {
   catch (e) { report(false, c.label, 'live API error: ' + e.message); continue }
 
   const n = db.prepare(`SELECT count(*) AS n FROM clovers WHERE ${c.where}`).get().n
-  const countOk = n === live.allResults
-  report(countOk, c.label + ' count', `sqlite ${String(n).padStart(6)}  api ${String(live.allResults).padStart(6)}`)
+  const delta = EXPECTED_DELTA[c.label] || 0
+  const countOk = n === live.allResults + delta
+  report(countOk, c.label + ' count',
+    `sqlite ${String(n).padStart(6)}  api ${String(live.allResults).padStart(6)}` +
+    (delta ? `  (${delta} burned, expected)` : ''))
 
   // The API sorts by modified descending and joins users, but board order is
   // what identifies the page.
@@ -78,6 +90,12 @@ for (const c of CLOVER_FILTERS) {
   // within a tie, so require set equality. Sequence equality would be testing
   // undefined behaviour. (A deterministic tiebreaker is worth adding to the
   // real queries -- see MIGRATION notes -- but it would differ from today.)
+  // Where a fix removed burned clovers, page 1 legitimately differs: accept it
+  // when every board live has that we do not is one we deliberately dropped.
+  const burnedOnly = delta > 0 || delta < 0
+    ? theirs.filter(b => !mine.includes(b)).every(b => burned.has(b)) &&
+      mine.every(b => theirs.includes(b) || !burned.has(b))
+    : false
   const sameSet = mine.length === theirs.length && mine.every(b => theirs.includes(b))
   const identical = JSON.stringify(mine) === JSON.stringify(theirs)
 
@@ -100,7 +118,7 @@ for (const c of CLOVER_FILTERS) {
     }
   }
 
-  report(sameSet || boundaryTie, c.label + ' page',
+  report(sameSet || boundaryTie || burnedOnly, c.label + ' page',
     identical ? `${mine.length} boards identical & in order`
               : sameSet ? `${mine.length} boards identical (tie order differs)`
                         : boundaryTie ? `differs only within a tie at the page boundary`

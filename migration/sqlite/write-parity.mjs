@@ -256,6 +256,139 @@ await checkCount('market filter agrees',
   r.db(DB).table('clovers').filter(row => row('price').ne(''.padStart(64, '0'))).count(),
   store.countClovers('market'))
 
+// --------------------------------------------------------------------------
+// 13. write paths added while porting the API layer
+// --------------------------------------------------------------------------
+
+// --- api/chats POST: comment, bump count, stamp modified -------------------
+const chat2 = { id: 'chat-2', board, comment: 'second', userAddress: bob,
+  userName: '', created: '2026-02-01T00:00:00.000Z', deleted: false, flagged: false }
+await rq(r.db(DB).table('chats').insert(chat2))
+store.insertChat(chat2)
+await check('post comment', 'chats', 'id', 'chat-2')
+
+await rq(r.db(DB).table('clovers').get(board).update({
+  commentCount: r.row('commentCount').add(1).default(0), modified: 500 }))
+store.bumpCommentCount(board, 1)
+store.updateClover(board, { modified: 500 })
+await check('commentCount bumped and modified stamped', 'clovers', 'board', board)
+
+// --- api/chats DELETE: flag rather than soft-delete ------------------------
+await rq(r.db(DB).table('chats').get('chat-2').update({
+  flagged: true, edited: '2026-02-02T00:00:00.000Z' }))
+store.updateChat('chat-2', { flagged: true, edited: '2026-02-02T00:00:00.000Z' })
+await check('comment flagged by clover owner', 'chats', 'id', 'chat-2')
+
+await rq(r.db(DB).table('chats').get('chat-2').delete())
+store.deleteChat('chat-2')
+await check('hard-deleted comment gone from both', 'chats', 'id', 'chat-2')
+
+// --- api/clovers PUT: rename, and the log it writes -------------------------
+await rq(r.db(DB).table('clovers').get(board).update({ name: 'Renamed', modified: 600 }))
+store.updateClover(board, { name: 'Renamed', modified: 600 })
+await check('clover renamed', 'clovers', 'board', board)
+
+const nameLog = { id: 'log-2', name: 'CloverName_Changed', removed: false,
+  blockNumber: 600, userAddresses: [],
+  data: { board, owner: bob, prevName: board, newName: 'Renamed' } }
+await rq(r.db(DB).table('logs').insert(nameLog))
+store.insertLog(nameLog)
+await check('CloverName_Changed log', 'logs', 'id', 'log-2')
+
+// --- clubTokenController: order insert, then the duplicate guard ------------
+const order = { id: 'ord-1', market: 'ClubToken', created: 700, transactionIndex: 3,
+  transactionHash: '0xfeed', logIndex: 9, type: 'buy', user: alice,
+  tokens: '1'.padStart(64, '0'), value: '2'.padStart(64, '0'),
+  poolBalance: '3'.padStart(64, '0'), tokenSupply: '4'.padStart(64, '0') }
+await rq(r.db(DB).table('orders').insert(order))
+store.insertOrder(order)
+await check('insert order', 'orders', 'id', 'ord-1')
+
+// The guard the model applies before inserting. RethinkDB's unique_log index is
+// not actually unique, so the app has to check first; SQLite would reject the
+// second row either way. Both must agree that the order is already there.
+{
+  const rFound = await rq(r.db(DB).table('orders')
+    .filter(row => row('transactionHash').eq('0xfeed').and(row('logIndex').eq(9)))
+    .count())
+  const sFound = store.findOrder('0xfeed', 9) ? 1 : 0
+  await checkCount('duplicate order is detected', r.expr(rFound), sFound)
+}
+
+// --- socketing / build: insertLogs must not duplicate -----------------------
+{
+  // transformLog never sets an id, so RethinkDB minted a fresh uuid per row and
+  // conflict:'update' could never fire -- which is how the duplicate log rows
+  // in production got there. Here the same log offered twice must land once.
+  const dupLog = { name: 'Clovers_Transfer', address: CLOVERS_ADDR, blockNumber: 800,
+    transactionHash: '0xcafe', transactionIndex: 0, logIndex: 1, removed: false,
+    data: { _from: alice, _to: bob, _tokenId: board }, userAddresses: [] }
+  await rq(r.db(DB).table('logs').insert([{ ...dupLog }, { ...dupLog }]))
+  store.insertLogs([{ ...dupLog }, { ...dupLog }])
+
+  const rCount = await rq(r.db(DB).table('logs')
+    .filter(row => row('transactionHash').eq('0xcafe')).count())
+  const sCount = sdb.prepare("SELECT count(*) n FROM logs WHERE transactionHash = '0xcafe'").get().n
+  console.log(`  ${sCount === 1 ? 'PASS' : 'FAIL'}  insertLogs deduplicates` +
+    `   rethink=${rCount} (duplicated) sqlite=${sCount}`)
+  sCount === 1 ? pass++ : fail++
+}
+
+// --- users PUT / makeUser: upsert keeps the row single ----------------------
+{
+  const patched = { address: alice, name: 'Alice', image: null, modified: 900 }
+  await rq(r.db(DB).table('users').insert(patched, { conflict: 'update' }))
+  store.insertUser(patched, { conflict: 'update' })
+  await check('user upsert patches in place', 'users', 'address', alice)
+}
+
+// --- albumCount bookkeeping -------------------------------------------------
+{
+  const alb = { id: 'alb-2', name: 'Second', userAddress: bob,
+    created: '2026-03-01T00:00:00.000Z', modified: '2026-03-01T00:00:00.000Z',
+    clovers: [board] }
+  await rq(r.db(DB).table('albums').insert(alb))
+  store.insertAlbum(alb)
+  await rq(r.db(DB).table('users').get(bob).update({
+    albumCount: r.db(DB).table('albums').filter(row => row('userAddress').eq(bob)).count()
+  }, { nonAtomic: true }))
+  store.recomputeAlbumCount(bob)
+  await check('albumCount recomputed', 'users', 'address', bob)
+}
+
+// --------------------------------------------------------------------------
+// 14. one writer plus a concurrent reader, on separate connections
+//
+// The remaining question WAL mode was supposed to answer. RethinkDB served
+// readers and the event listener from one server process; SQLite has to do it
+// with file locking, and a reader blocked behind the chain listener's write
+// would show up as API latency rather than as an error.
+// --------------------------------------------------------------------------
+{
+  const reader = new DatabaseSync(sqlitePath)
+  reader.exec('PRAGMA busy_timeout = 5000')
+  const rstore = createStore(reader, { cloversAddress: CLOVERS_ADDR })
+
+  let writes = 0, reads = 0
+  const errors = []
+  const started = Date.now()
+  while (Date.now() - started < 2000) {
+    try { store.updateClover(board, { modified: 1000000 + writes }); writes++ }
+    catch (err) { errors.push('write: ' + err.message) }
+    for (let i = 0; i < 20; i++) {
+      try { rstore.listClovers({ filter: 'market', page: 1 + (i % 5), pageSize: 24 }); reads++ }
+      catch (err) { errors.push('read: ' + err.message) }
+    }
+  }
+  const fresh = rstore.getClover(board).modified === 1000000 + writes - 1
+  const ok = errors.length === 0 && fresh && writes > 0 && reads > 0
+  console.log(`  ${ok ? 'PASS' : 'FAIL'}  concurrent reader + writer` +
+    `   ${writes} writes, ${reads} reads, ${errors.length} errors, reader current: ${fresh}`)
+  if (errors.length) console.log(`          ${[...new Set(errors)][0]}`)
+  ok ? pass++ : fail++
+  reader.close()
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed\n`)
 conn.close()
 process.exit(fail ? 1 : 0)
