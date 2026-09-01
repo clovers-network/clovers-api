@@ -4,55 +4,68 @@
 // node_modules, so `npm install` correctly pruned it and the API then
 // crash-looped on 'Cannot find module ethjs'. Removed rather than declared.
 import sigUtil from 'eth-sig-util'
-import debug from 'debug'
+import createDebug from 'debug'
 // import utils from 'ethereumjs-util'
-var msgParams = [{
-  type: 'string',
-  name: 'Message',
-  value: 'Please sign this message to authenticate with Clovers - '
-}]
 
-// function checkAddress (ctx, address) {
-//   console.log('checkAddress')
-//   if (!eth.isAddress(address)) {
-//     ctx.throw(400, 'Invalid ETH address')
-//   }
-// }
+const debug = createDebug('app:auth')
 
+/**
+ * The message the client is expected to have signed.
+ *
+ * Built fresh on every call. It used to be a module-level array that this
+ * function mutated with `+=`, so the expected value accumulated:
+ *
+ *   call 1   "...with Clovers - 9/2026"
+ *   call 2   "...with Clovers - 9/20269/2026"
+ *   call 3   "...with Clovers - 9/20269/20269/2026"
+ *
+ * Every authenticated request after the first was therefore checked against a
+ * message no client would ever sign.
+ */
+function expectedMessage () {
+  const now = new Date()
+  return [{
+    type: 'string',
+    name: 'Message',
+    value: 'Please sign this message to authenticate with Clovers - ' +
+      (now.getMonth() + 1) + '/' + now.getFullYear()
+  }]
+}
+
+/**
+ * Verify that `signature` was produced by `wallet`.
+ *
+ * SECURITY: this returned `matches || new Error('try again')` on the typed-data
+ * path. express-basic-auth authorises on any truthy return, and an Error object
+ * is truthy -- so a mismatch authorised the request. Any valid signature from
+ * any key authenticated as any address: rename anyone's clover, comment as
+ * anyone, delete anyone's album. Confirmed exploitable over HTTP before the fix.
+ *
+ * It must return a boolean, and only true when the recovered address is the
+ * claimed one.
+ */
 export function auth (wallet, signature) {
-  console.log('auth', wallet)
+  if (typeof wallet !== 'string' || typeof signature !== 'string') return false
+  const data = expectedMessage()
+
   try {
-    var now = new Date()
-    msgParams[0].value += (now.getMonth() + 1) + '/' + now.getFullYear()
-    const recovered = sigUtil.recoverTypedSignature({
-      data: msgParams,
+    const recovered = sigUtil.recoverTypedSignature({ data, sig: signature })
+    debug('typed signature recovered %s for %s', recovered, wallet)
+    return wallet.toLowerCase() === recovered.toLowerCase()
+  } catch (err) {
+    debug('typed recovery failed: %s', err.message)
+  }
+
+  // Some wallets sign the same string as a personal message instead.
+  try {
+    const recovered = sigUtil.recoverPersonalSignature({
+      data: data[0].value,
       sig: signature
     })
-    console.log(recovered)
-    return wallet.toLowerCase() === recovered.toLowerCase() || new Error('try again')
+    debug('personal signature recovered %s for %s', recovered, wallet)
+    return wallet.toLowerCase() === recovered.toLowerCase()
   } catch (err) {
-    console.log('first sig recovery failed')
-    try {
-      var personal = { data: msgParams[0].value }
-      personal.sig = signature
-      const recovered = sigUtil.recoverPersonalSignature(personal)
-
-      // for web3.eth.sign //
-      // const hash = msg = utils.keccak256(msgParams[0].value)
-      // const sigParams = utils.fromRpcSig(signature)
-      // const hashBuffer = utils.toBuffer(hash)
-      // const result = utils.ecrecover(
-      //   hashBuffer,
-      //   sigParams.v,
-      //   sigParams.r,
-      //   sigParams.s
-      // )
-      // const recovered = utils.bufferToHex(utils.publicToAddress(result))
-      return wallet.toLowerCase() === recovered.toLowerCase()
-    } catch (err) {
-      console.log('second sig recovery failed')
-      console.log(err)
-      return false
-    }
+    debug('personal recovery failed: %s', err.message)
+    return false
   }
 }
