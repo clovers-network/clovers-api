@@ -90,7 +90,12 @@ initializeDb((db) => {
         process.exit(1)
       })
   } else {
-    const io = require('socket.io')(app.server)
+    // socket.io 4. The dapp has shipped socket.io-client 4.x for a while and
+    // the server was still on 2.1.1, which the v4 client refuses to talk to --
+    // so realtime has been dead in production, not just here. v3+ also needs
+    // CORS stated explicitly; `*` matches the express cors() above.
+    const { Server: SocketServer } = require('socket.io')
+    const io = new SocketServer(app.server, { cors: { origin: '*' } })
     commentListener(app.server, db)
 
     // internal middleware
