@@ -19,13 +19,16 @@ WORKDIR /app
 #     unpacks a 23 MB binary this app never invokes.
 # Skipping both means the image needs no compiler, no Python and no bzip2.
 COPY package.json package-lock.json ./
+# Build with the full tree -- babel-cli and the presets are needed to compile.
 RUN npm ci --ignore-scripts --no-audit --no-fund
-
-# Dev dependencies are installed on purpose: .babelrc uses transform-runtime, so
-# the compiled dist/ requires babel-runtime at runtime, and babel-runtime is a
-# devDependency. `npm ci --omit=dev` produces an app that cannot start.
 COPY . .
 RUN npm run build
+
+# Then drop to production dependencies only. This works because babel-runtime
+# was moved into `dependencies`: .babelrc uses transform-runtime, so the
+# compiled dist/ requires it at runtime, and while it was a devDependency
+# `--omit=dev` produced an app that could not start. 641 packages -> 447.
+RUN npm prune --omit=dev --no-audit --no-fund
 
 # The database lives on a mounted volume, not in the image.
 ENV SQLITE_PATH=/data/clovers_chain_1.db
