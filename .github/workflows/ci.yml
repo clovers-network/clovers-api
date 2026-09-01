@@ -63,6 +63,12 @@ jobs:
       # in the script are production's.
       - run: node migration/sqlite/query-audit.mjs /tmp/fixture.db --max-scans=2 --max-sorts=2
 
+      # /clovers/verify signs a claim on the JS engine's verdict, so that engine
+      # has to agree with the one inside CloversController. Same vectors as
+      # clovers-contracts/foundry/test/Reversi.t.sol. Cheap, and the failure
+      # mode it guards against -- signatures that revert on chain -- is not.
+      - run: node migration/sqlite/engine-parity.mjs
+
       - name: authenticated writes and realtime delivery
         run: |
           cp /tmp/fixture.db /tmp/w.db
