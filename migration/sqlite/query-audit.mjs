@@ -6,7 +6,10 @@
  * EXPLAIN QUERY PLAN says about it. The point is to find N+1s and full scans by
  * observation rather than by reading the code and guessing.
  *
- * Usage: node query-audit.mjs [/tmp/clovers.db]
+ * Usage: node query-audit.mjs [db] [--max-scans=N] [--max-sorts=N] [--max-repeat=N]
+ *
+ * Defaults are the production figures. Against the synthetic fixture the
+ * planner legitimately chooses differently; see the note on the thresholds.
  */
 
 import { DatabaseSync } from 'node:sqlite'
@@ -149,9 +152,24 @@ console.log(`\n  ${seen.size} distinct statements: ${scans} full table scans, ${
 // designed out and should stay out. Raising these numbers should require an
 // argument, not a shrug.
 // --------------------------------------------------------------------------
-const ALLOWED_SCANS = 1   // users, substring search
-const ALLOWED_SORTS = 1   // the same statement
-const ALLOWED_REPEATS = 24  // one user lookup per row of a 24-row page
+// Scan and sort counts depend on how much data there is: SQLite's planner
+// scans a small table because scanning it really is cheaper, and prefers the
+// index once the table is big. That is correct behaviour, not a regression, so
+// the expected values are arguments rather than constants -- the defaults are
+// the production figures, and CI passes the fixture's.
+//
+// The repeat threshold is different: 24 user lookups per page of 24 rows is
+// structural, not statistical, so the same number holds on any dataset.
+//
+// The one scan that is inherent at any size is substring search: LIKE
+// '%needle%' has no index that can help it, and it sorts what it finds.
+const flag = (k, d) => {
+  const h = process.argv.find(a => a.startsWith(`--${k}=`))
+  return h ? Number(h.slice(k.length + 3)) : d
+}
+const ALLOWED_SCANS = flag('max-scans', 1)
+const ALLOWED_SORTS = flag('max-sorts', 1)
+const ALLOWED_REPEATS = flag('max-repeat', 24)
 
 let failed = 0
 const assert = (ok, msg) => { console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${msg}`); if (!ok) failed++ }

@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [master, sqlite-migration]
+  pull_request:
+
+jobs:
+  build:
+    name: build and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npx eslint src --max-warnings 99
+      # The deploy installs without dev dependencies. That only works because
+      # babel-runtime sits in `dependencies` -- while it did not, --omit=dev
+      # produced an app that could not start, and nothing caught it.
+      - name: production install boots
+        run: |
+          npm ci --omit=dev --ignore-scripts
+          node -e "require('./dist/lib/store/sqlite.js'); console.log('dist loads without dev dependencies')"
+
+  writes:
+    name: write parity vs RethinkDB
+    runs-on: ubuntu-latest
+    services:
+      rethinkdb:
+        image: rethinkdb:2.4
+        ports: ['28016:28015']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      # Runs every mutation against a real RethinkDB and against SQLite and
+      # compares the rows field by field, so the port is checked against the
+      # thing it replaced rather than against a description of it. Includes the
+      # concurrency check: a writer and a reader on separate connections.
+      - run: node migration/sqlite/write-parity.mjs
+
+  endpoints:
+    name: endpoints, auth and query plans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      # The real database is 371 MB of production rows and cannot live in a
+      # repository, so CI builds a synthetic one that reproduces the shapes
+      # that caused bugs -- burned clovers, unpadded prices, polymorphic
+      # foundBy, `board: false` album logs, a duplicate order.
+      - run: node migration/sqlite/make-fixture.mjs /tmp/fixture.db
+
+      # Scan and sort counts depend on table size, because the planner scans a
+      # small table on purpose. These are the fixture's figures; the defaults
+      # in the script are production's.
+      - run: node migration/sqlite/query-audit.mjs /tmp/fixture.db --max-scans=2 --max-sorts=2
+
+      - name: authenticated writes and realtime delivery
+        run: |
+          cp /tmp/fixture.db /tmp/w.db
+          SQLITE_PATH=/tmp/w.db PORT=4597 CHAIN_LISTENER=off node dist/index.js &
+          for i in $(seq 1 40); do curl -sf -o /dev/null http://127.0.0.1:4597/clovers && break; sleep 1; done
+          SQLITE_PATH=/tmp/w.db API=http://127.0.0.1:4597 node migration/sqlite/write-endpoints.mjs
+
+  image:
+    name: container builds and serves
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm }
+      - run: npm ci --ignore-scripts && node migration/sqlite/make-fixture.mjs /tmp/fixture.db
+      - run: docker build -t clovers-api:ci .
+      - name: boots against a volume
+        run: |
+          docker volume create ci >/dev/null
+          docker run --rm -v ci:/data -v /tmp/fixture.db:/s.db:ro clovers-api:ci \
+            sh -c 'cp /s.db /data/clovers_chain_1.db'
+          docker run -d --name ci -v ci:/data -p 4444:4444 -e CHAIN_LISTENER=off clovers-api:ci
+          for i in $(seq 1 40); do curl -sf -o /dev/null http://127.0.0.1:4444/clovers && break; sleep 2; done
+          curl -sf http://127.0.0.1:4444/clovers | head -c 80
+          curl -sf -o /dev/null -w '\n/svg alias: %{http_code}\n' \
+            http://127.0.0.1:4444/svg/$(curl -s http://127.0.0.1:4444/clovers | node -e \
+            "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>process.stdout.write(JSON.parse(s).results[0].board))")/50

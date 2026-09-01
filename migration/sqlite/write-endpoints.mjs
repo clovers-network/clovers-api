@@ -14,9 +14,9 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const sigUtil = require('eth-sig-util')
 const { DatabaseSync } = await import('node:sqlite')
-// socket.io-client is not a dependency of the API -- it is the dapp's. Resolve
-// it from there rather than adding a dependency just to test one.
-const io = require(require.resolve('socket.io-client', { paths: ['../clovers-dapp/node_modules', '/Users/billy/GitHub/clovers-network/clovers-dapp'] }))
+// A devDependency: the point of this suite is to exercise the socket the way
+// the dapp does, with the same client major version the dapp ships.
+const io = require('socket.io-client')
 const crypto = await import('crypto')
 
 const API = process.env.API || 'http://127.0.0.1:4597'
