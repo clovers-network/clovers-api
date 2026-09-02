@@ -206,3 +206,54 @@ Netlify's normal path for externally-hosted DNS. A certificate warning on the
 apex after that date points here, and the fix is to re-trigger provisioning.
 
 Moot if the frontend has moved off Netlify by then.
+
+
+---
+
+# Pointing a hostname at Fly: get the certificate first
+
+`api.clovers.network` was moved to Fly on 2026-09-02 and HTTPS was down for
+several minutes. The cause is worth recording because the mistake reads as
+correct.
+
+`fly certs add <hostname>` **creates** a certificate record. It does not issue
+one. Issuance needs validation, and validation needs the hostname to point
+somewhere Fly controls — so if the only step taken is moving the A/AAAA records,
+there is a window where DNS resolves to Fly, Fly answers on port 80, and HTTPS
+answers nothing at all. Every API call over TLS fails during that window.
+
+This bites harder on an app with only Fly's **shared** IPv4. `fly ips list`
+showed `66.241.125.197 (shared)` here, with a dedicated IPv6. During the gap:
+
+    http  via 66.241.125.197  -> 301   Fly's edge is reachable
+    https via 66.241.125.197  -> 000   no certificate
+    fly certs check           -> Not verified
+
+It did resolve on its own — the certificate issued about six minutes after DNS
+landed, `notBefore Sep 2 16:16:53`. But the duration is not knowable in advance,
+which is the problem.
+
+`fly certs setup <hostname>` names the record that removes the gap entirely:
+
+    CNAME _acme-challenge.api.clovers.network -> api.clovers.network.<id>.flydns.net.
+
+Fly's own note on it is easy to skim past: *"Only needed if you want to generate
+the certificate before directing traffic to your application."* That is exactly
+what a live cutover wants.
+
+**So the order is:**
+
+1. `fly certs add <hostname>`
+2. Add the `_acme-challenge` CNAME
+3. Poll `fly certs check <hostname>` until it reports **Issued** — traffic is
+   still going to the old host, so this costs nothing
+4. *Then* move the A/AAAA records
+
+Doing 1 and 4 without 2 and 3 is a cutover with a TLS gap of unknown length.
+
+One coordination note, since two people were watching: "Not verified" and a
+healthy 200 were both accurate readings taken either side of issuance. If a
+cutover is being verified by more than one person, agree beforehand that the
+signal to trust is `fly certs check` reporting Issued, not the first HTTPS
+response — otherwise a mid-issuance sample looks like a failed cutover and
+invites a rollback that would cause the outage it is trying to prevent.
