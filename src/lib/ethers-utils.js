@@ -6,6 +6,7 @@ import {
   SimpleCloversMarket,
   ClubTokenController
 } from 'clovers-contracts'
+import { oraclePrivateKey } from './oracle-key'
 
 export var ethers = require('ethers')
 
@@ -69,7 +70,7 @@ let cloversControllerInstance = new ethers.Contract(
 //   cloversControllerAddress
 // )
 
-export const walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
+export const walletProvider = new ethers.Wallet(oraclePrivateKey(), provider)
 
 export let wallet = {
   CloversController: new ethers.Contract(

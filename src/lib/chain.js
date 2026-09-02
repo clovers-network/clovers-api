@@ -28,6 +28,7 @@ import {
   ClubTokenController
 } from 'clovers-contracts'
 import { parseLogForStorage } from './util'
+import { oraclePrivateKey } from './oracle-key'
 
 var ethers = require('ethers')
 
@@ -159,7 +160,7 @@ const clubTokenControllerInstance = new ethers.Contract(clubTokenControllerAddre
 
 let walletProvider
 try {
-  walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
+  walletProvider = new ethers.Wallet(oraclePrivateKey(), provider)
 } catch (e) {
   debug('Oracle wallet not configured:', e.message)
   walletProvider = null

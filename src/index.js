@@ -10,6 +10,8 @@ import middleware from './middleware'
 import api from './api'
 import config from './config.json'
 import { socketing } from './socketing'
+import { ethers } from 'ethers'
+import { oraclePrivateKey, usingTestKey } from './lib/oracle-key'
 import { build, mine, syncChain, copyLogs, syncBalances } from './lib/build'
 import { reconcile } from './lib/reconcile'
 import { audit as auditLogs, backfill as backfillLogs, cleanup as cleanupLogs } from './lib/logs-repair'
@@ -107,6 +109,24 @@ initializeDb((db) => {
     app.server.listen(port, () => {
       debug(`Started on port ${app.server.address().port}`)
     })
+
+    // Say out loud which oracle key is in use. src/config.json ships the
+    // canonical `private key = 1` test value, so a deployment that forgets
+    // ORACLE_PRIVATE_KEY does not fail -- /clovers/verify keeps returning
+    // signatures no contract will accept, the dapp keeps submitting them,
+    // and the transactions revert. The cost lands on users as lost gas, and
+    // nothing here looks wrong.
+    //
+    // console.log rather than debug() deliberately: a disabled DEBUG
+    // namespace is how the chain-listener HOME guard stayed hidden for years.
+    if (usingTestKey()) {
+      console.log('ORACLE KEY: using the TEST key -- /clovers/verify will ' +
+        'produce signatures the CloversController rejects. Set ' +
+        'ORACLE_PRIVATE_KEY for a deployment that needs to mint.')
+    } else {
+      console.log('ORACLE KEY: real key loaded, signing address ' +
+        new ethers.Wallet(oraclePrivateKey()).address)
+    }
     socketing({_db: db, _io: io})
 
     if (process.argv.findIndex((c) => c === 'mine') > -1) {

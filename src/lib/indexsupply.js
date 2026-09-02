@@ -10,6 +10,7 @@
 
 const debug = require('debug')('app:indexsupply')
 import config from '../config.json'
+import { oraclePrivateKey } from './oracle-key'
 import {
   Clovers,
   ClubToken,
@@ -64,7 +65,7 @@ const clubTokenControllerInstance = new ethers.Contract(clubTokenControllerAddre
 // Oracle wallet (still needed for any signing operations)
 let walletProvider
 try {
-  walletProvider = new ethers.Wallet(config.oraclePrivateKey, provider)
+  walletProvider = new ethers.Wallet(oraclePrivateKey(), provider)
 } catch (e) {
   debug('Oracle wallet not configured:', e.message)
   walletProvider = null
