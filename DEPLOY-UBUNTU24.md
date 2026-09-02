@@ -13,15 +13,39 @@ passes 40/40 on it.
 
 Worth getting straight before anything else, because the names are inverted.
 
-| SSH host | IP | Serves | In this DO account? |
-|---|---|---|---|
-| `clover-main` | 206.81.16.230 | **api.clovers.network** — the live API | **no** |
-| `clover` | 104.131.181.241 | **api2.clovers.network** | yes, as the droplet *named* `api.clovers.network` |
+| SSH host | IP | Served, until the migration | Serves now | In this DO account? |
+|---|---|---|---|---|
+| `clover-main` | 206.81.16.230 | **api.clovers.network** | nothing — standby | **no** |
+| `clover` | 104.131.181.241 | **api2.clovers.network** | nothing — retired | yes, as the droplet *named* `api.clovers.network` |
 
-So the droplet DigitalOcean calls `api.clovers.network` is api2, and the machine
-actually serving the API is not in this account at all — `doctl` lists four
-droplets and none of them is 206.81.16.230. **Find out where api-production
-lives before planning a cutover.**
+The names are inverted: the droplet DigitalOcean calls `api.clovers.network` is
+api2, and the machine that was actually serving the API is not in this account
+at all — `doctl` lists four droplets and none of them is 206.81.16.230.
+
+**Both are now out of the serving path.** api.clovers.network is on Fly;
+api2.clovers.network and img.clovers.network are both on the `clovers-images`
+Worker. `clover-main` is kept powered on as the rollback target for the API and
+should be the last thing retired; `clover` is unreferenced.
+
+### Do not push to the `server` remote
+
+`server` is `clover-main:/home/billy/clovers-api.git` and has a post-receive
+hook that deploys whatever it receives. `master` is now the SQLite build, and
+that host has a RethinkDB database and no SQLite one — so a push deploys code
+that cannot start, onto the machine being kept as the API's rollback target.
+It breaks the fallback rather than the live service, which is a worse failure
+than it sounds: nothing appears wrong until the day you need it.
+
+Push is disabled locally with
+
+    git remote set-url --push server DISABLED--master-is-sqlite--...
+
+so `git push server` fails with that string in the error. That is local config,
+not repository config: it protects one checkout, and anyone else with this
+remote still has a live trigger. Re-enable deliberately, and only for a commit
+that predates the SQLite migration:
+
+    git remote set-url --push server clover-main:/home/billy/clovers-api.git
 
 ### Importing on the target machine
 
