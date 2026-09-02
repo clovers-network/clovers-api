@@ -26,15 +26,28 @@
  *   absent from the export. Spent DNS-01 validation tokens, inert either way.
  *
  *   node from-export.mjs export.csv > clovers.network.zone
+ *   node from-export.mjs export.csv --import-safe > clovers.network.cloudflare.zone
+ *
+ * --import-safe omits the apex CNAME. A CNAME at the zone apex alongside MX and
+ * TXT records at the same name is illegal under RFC 1034, and while Cloudflare
+ * supports it through CNAME flattening, its BIND importer's behaviour is
+ * undocumented -- it may reject the file, skip the record, or accept it. Rather
+ * than find out during a migration, the apex goes in by hand afterwards, where
+ * the dashboard definitely allows it. One manual record beats a partial import
+ * whose failure mode you have to reverse-engineer.
  */
 import fs from 'fs'
 
-const rows = fs.readFileSync(process.argv[2] || 'export.csv', 'utf8')
+const argv = process.argv.slice(2)
+
+const rows = fs.readFileSync(argv.find(a => !a.startsWith('--')) || 'export.csv', 'utf8')
   .split('\n').slice(1).filter(l => l.trim())
   .map(l => {
     const m = [...l.matchAll(/"((?:[^"]|"")*)"/g)].map(x => x[1].replace(/""/g, '"'))
     return { name: m[0], ttl: m[1], type: m[2].toUpperCase(), value: m[3] }
   })
+
+const importSafe = argv.includes('--import-safe')
 
 const out = []
 const say = (s) => out.push(s)
@@ -77,6 +90,11 @@ for (const [label, match] of groups) {
     if (r.type === 'NETLIFY' || r.type === 'NETLIFYV6') {
       // One CNAME covers both; NETLIFYV6 is the same alias for AAAA.
       if (r.type === 'NETLIFYV6') continue
+      if (importSafe && r.name === 'clovers.network') {
+        say(`; APEX OMITTED FOR IMPORT -- add this by hand after importing:`)
+        say(`;   Type CNAME  Name @  Target ${r.value}  Proxy off  TTL Auto`)
+        continue
+      }
       say(`${name}\t${r.ttl}\tIN\tCNAME\t${r.value}.`)
     } else if (r.type === 'TXT') {
       // TXT strings are capped at 255 bytes per chunk; the DKIM keys exceed it.
@@ -102,6 +120,7 @@ if (left.length) {
 
 say('')
 say('; ---- deliberately absent ----')
+if (importSafe) say('; apex CNAME: see the note above -- added by hand after import.')
 say('; NS/SOA: Cloudflare generates its own.')
 say('; _acme-challenge: two spent DNS-01 tokens, live when queried but not in')
 say(';   the export. Inert; dropped rather than carried forward.')
