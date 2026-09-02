@@ -1,0 +1,27 @@
+{
+  "_comment": [
+    "Config for CI only. src/config.json is gitignored because it holds the",
+    "oracle signing key, so a checkout has no config at all -- and the app",
+    "imports it at module load, which means `node dist/index.js` exits before",
+    "it binds a port. Both server-dependent CI jobs failed on that: one with",
+    "ECONNREFUSED, one with a readiness timeout. Neither said 'config missing',",
+    "which is why this file exists rather than a line in the workflow.",
+    "",
+    "chainId is 1 because the fixture holds mainnet data and because",
+    "lib/chain.js resolves contract addresses from the artifacts by chain id --",
+    "on chain 4 it throws for want of an address. The key is a valid but",
+    "worthless 32-byte value: ethers.Wallet rejects the example's 0x1234, and",
+    "the chain listener is off in CI so nothing signs with it."
+  ],
+  "port": 4444,
+  "networkId": 1,
+  "network": { "chainId": 1, "name": "homestead" },
+  "etherscanAPI": "",
+  "infuraAPI": "",
+  "genesisBlock": { "1": 14860562, "4": 2732230 },
+  "bodyLimit": "100kb",
+  "corsHeaders": ["Link"],
+  "infuraKey": "",
+  "oraclePrivateKey": "0x0000000000000000000000000000000000000000000000000000000000000001",
+  "oraclePublicKey": "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf"
+}
