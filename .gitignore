@@ -10,3 +10,5 @@ node_modules/
 .DS_Store
 /rethinkdb_data
 /src/config.json
+# Miniflare local state — a build artifact, and it was committed once already.
+.wrangler/
