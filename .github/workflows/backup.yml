@@ -47,6 +47,12 @@ jobs:
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
+      # The action installs the binary as `flyctl`. `fly` is only an alias that
+      # Fly's own installer adds locally, so a workflow written from a working
+      # shell reads fine and then fails with "fly: command not found". Every
+      # invocation below uses flyctl deliberately, not for style.
+      - run: flyctl version
+
       - name: Take a verified snapshot on the machine
         id: snap
         run: |
@@ -57,7 +63,7 @@ jobs:
           # backup-sqlite.mjs verifies row counts and integrity_check before it
           # keeps the file, and exits non-zero if either fails. Trust its exit
           # code; do not re-verify here, where the file is not yet present.
-          fly ssh console -a "$APP" -C \
+          flyctl ssh console -a "$APP" -C \
             "node /app/scripts/backup-sqlite.mjs --db /data/clovers_chain_1.db --dir /data/backups --keep 3" \
             | tee snap.log
           name=$(grep -oE 'clovers-[0-9TZ.-]+\.db\.gz' snap.log | head -1)
@@ -70,7 +76,7 @@ jobs:
 
       - name: Pull it off the machine
         run: |
-          fly ssh sftp get "/data/backups/${{ steps.snap.outputs.name }}" \
+          flyctl ssh sftp get "/data/backups/${{ steps.snap.outputs.name }}" \
             "./${{ steps.snap.outputs.name }}" -a "$APP"
           ls -l "${{ steps.snap.outputs.name }}"
 
