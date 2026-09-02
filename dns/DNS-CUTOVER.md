@@ -138,3 +138,71 @@ and keeps serving through the CNAME. That is the right order — change the
 delegation first, confirm nothing broke, then move hosts one record at a time.
 It does mean whoever is still deploying that site should know the delegation is
 moving, since their deploys will keep taking effect.
+
+---
+
+# Cutover completed — 2026-09-02
+
+Delegation moved at **14:29:58Z** to `aleena.ns.cloudflare.com` and
+`cesar.ns.cloudflare.com`. Registry updates took about 13 minutes to appear at
+the `.network` servers.
+
+## How it was verified
+
+`verify.sh <nameserver>` resolves every name in the zone against one
+authoritative server with `+norecurse`, so it reports what that server holds
+rather than what a resolver cached. A baseline was captured from NS1 *before*
+the switch, which is the part worth copying if this is ever done again — after
+the delegation moves, the old answers are gone and there is nothing left to
+compare against.
+
+`baseline.txt` vs `after.txt` differed in exactly two lines:
+
+    -dev.clovers.network.   CNAME  <EMPTY>
+    +dev.clovers.network.   CNAME  dev-clovers.netlify.app.
+    -www.clovers.network.   CNAME  <EMPTY>
+    +www.clovers.network.   CNAME  clovers-no-bots.netlify.app.
+
+Both are the intended correction. NS1 served those names as `NETLIFY`
+pseudo-records, which answer nothing for a CNAME query while still returning
+addresses — the behaviour that made the original reconstruction look right while
+being wrong. Cloudflare serves real CNAMEs.
+
+Everything else was byte-identical, including the flattened apex
+(`35.157.26.135`, `63.176.8.218`, and both IPv6 addresses).
+
+## Functional checks
+
+| Target | Result |
+|---|---|
+| `clovers.network` | 200, certificate valid |
+| `www` | 301 to apex |
+| `dev`, `api`, `forum` | 200 |
+| `img/svg/<board>` | 200, serving real images |
+| Mailgun MX (both) | reachable on port 25 |
+| SPF | `v=spf1 include:eu.mailgun.org ~all` |
+| DKIM, both keys | 2048-bit, byte-identical to `export.csv` |
+
+The DKIM check needed care. Those records are multi-string TXT values, and a
+first pass that read each quoted chunk separately reported the keys as truncated
+when they were not. Reassembling the chunks before comparing — and comparing
+against the export rather than against a length heuristic — is the check that
+actually means something. Multi-string TXT is exactly where a zone migration
+truncates silently.
+
+## What this retired
+
+* The Netlify DNS account nobody could reach is no longer load-bearing.
+* The parent/child nameserver disagreement is gone. The registry had been
+  delegating to `dns*.p03.nsone.net` while the zone published
+  `dns*.p07.nsone.net`; it resolved, but would have broken without warning if
+  NS1 retired the p03 pool.
+
+## Certificate renewal
+
+The apex certificate is Let's Encrypt, valid 22 Aug – 20 Nov 2026, so Netlify
+renews around 21 October. Validation is now HTTP-01 rather than DNS-01, which is
+Netlify's normal path for externally-hosted DNS. A certificate warning on the
+apex after that date points here, and the fix is to re-trigger provisioning.
+
+Moot if the frontend has moved off Netlify by then.

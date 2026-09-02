@@ -1,0 +1,18 @@
+_github-challenge-clovers-network.clovers.network. TXT    "099fa4ac8e"
+api.clovers.network.                           A      206.81.16.230
+api2.clovers.network.                          A      104.131.181.241
+clovers.network.                               CNAME  <EMPTY>
+clovers.network.                               MX     10 mxa.eu.mailgun.org.|10 mxb.eu.mailgun.org.
+clovers.network.                               TXT    "brave-ledger-verification=3b2366f9e6b50e03b543b4a03c9b7b3353f58b9e99848b57c95512bebf1fab55"|"fortmatic-site-verification=741LuAEkMxIXBVPE"|"google-site-verification=8uQyZ1Sa7cM1gu0dEP8KrnHbcKg1CuHoNB01ZwO5K_A"|"google-site-verification=jlWhV1LxjUnElnLS6D06UVtpYJpAxlaD6UcqO8OwlwA"|"v=spf1 include:eu.mailgun.org ~all"
+dev.clovers.network.                           CNAME  dev-clovers.netlify.app.
+email.clovers.network.                         CNAME  eu.mailgun.org.
+email.mail.clovers.network.                    CNAME  eu.mailgun.org.
+forum.clovers.network.                         A      68.183.74.37
+img.clovers.network.                           A      165.22.72.114
+mail.clovers.network.                          MX     10 mxa.eu.mailgun.org.|10 mxb.eu.mailgun.org.
+mail.clovers.network.                          TXT    "v=spf1 include:eu.mailgun.org ~all"
+mailo._domainkey.mail.clovers.network.         TXT    "k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxSzX33rCi8b77ef9TLJnhetEDrUlmIR1k9CpwsVrDPo/4ToTf4pvLssC7NhyX7FkWsuNL0uHWbY7tfKNIaXy8tHBzskRbkGjnJrVvi0inwfQtPcChjuyRbpvZbKLm5Ptyyx2D5gMZoQ0SqZB3yPssohGoer92+mKiz0ZXgHdJjzrPKJIKn93+snS+baBheb3moGMlxxao8" "+dj4dBM8vvmScbMFLpOLElWfdEtGc7RVlrTY1sWXuHf/9IbLruLzv+Wc3m0k7OWlnKCNrNc6rcH6zslsEeBP+59Fpj7jdUWTAzD2ew7pmMx9NnoHqjzYS071doHBOOQqu86/0F+lMV6QIDAQAB"
+pic._domainkey.clovers.network.                TXT    "k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsdc7BOzwveQJLZTYx8KErcKn18I+3BSFew5VhMDqq6TKRTYnxbfBqswVxEe4AbOavT+o5NPoDwnlN7O+GcKEw87wgtDH1yrSiavqov3rRSGE3QswgP3k/YFiczzHbc03x0RPA4MQKhX4t6anzUKlQGvPstnWgQWuhcCbVTRq9CO0/tg6pwXZuHvB8oROY6ixw2Ve3VrJjG" "iqv9c/v/cqkQ5GYRqvdNBKbXkPCaTVPxJbQoCXyFGa1RB8qlR94Vpo9kPh+3rg5TAhkr1xVkW9iO5XrI4pjaydBxw2bbdVhDnq+u/B3/naDU6vCcyTQxXuauvVz9oT5gOgY5akv+kK5wIDAQAB"
+www.clovers.network.                           CNAME  clovers-no-bots.netlify.app.
+clovers.network. (flattened)                   A      35.157.26.135|63.176.8.218
+clovers.network. (flattened)                   AAAA   2a05:d014:58f:6200::258|2a05:d014:58f:6200::259
