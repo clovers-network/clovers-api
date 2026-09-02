@@ -18,16 +18,52 @@ zones. Most likely `billy.rennekamp@gmail.com`, who authored the original
 **None of that blocks the move.** The registrar outranks DNS: change the
 delegation there and the Netlify zone becomes irrelevant.
 
+## The zone came from Netlify in the end
+
+`clovers.network.zone` is now generated from **Netlify's own DNS export**
+(`export.csv`) by `from-export.mjs`, not reconstructed from outside. The
+reconstruction is kept in `build-zone.sh` because the technique is useful when
+no export is available, but it was wrong in two ways and both are instructive.
+
+**It missed two records.** Neither is guessable and neither holds a certificate,
+so no amount of Certificate Transparency or wordlist probing would have found
+them:
+
+    _github-challenge-clovers-network   TXT   GitHub domain verification
+    email.mail.clovers.network          CNAME a second Mailgun alias, under mail
+
+**It mis-modelled three, and that was the dangerous one.** Netlify's DNS has
+`NETLIFY` and `NETLIFYV6` pseudo-records — ALIAS types resolving dynamically to
+whatever Netlify's edge currently is. Queried from outside they answer as
+ordinary addresses, so the apex, `www` and `dev` all looked like static A/AAAA
+records pointing at `35.157.26.135`, `63.176.8.218` and
+`2a05:d014:58f:6200::258/259`.
+
+Imported that way the site would have worked — until Netlify rotated its edge
+IPs, at which point the apex would break with nothing in the zone to explain
+why. They are CNAMEs to the `netlify.app` hostname instead.
+
+The lesson for any future zone move: an export from the provider beats querying
+from outside, and the gap is not only the records you cannot see. It is also the
+record *types* that look like something simpler than they are.
+
 ## Step 1 — import, unchanged
 
-`clovers.network.zone` is a faithful copy, regenerate it with
-`./audit.sh && ./build-zone.sh > clovers.network.zone`.
+`clovers.network.zone` is a faithful copy. Regenerate it with
+`node from-export.mjs export.csv > clovers.network.zone`.
 
-31 records. Verified complete against three independent name sources — the
-earlier reconstruction, Certificate Transparency, and a subdomain wordlist —
-with every name and every record cross-checked against the live authoritative
-server. No wildcard. No CAA, no DMARC, no DNSSEC DS at the parent, so changing
-the delegation is safe and nothing is signed.
+22 records, covering all 25 export rows — the three fewer are `NETLIFYV6`
+entries folded into their `NETLIFY` counterpart, since one CNAME serves both
+address families. Every export row is accounted for; the zone parses clean.
+
+No wildcard. No CAA, no DMARC, no DNSSEC DS at the parent, so changing the
+delegation is safe and nothing is signed.
+
+**The apex carries a CNAME alongside MX and TXT at the same name.** That is
+illegal in plain DNS and legal on Cloudflare, which flattens it — resolving the
+target itself and answering A/AAAA for the apex. Flattening is on by default for
+the apex. Do not "fix" this by pasting in the addresses Netlify currently
+answers with; see above for why.
 
 Two adjustments, both unavoidable:
 
@@ -90,9 +126,15 @@ Absent today, and cheap to add after the dust clears:
 - **DNSSEC.** Cloudflare can sign the zone; it needs a DS record at the
   registrar to take effect.
 
-## The leftover ACME tokens
+## Two things the export settled
 
-`_acme-challenge` holds two DNS-01 validation tokens from a completed issuance.
-They are inert — DNS-01 tokens are per-issuance and these are long spent — and
-they are carried over only because this step copies rather than edits. Safe to
-delete once the move is verified.
+`_acme-challenge` answered when queried but is absent from the export — two
+spent DNS-01 validation tokens, inert either way. Dropped rather than carried
+forward.
+
+And the apex points at Netlify, not at a server. Moving the nameservers does not
+move the website: `clovers-no-bots` is a live site in the **bin-studio** team
+and keeps serving through the CNAME. That is the right order — change the
+delegation first, confirm nothing broke, then move hosts one record at a time.
+It does mean whoever is still deploying that site should know the delegation is
+moving, since their deploys will keep taking effect.

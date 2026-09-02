@@ -1,65 +1,55 @@
-; clovers.network — generated from live queries against dns1.p07.nsone.net
-; 2026-09-01T15:52:13Z by dns/build-zone.sh
+; clovers.network -- from Netlify's own DNS export
+; Converted by dns/from-export.mjs. 25 source records.
 ;
-; Verified complete against three independent name sources: the previous
-; reconstruction, Certificate Transparency, and a subdomain wordlist. No
-; wildcard, no CAA, no DMARC, no DNSSEC DS at the parent — so changing the
-; delegation is safe, and nothing here is signed.
+; Netlify ALIAS types are rewritten as CNAMEs. At the apex that needs
+; Cloudflare's CNAME flattening, which is on by default -- Cloudflare
+; answers A/AAAA for the apex by resolving the target itself. Do not
+; substitute static A records: the addresses Netlify currently answers with
+; are not stable, and hard-coding them is a breakage with no visible cause.
 ;
-; This is a FAITHFUL copy. Import it, move the nameservers, change nothing.
-; The infrastructure changes are a separate step — see DNS-MIGRATION.md — so a
-; delegation problem and a records problem can never be confused for each other.
+; Everything here is DNS-only (grey cloud). Proxying changes TLS
+; termination and caching and is a separate decision.
 ;
-; Cloudflare: import as DNS-only (grey cloud) throughout. Proxying is a
-; behaviour change and belongs in the follow-up, not the move.
-;
-; TTLs below 60 are raised to 60 on the way out: the live _acme-challenge
-; records carry TTL 1, which Cloudflare will not accept. Nothing else is
-; altered -- the 120s apex and 311s AAAA TTLs are reproduced as they are.
+; NOTE: the apex still points at Netlify, so moving the nameservers does
+; not move the website -- clovers-no-bots is a live site in the bin-studio
+; team and keeps serving. That is deliberate: change the delegation first,
+; then move hosts one record at a time.
 $TTL 3600
 
 ; ---- apex ----
-clovers.network.	120	IN	A	63.176.8.218
-clovers.network.	120	IN	A	35.157.26.135
-clovers.network.	311	IN	AAAA	2a05:d014:58f:6200::258
-clovers.network.	311	IN	AAAA	2a05:d014:58f:6200::259
-clovers.network.	3600	IN	MX	10 mxb.eu.mailgun.org.
-clovers.network.	3600	IN	MX	10 mxa.eu.mailgun.org.
-clovers.network.	3600	IN	TXT	"google-site-verification=8uQyZ1Sa7cM1gu0dEP8KrnHbcKg1CuHoNB01ZwO5K_A"
-clovers.network.	3600	IN	TXT	"fortmatic-site-verification=741LuAEkMxIXBVPE"
-clovers.network.	3600	IN	TXT	"brave-ledger-verification=3b2366f9e6b50e03b543b4a03c9b7b3353f58b9e99848b57c95512bebf1fab55"
-clovers.network.	3600	IN	TXT	"v=spf1 include:eu.mailgun.org ~all"
+clovers.network.	3600	IN	CNAME	clovers-no-bots.netlify.app.
 clovers.network.	3600	IN	TXT	"google-site-verification=jlWhV1LxjUnElnLS6D06UVtpYJpAxlaD6UcqO8OwlwA"
+clovers.network.	3600	IN	TXT	"v=spf1 include:eu.mailgun.org ~all"
+clovers.network.	3600	IN	MX	10 mxa.eu.mailgun.org.
+clovers.network.	3600	IN	MX	10 mxb.eu.mailgun.org.
+clovers.network.	3600	IN	TXT	"brave-ledger-verification=3b2366f9e6b50e03b543b4a03c9b7b3353f58b9e99848b57c95512bebf1fab55"
+clovers.network.	3600	IN	TXT	"fortmatic-site-verification=741LuAEkMxIXBVPE"
+clovers.network.	3600	IN	TXT	"google-site-verification=8uQyZ1Sa7cM1gu0dEP8KrnHbcKg1CuHoNB01ZwO5K_A"
 
 ; ---- hosts ----
-www.clovers.network.	120	IN	A	63.176.8.218
-www.clovers.network.	120	IN	A	35.157.26.135
-www.clovers.network.	311	IN	AAAA	2a05:d014:58f:6200::258
-www.clovers.network.	311	IN	AAAA	2a05:d014:58f:6200::259
-dev.clovers.network.	120	IN	A	63.176.8.218
-dev.clovers.network.	120	IN	A	35.157.26.135
-dev.clovers.network.	311	IN	AAAA	2a05:d014:58f:6200::258
-dev.clovers.network.	311	IN	AAAA	2a05:d014:58f:6200::259
-api.clovers.network.	3600	IN	A	206.81.16.230
+www.clovers.network.	3600	IN	CNAME	clovers-no-bots.netlify.app.
 api2.clovers.network.	3600	IN	A	104.131.181.241
-img.clovers.network.	3600	IN	A	165.22.72.114
+dev.clovers.network.	3600	IN	CNAME	dev-clovers.netlify.app.
+api.clovers.network.	3600	IN	A	206.81.16.230
 forum.clovers.network.	3600	IN	A	68.183.74.37
+img.clovers.network.	3600	IN	A	165.22.72.114
 
 ; ---- mail (Mailgun, EU region) ----
-mail.clovers.network.	3600	IN	MX	10 mxb.eu.mailgun.org.
-mail.clovers.network.	3600	IN	MX	10 mxa.eu.mailgun.org.
 mail.clovers.network.	3600	IN	TXT	"v=spf1 include:eu.mailgun.org ~all"
+mail.clovers.network.	3600	IN	MX	10 mxa.eu.mailgun.org.
+mail.clovers.network.	3600	IN	MX	10 mxb.eu.mailgun.org.
+email.mail.clovers.network.	3600	IN	CNAME	eu.mailgun.org.
 email.clovers.network.	3600	IN	CNAME	eu.mailgun.org.
 
 ; ---- DKIM ----
-mailo._domainkey.mail.clovers.network. 3600 IN TXT "k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxSzX33rCi8b77ef9TLJnhetEDrUlmIR1k9CpwsVrDPo/4ToTf4pvLssC7NhyX7FkWsuNL0uHWbY7tfKNIaXy8tHBzskRbkGjnJrVvi0inwfQtPcChjuyRbpvZbKLm5Ptyyx2D5gMZoQ0SqZB3yPssohGoer92+mKiz0ZXgHdJjzrPKJIKn93+snS+baBheb3moGMlxxao8" "+dj4dBM8vvmScbMFLpOLElWfdEtGc7RVlrTY1sWXuHf/9IbLruLzv+Wc3m0k7OWlnKCNrNc6rcH6zslsEeBP+59Fpj7jdUWTAzD2ew7pmMx9NnoHqjzYS071doHBOOQqu86/0F+lMV6QIDAQAB"
-pic._domainkey.clovers.network.	3600 IN	TXT	"k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsdc7BOzwveQJLZTYx8KErcKn18I+3BSFew5VhMDqq6TKRTYnxbfBqswVxEe4AbOavT+o5NPoDwnlN7O+GcKEw87wgtDH1yrSiavqov3rRSGE3QswgP3k/YFiczzHbc03x0RPA4MQKhX4t6anzUKlQGvPstnWgQWuhcCbVTRq9CO0/tg6pwXZuHvB8oROY6ixw2Ve3VrJjG" "iqv9c/v/cqkQ5GYRqvdNBKbXkPCaTVPxJbQoCXyFGa1RB8qlR94Vpo9kPh+3rg5TAhkr1xVkW9iO5XrI4pjaydBxw2bbdVhDnq+u/B3/naDU6vCcyTQxXuauvVz9oT5gOgY5akv+kK5wIDAQAB"
+mailo._domainkey.mail.clovers.network.	3600	IN	TXT	"k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxSzX33rCi8b77ef9TLJnhetEDrUlmIR1k9CpwsVrDPo/4ToTf4pvLssC7NhyX7FkWsuNL0uHWbY7tfKNIaXy8tHBzskRbkGjnJrVvi0inwfQtPcChjuyRbpvZbKLm5Ptyyx2D5gMZoQ0SqZB3yPssohGoer92+mKiz0ZXgHdJjzrPKJIKn93+snS+baBheb3moGMlxxao8" "+dj4dBM8vvmScbMFLpOLElWfdEtGc7RVlrTY1sWXuHf/9IbLruLzv+Wc3m0k7OWlnKCNrNc6rcH6zslsEeBP+59Fpj7jdUWTAzD2ew7pmMx9NnoHqjzYS071doHBOOQqu86/0F+lMV6QIDAQAB"
+pic._domainkey.clovers.network.	3600	IN	TXT	"k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsdc7BOzwveQJLZTYx8KErcKn18I+3BSFew5VhMDqq6TKRTYnxbfBqswVxEe4AbOavT+o5NPoDwnlN7O+GcKEw87wgtDH1yrSiavqov3rRSGE3QswgP3k/YFiczzHbc03x0RPA4MQKhX4t6anzUKlQGvPstnWgQWuhcCbVTRq9CO0/tg6pwXZuHvB8oROY6ixw2Ve3VrJjG" "iqv9c/v/cqkQ5GYRqvdNBKbXkPCaTVPxJbQoCXyFGa1RB8qlR94Vpo9kPh+3rg5TAhkr1xVkW9iO5XrI4pjaydBxw2bbdVhDnq+u/B3/naDU6vCcyTQxXuauvVz9oT5gOgY5akv+kK5wIDAQAB"
 
-; ---- ACME (leftover DNS-01 tokens; harmless to carry over) ----
-_acme-challenge.clovers.network.	60	IN	TXT	"quBVwEPgPXRwWdpuwaszJ4Uxx8zgj0suN-aP7JoSRIw"
-_acme-challenge.clovers.network.	60	IN	TXT	"7z944VkQ7iOkEErB48nY_eSkKXgMN2JkHzH0b6V2zCc"
+; ---- domain verification ----
+_github-challenge-clovers-network.clovers.network.	3600	IN	TXT	"099fa4ac8e"
 
 ; ---- deliberately absent ----
-; NS/SOA: Cloudflare generates its own; do not import the nsone delegation.
-; CAA:    none today. Worth adding after the move — see DNS-MIGRATION.md.
-; DMARC:  none today, though SPF and DKIM are both present.
+; NS/SOA: Cloudflare generates its own.
+; _acme-challenge: two spent DNS-01 tokens, live when queried but not in
+;   the export. Inert; dropped rather than carried forward.
+; CAA, DMARC, DNSSEC: none today. See DNS-CUTOVER.md.
