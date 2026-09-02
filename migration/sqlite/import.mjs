@@ -51,7 +51,26 @@ async function * readTable (name) {
 }
 
 const json = v => (v === undefined || v === null) ? null : JSON.stringify(v)
-const bool = v => v ? 1 : 0
+// Truthiness is the wrong test here. RethinkDB is schemaless and 7,873 clover
+// rows store `kept` as `[false]` -- an array containing false, not a boolean --
+// with another 2,190 holding `[true]`. `v ? 1 : 0` sees a non-empty array,
+// which is truthy regardless of contents, so every one of those 7,873 rows
+// imported as kept = true. The 2,190 were right by luck.
+//
+// That is 17.7% of the table silently inverted, and no row count would show it:
+// the corruption is inside a column, so counts matched exactly at 44,589. It
+// was found by comparing field values between the two hosts, which is a
+// different question from comparing which rows exist.
+//
+// Unwrap a single-element array before testing. Longer arrays are not a shape
+// this field ever takes, and would be a new kind of drift worth failing on.
+const bool = v => {
+  if (Array.isArray(v)) {
+    if (v.length > 1) throw new Error(`bool() got a ${v.length}-element array: ${JSON.stringify(v)}`)
+    v = v[0]
+  }
+  return v ? 1 : 0
+}
 // RethinkDB rows are schemaless; a field can simply be absent.
 const val = v => v === undefined ? null : v
 
