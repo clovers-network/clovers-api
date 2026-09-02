@@ -1,7 +1,12 @@
 /dist
 /logs
 /npm-debug.log
-/node_modules
+# Unanchored, and with a trailing slash, so it matches at any depth. It was
+# `/node_modules` -- anchored to the repo root -- which silently failed to match
+# workers/images/node_modules, and 1,727 files went in including three 136 MB
+# copies of the workerd binary. GitHub rejected the push, which is the only
+# reason it was noticed.
+node_modules/
 .DS_Store
 /rethinkdb_data
 /src/config.json
