@@ -9,6 +9,19 @@
 | `endpoints` | query plans and N+1 counts; all six authenticated write paths over real HTTP with real signatures; impersonation rejected; realtime events confirmed arriving at a connected client |
 | `image` | the container builds and serves against a mounted volume |
 
+## Runs nightly
+
+| Job | What it proves |
+|---|---|
+| `backup` | a snapshot of the live database is taken, pulled off the machine, re-opened and row-counted here, and kept for 90 days |
+
+`backup.yml` is the one scheduled job, and it is doing two things at once by
+design: Fly volumes attach to a single machine, so nothing scheduled *inside*
+Fly can mount the database — and the external job that can reach it is also the
+thing that gets the file off the box. See RESTORE.md.
+
+It needs a `FLY_API_TOKEN` secret and fails loudly on the first run without one.
+
 ## Deliberately not in CI
 
 `parity.mjs`, `endpoint-parity.mjs` and `http-parity.mjs` compare against

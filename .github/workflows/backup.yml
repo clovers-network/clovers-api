@@ -1,0 +1,104 @@
+# Nightly off-box backup of the SQLite database.
+#
+# The snapshot is taken on the machine and then pulled here, so one scheduled
+# job covers both halves of the job. That is deliberate: a backup sitting on the
+# volume it protects guards against corruption and bad deploys but not against
+# losing the volume, and the previous arrangement on the droplet went five years
+# between copies partly because taking one was a separate manual step.
+#
+# Fly volumes attach to one machine at a time, so the usual pattern -- a
+# scheduled machine that mounts the volume -- cannot work here. Driving it from
+# outside is not a workaround; it is the option that also gets the file off the
+# machine.
+#
+# SETUP (one manual step): add a deploy token as the FLY_API_TOKEN secret.
+#   fly tokens create deploy -a clovers-api-preview -x 8760h
+#   gh secret set FLY_API_TOKEN --repo clovers-network/clovers-api
+# Without it the job fails loudly on the first run rather than appearing to work.
+
+name: backup
+
+on:
+  schedule:
+    - cron: '20 3 * * *' # 03:20 UTC, matching the droplet's old slot
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Fly app to back up
+        default: clovers-api-preview
+
+concurrency:
+  group: backup
+  cancel-in-progress: false # never interrupt a snapshot in flight
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      APP: ${{ inputs.app || 'clovers-api-preview' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Take a verified snapshot on the machine
+        id: snap
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::FLY_API_TOKEN is not set -- see the header of this workflow"
+            exit 1
+          fi
+          # backup-sqlite.mjs verifies row counts and integrity_check before it
+          # keeps the file, and exits non-zero if either fails. Trust its exit
+          # code; do not re-verify here, where the file is not yet present.
+          fly ssh console -a "$APP" -C \
+            "node /app/scripts/backup-sqlite.mjs --db /data/clovers_chain_1.db --dir /data/backups --keep 3" \
+            | tee snap.log
+          name=$(grep -oE 'clovers-[0-9TZ.-]+\.db\.gz' snap.log | head -1)
+          if [ -z "$name" ]; then
+            echo "::error::could not determine the snapshot filename"
+            cat snap.log
+            exit 1
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Pull it off the machine
+        run: |
+          fly ssh sftp get "/data/backups/${{ steps.snap.outputs.name }}" \
+            "./${{ steps.snap.outputs.name }}" -a "$APP"
+          ls -l "${{ steps.snap.outputs.name }}"
+
+      # The snapshot was verified on the machine; this checks it survived the
+      # transfer, which is a different failure and the one an artifact upload
+      # would otherwise hide.
+      - name: Verify the copy that arrived
+        run: |
+          gunzip -c "${{ steps.snap.outputs.name }}" > restored.db
+          node -e '
+            const { DatabaseSync } = require("node:sqlite")
+            const db = new DatabaseSync("restored.db")
+            const integrity = Object.values(db.prepare("PRAGMA integrity_check").get())[0]
+            if (integrity !== "ok") { console.error("integrity_check: " + integrity); process.exit(1) }
+            const counts = {}
+            for (const t of ["clovers", "users", "chats", "albums", "logs", "orders"]) {
+              counts[t] = db.prepare(`SELECT count(*) n FROM ${t}`).get().n
+            }
+            // A snapshot that opens cleanly but holds no clovers is a restore
+            // that would look fine until someone loaded the site.
+            if (!counts.clovers) { console.error("no clovers in the snapshot"); process.exit(1) }
+            const idx = db.prepare("SELECT count(*) n FROM sqlite_master WHERE type='index'").get().n
+            console.log(JSON.stringify({ ...counts, indexes: idx }, null, 2))
+          '
+          rm -f restored.db
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.snap.outputs.name }}
+          path: ${{ steps.snap.outputs.name }}
+          # GitHub's ceiling is 90 days. Retention here is the real off-box
+          # window, so it is set at the maximum rather than the 3 runs kept on
+          # the volume.
+          retention-days: 90
+          compression-level: 0 # already gzipped
