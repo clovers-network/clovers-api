@@ -12,7 +12,7 @@
 # machine.
 #
 # SETUP (one manual step): add an SSH-scoped token as the FLY_API_TOKEN secret.
-#   fly tokens create ssh -a clovers-api-preview -x 8760h
+#   fly tokens create ssh -a clovers-api-preview   (no -x: defaults to 20 years)
 #   gh secret set FLY_API_TOKEN --repo clovers-network/clovers-api
 # Without it the job fails loudly on the first run rather than appearing to work.
 #

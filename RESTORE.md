@@ -46,24 +46,42 @@ it here, verify the copy that arrived, upload as a 90-day artifact.
 One setup step, without which the job fails loudly on its first run:
 
 ```sh
-fly tokens create ssh -a clovers-api-preview -x 8760h   # prints the token
+fly tokens create ssh -a clovers-api-preview   # prints the token
 gh secret set FLY_API_TOKEN --repo clovers-network/clovers-api
 ```
 
-An **ssh** token, not a deploy token and not `fly auth token`. All three can run
-the job -- verified -- but they differ in what else they can do, and this one
-lives in CI for a year:
+No `-x`. The default expiry is 175200h -- twenty years -- and a nightly job
+wants that: an explicit `-x 8760h` would stop the backups in a year, and the
+first anyone would know is when they needed a restore.
+
+An **ssh** token, not a deploy token, not an org token, and not
+`fly auth token`. All of them can run the job -- verified -- but they differ in
+what else they can do, and this one sits in CI indefinitely:
 
 | | ssh console | sftp get | deploy | other apps |
 |---|---|---|---|---|
 | `fly auth token` | yes | yes | yes | yes, whole account |
+| org token | yes | yes | yes | yes, every app in the org |
 | `tokens create deploy` | yes | yes | **yes** | no |
 | `tokens create ssh` | yes | yes | **no** (401) | no |
 
-A backup job has no business being able to replace the running code, and
-`fly auth token` is worse still: it covers the entire account and rotates
-whenever you re-authenticate, which breaks CI silently months later with no
-obvious cause.
+A backup job has no business being able to replace the running code, let alone
+reach other apps. `fly auth token` is worse still -- it covers the whole account
+*and* rotates whenever you re-authenticate, which breaks CI silently months
+later with no obvious cause.
+
+One honest caveat on the ssh token, from its own help text: to reach the machine
+it is also allowed onto the org's WireGuard network. So it is not purely
+"SSH to one app" -- it is the narrowest thing that can do this job, not a
+perfectly sealed one.
+
+### The thing more likely to stop these backups
+
+Not token expiry -- GitHub disables scheduled workflows after 60 days without
+repo activity, and re-enabling is manual. On a repo that sees a burst of work
+and then months of quiet, which is this one, that is the realistic failure. If
+the backups matter, check `gh run list --workflow=backup.yml` occasionally
+rather than assuming silence means success.
 
 Driving it from outside is not a workaround. Fly volumes attach to one machine
 at a time, so the usual pattern — a scheduled machine that mounts the volume —
