@@ -82,25 +82,16 @@ jobs:
 
       # The snapshot was verified on the machine; this checks it survived the
       # transfer, which is a different failure and the one an artifact upload
-      # would otherwise hide.
+      # would otherwise hide. The checks live in scripts/verify-snapshot.mjs
+      # rather than inline here: the inline version was `node -e '...'` wrapped
+      # in single quotes around SQL containing `type='index'`, whose inner
+      # quotes closed the shell string. SQLite got `WHERE type=index` and said
+      # `near "index": syntax error`. A committed script can be run locally,
+      # which is the only reliable defence against that class of bug.
       - name: Verify the copy that arrived
         run: |
           gunzip -c "${{ steps.snap.outputs.name }}" > restored.db
-          node -e '
-            const { DatabaseSync } = require("node:sqlite")
-            const db = new DatabaseSync("restored.db")
-            const integrity = Object.values(db.prepare("PRAGMA integrity_check").get())[0]
-            if (integrity !== "ok") { console.error("integrity_check: " + integrity); process.exit(1) }
-            const counts = {}
-            for (const t of ["clovers", "users", "chats", "albums", "logs", "orders"]) {
-              counts[t] = db.prepare(`SELECT count(*) n FROM ${t}`).get().n
-            }
-            // A snapshot that opens cleanly but holds no clovers is a restore
-            // that would look fine until someone loaded the site.
-            if (!counts.clovers) { console.error("no clovers in the snapshot"); process.exit(1) }
-            const idx = db.prepare("SELECT count(*) n FROM sqlite_master WHERE type='index'").get().n
-            console.log(JSON.stringify({ ...counts, indexes: idx }, null, 2))
-          '
+          node scripts/verify-snapshot.mjs restored.db
           rm -f restored.db
 
       - uses: actions/upload-artifact@v4
