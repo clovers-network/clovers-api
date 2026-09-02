@@ -46,9 +46,24 @@ it here, verify the copy that arrived, upload as a 90-day artifact.
 One setup step, without which the job fails loudly on its first run:
 
 ```sh
-fly tokens create deploy -a clovers-api-preview -x 8760h
+fly tokens create ssh -a clovers-api-preview -x 8760h   # prints the token
 gh secret set FLY_API_TOKEN --repo clovers-network/clovers-api
 ```
+
+An **ssh** token, not a deploy token and not `fly auth token`. All three can run
+the job -- verified -- but they differ in what else they can do, and this one
+lives in CI for a year:
+
+| | ssh console | sftp get | deploy | other apps |
+|---|---|---|---|---|
+| `fly auth token` | yes | yes | yes | yes, whole account |
+| `tokens create deploy` | yes | yes | **yes** | no |
+| `tokens create ssh` | yes | yes | **no** (401) | no |
+
+A backup job has no business being able to replace the running code, and
+`fly auth token` is worse still: it covers the entire account and rotates
+whenever you re-authenticate, which breaks CI silently months later with no
+obvious cause.
 
 Driving it from outside is not a workaround. Fly volumes attach to one machine
 at a time, so the usual pattern — a scheduled machine that mounts the volume —

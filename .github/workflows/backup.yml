@@ -11,10 +11,14 @@
 # outside is not a workaround; it is the option that also gets the file off the
 # machine.
 #
-# SETUP (one manual step): add a deploy token as the FLY_API_TOKEN secret.
-#   fly tokens create deploy -a clovers-api-preview -x 8760h
+# SETUP (one manual step): add an SSH-scoped token as the FLY_API_TOKEN secret.
+#   fly tokens create ssh -a clovers-api-preview -x 8760h
 #   gh secret set FLY_API_TOKEN --repo clovers-network/clovers-api
 # Without it the job fails loudly on the first run rather than appearing to work.
+#
+# An `ssh` token, not `deploy` and not `fly auth token`. All three can run this
+# job; only this one cannot also replace the running code (deploy returns 401
+# with it, which was checked rather than assumed). See RESTORE.md.
 
 name: backup
 
