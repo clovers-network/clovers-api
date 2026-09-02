@@ -145,6 +145,52 @@ decision, and doing it would make `build` destructive.
 `api/albums`' `load` passed its result into `run()`'s *error* argument, so it
 ran a join on every request and threw the result away — **deleted**.
 
+## If you write a fresh importer, read this first
+
+The source is schemaless, and one field is not the shape its name implies.
+
+**`clovers.kept` is sometimes an array.** Of 44,589 rows: 31,085 hold `false`,
+3,441 hold `true`, and **7,873 hold `[false]` with 2,190 holding `[true]`** —
+the value wrapped in a single-element array, which RethinkDB accepted without
+complaint.
+
+The obvious coercion is wrong:
+
+```js
+const bool = v => v ? 1 : 0        // WRONG
+```
+
+`[false]` is a non-empty array, so it is truthy, and all 7,873 of those rows
+import as `kept = true`. The `[true]` rows come out right by accident, which is
+worse than uniform failure — it makes the mistake look partly correct. Unwrap
+first:
+
+```js
+const bool = v => {
+  if (Array.isArray(v)) {
+    if (v.length > 1) throw new Error(`bool() got a ${v.length}-element array`)
+    v = v[0]
+  }
+  return v ? 1 : 0
+}
+```
+
+This actually happened, and how it was found matters more than the bug.
+
+Row counts matched exactly at 44,589 before and after, because no rows were
+lost — the damage was inside a column. An endpoint comparison that checked
+*which rows came back* reported nine endpoints identical, and was right to,
+because the same rows did come back. It was caught only by comparing *field
+values* between the two hosts, which is a different question.
+
+So: check both. Counts catch a partial import, which value comparison misses
+entirely. Value comparison catches in-column corruption, which counts cannot
+see. `kept` sat precisely where the two do not overlap.
+
+Nothing visible broke, incidentally — `kept` drives no filter, ordering or
+economic path, and the dapp never reads it. That is why it could stay wrong. It
+is not a reason to leave it wrong.
+
 ## Bugs fixed rather than reproduced
 
 Beyond the three above:

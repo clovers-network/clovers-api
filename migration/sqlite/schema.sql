@@ -35,6 +35,10 @@ CREATE TABLE clovers (
   created        INTEGER,         -- block number
   modified       INTEGER,         -- block number
   commentCount   INTEGER DEFAULT 0,
+  -- Not a plain boolean in the source. 7,873 rows store `kept` as [false] and
+  -- 2,190 as [true] -- an array wrapping the value, which a schemaless store
+  -- accepted. Read element zero; do NOT test truthiness, because a non-empty
+  -- array is truthy whatever it contains. See the note in README.md.
   kept           INTEGER DEFAULT 0,
   foundBy        TEXT,
   moves          TEXT,            -- JSON array
