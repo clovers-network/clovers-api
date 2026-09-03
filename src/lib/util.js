@@ -1,6 +1,5 @@
 const debug = require('debug')('app:util')
 import Reversi from 'clovers-reversi'
-import svg_to_png from 'svg-to-png'
 import fs from 'fs-extra'
 import path from 'path'
 import xss from 'xss'

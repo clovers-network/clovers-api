@@ -75,7 +75,6 @@
     "resource-router-middleware": "0.6.0",
     "rethinkdb": "2.3.3",
     "socket.io": "^4.8.1",
-    "svg-to-png": "3.1.2",
     "uuid": "3.3.2",
     "web3-utils": "1.0.0-beta.35",
     "ws": "5.2.2",
