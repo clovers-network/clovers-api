@@ -15,6 +15,22 @@ import test from 'node:test'
 import assert from 'node:assert'
 import { renderSVG, parsePath, clampSize } from '../src/index.js'
 
+// WARNING: this suite no longer proves anything, and passing is not evidence.
+//
+// It was written when img.clovers.network was the Express droplet, so fetching
+// it was a genuine comparison against the origin. That hostname now resolves to
+// this Worker -- so the suite fetches the Worker, compares it with the Worker,
+// and passes unconditionally.
+//
+// It cannot be repaired by repointing ORIGIN at the droplets either. Measured
+// 2026-09-03: api2's box has ports 80 and 443 shut; img's accepts TCP but
+// completes no HTTP exchange. There is no live origin left.
+//
+// equivalence.test.mjs replaces it, comparing renderSVG against toSVG in
+// src/lib/util.js -- the function those droplets actually ran, and still the
+// one the API serves from its own /svg alias. Kept here because the fixtures
+// and edge-case boards are worth having, and because a test that quietly
+// became tautological is worth leaving visible rather than deleting.
 const ORIGIN = 'https://img.clovers.network'
 
 // Real boards, verified present on chain earlier in this work.
