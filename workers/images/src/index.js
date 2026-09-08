@@ -7,9 +7,27 @@
  *   api2.clovers.network/clovers/svg/<board>   - what NFT metadata requests
  *
  * A board is a uint256 token id and its rendering is a pure function of it, so
- * every response is immutable and can be cached at the edge forever. That is
- * the whole reason this workload suits Workers: 44,000 boards, each generated
- * at most once per edge location.
+ * every response is immutable.
+ *
+ * CORRECTION, 2026-09-08: an earlier version of this comment claimed the
+ * responses "can be cached at the edge forever" with "each board generated at
+ * most once per edge location". That is not what happens. Cloudflare does not
+ * automatically cache Worker responses -- you opt in via caches.default or a
+ * zone Cache Rule, and this Worker does neither. Checked against the live
+ * hostname: no cf-cache-status header and no age header, so every request runs
+ * the Worker.
+ *
+ * The Cache-Control header below is still doing real work, just not that work:
+ * it instructs BROWSERS, so a returning visitor does not re-request an image
+ * they already have. It has no effect at Cloudflare's edge.
+ *
+ * And adding the Cache API would not help. It does not reduce the request
+ * count -- the Worker still executes in order to consult the cache -- so it
+ * would only save CPU, and a render measures 0.025 ms against the free plan's
+ * 10 ms ceiling. Rendering is cheaper here than a cache lookup would be. The
+ * only thing that would cut Worker invocations is a zone-level Cache Rule,
+ * which is worth reaching for if the free plan's 100,000 requests/day ever
+ * becomes a real ceiling, and is pure complexity before then.
  *
  * `renderSVG` is a direct port of `toSVG` in src/lib/util.js. It must stay
  * byte-identical to it — the output is referenced by NFT metadata already in
