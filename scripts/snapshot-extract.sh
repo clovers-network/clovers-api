@@ -26,13 +26,14 @@
 # the one expensive way this can go wrong.
 set -euo pipefail
 
-CTX=""; FULL=0; YES=0; SNAP=""
+CTX=""; FULL=0; YES=0; MEASURE=0; SNAP=""
 OUT="${SNAPSHOT_OUT:-$HOME/clovers-backups/snapshots}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --list)    LIST=1 ;;
     --context) CTX="--context $2"; shift ;;
     --full)    FULL=1 ;;
+    --measure) MEASURE=1; YES=1 ;;   # implies --yes: measuring requires booting
     --yes)     YES=1 ;;
     --out)     OUT="$2"; shift ;;
     -*)        echo "unknown flag: $1" >&2; exit 2 ;;
@@ -72,7 +73,10 @@ KEY=$(doctl compute ssh-key list $CTX --format ID --no-header | head -1)
 echo "snapshot : $NAME ($SNAP)"
 echo "region   : $REGION   min disk: ${MIN}GB"
 echo "droplet  : $SIZE at \$$HOURLY/hour, destroyed on exit"
-echo "mode     : $([ "$FULL" = 1 ] && echo 'FULL raw disk image (large)' || echo 'data extraction')"
+if [ "$MEASURE" = 1 ]; then MODE='MEASURE ONLY -- boots, sizes the disk, downloads nothing'
+elif [ "$FULL" = 1 ]; then MODE='FULL raw disk image (large)'
+else MODE='data extraction'; fi
+echo "mode     : $MODE"
 echo "output   : $OUT"
 if [ "$YES" != "1" ]; then
   echo
@@ -109,6 +113,23 @@ for i in $(seq 1 60); do
   ssh $SSHOPTS root@"$IP" true 2>/dev/null && break
   sleep 5
 done
+
+if [ "$MEASURE" = "1" ]; then
+  # What would actually come down, without transferring it. `du -sb` on the
+  # same paths the extraction uses, plus the compressed size of a dry tar --
+  # the second is what matters, since the archive is gzipped and a Discourse
+  # box is mostly already-compressed images while a home directory is not.
+  # shellcheck disable=SC2086
+  ssh $SSHOPTS root@"$IP" '
+    echo "  --- disk overall ---"
+    df -h / | sed -n 2p
+    echo "  --- candidate paths (uncompressed) ---"
+    du -shc /home /root /etc /srv /opt /var/www             /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse             2>/dev/null | sort -rh
+    echo "  --- what the tar.gz would weigh ---"
+    tar czf - --ignore-failed-read       /home /root /etc /srv /opt /var/www       /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse 2>/dev/null       | wc -c | awk "{printf "  compressed: %.1f MiB\n", \$1/1048576}"
+  ' || echo "  (measurement failed)"
+  exit 0
+fi
 
 if [ "$FULL" = "1" ]; then
   DEST="$OUT/${NAME// /_}.img.gz"
