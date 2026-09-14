@@ -107,9 +107,29 @@ cleanup () {
 }
 trap cleanup EXIT INT TERM
 
+# Attach every SSH key on the account at creation time.
+#
+# The snapshot carries its original authorized_keys, which is enough when the
+# key that opened the live machine is still on this laptop -- true for the
+# Clovers boxes, where `billy` worked. It is not true generally: this account
+# has nine registered keys named for machines going back years, and a droplet
+# built in 2023 was authorised with whichever of them was selected then. Only
+# id_rsa is held locally, so those snapshots refuse every login.
+#
+# Attaching all of them makes cloud-init write them into root's
+# authorized_keys on first boot, which sidesteps the question entirely -- and
+# root is exactly the login the database directories need. Verified on
+# viper-server: without this, all six candidate users are refused; with it,
+# root logs straight in.
+#
+# It does not help the 2012-era images, where cloud-init never runs and sshd
+# cannot complete key exchange at all. Those still need the console.
+# shellcheck disable=SC2086
+ALLKEYS=$(doctl compute ssh-key list $CTX --format ID --no-header 2>/dev/null | tr '\n' ',' | sed 's/,$//')
 # shellcheck disable=SC2086
 DID=$(doctl compute droplet create "$DROPLET" \
         --image "$SNAP" --size "$SIZE" --region "$REGION" \
+        ${ALLKEYS:+--ssh-keys "$ALLKEYS"} \
         --wait --format ID --no-header $CTX)
 # shellcheck disable=SC2086
 IP=$(doctl compute droplet get "$DID" $CTX --format PublicIPv4 --no-header)
@@ -130,7 +150,7 @@ SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel
 # ~/.ssh/authorized_keys, so the key that opened the live droplet still opens a
 # droplet booted from its snapshot -- as the ordinary user, not root. On these
 # boxes that is `billy`; root refuses with Permission denied (publickey).
-CANDIDATES="${SSH_USERS:-billy root ubuntu admin deploy debian}"
+CANDIDATES="${SSH_USERS:-root billy ubuntu admin deploy debian}"
 SSHUSER=""
 
 # Wait for the port first, then try users. Doing it the other way round means an
