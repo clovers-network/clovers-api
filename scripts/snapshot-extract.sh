@@ -237,13 +237,17 @@ else
 fi
 
 # An archive that cannot be listed is worthless however cleanly it was written.
-if ! tar tzf "$DEST" >/dev/null 2>&1; then
-  echo "ARCHIVE UNREADABLE -- discarding $DEST" >&2
+# And "lists cleanly" is not enough on its own: `tar tzf` on a zero-byte file
+# exits 0 with no output, so chameleon-node reported "wrote ... 0B, 0 entries"
+# as a success after ssh died with 255. Require actual contents.
+ENTRIES=$(tar tzf "$DEST" 2>/dev/null | wc -l | tr -d ' ')
+if [ "${ENTRIES:-0}" -lt 10 ]; then
+  echo "ARCHIVE EMPTY OR UNREADABLE ($ENTRIES entries) -- discarding $DEST" >&2
   rm -f "$DEST"
   exit 1
 fi
 
-echo "wrote $DEST ($(du -h "$DEST" | cut -f1), $(tar tzf "$DEST" 2>/dev/null | wc -l | tr -d ' ') entries)"
+echo "wrote $DEST ($(du -h "$DEST" | cut -f1), $ENTRIES entries)"
 AFTER=$(free_gb)
 echo "free on target volume: ${AFTER}GB (was ${FREE}GB, used $((FREE - AFTER))GB)"
 if [ "$AFTER" -lt "$MIN_FREE_GB" ]; then
