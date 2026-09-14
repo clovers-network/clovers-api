@@ -67,8 +67,25 @@ SIZE=$(doctl compute size list $CTX --format Slug,Disk,PriceHourly --no-header \
 [ -z "$SIZE" ] && { echo "no droplet size has a disk >= ${MIN}GB" >&2; exit 1; }
 HOURLY=$(doctl compute size list $CTX --format Slug,PriceHourly --no-header | awk -v s="$SIZE" '$1==s{print $2}')
 
-# shellcheck disable=SC2086
-KEY=$(doctl compute ssh-key list $CTX --format ID --no-header | head -1)
+# A throwaway keypair, generated per run and destroyed with the droplet.
+#
+# The obvious approach is `--ssh-keys <id>` with a key already on the account,
+# and the first version did that -- taking `ssh-key list | head -1`. Two things
+# were wrong with it. It needs an ssh_key:read scope on the API token, and it
+# picks whichever key DigitalOcean happens to list first, whose private half may
+# not be on this machine at all. Here it resolved to "xps", which does match
+# ~/.ssh/id_rsa, but that was luck: the same list holds "iPhone" and "ipad".
+#
+# Injecting a fresh public key via cloud-init instead means the droplet trusts
+# exactly one key, that key exists for the life of this run, and no scope beyond
+# droplet create/read/delete and image:read is required. Nothing is added to the
+# account, so there is nothing to clean up there either.
+TMPKEY=$(mktemp -u "${TMPDIR:-/tmp}/snapx-key-XXXXXX")
+ssh-keygen -t ed25519 -N '' -C "snapshot-extract throwaway" -f "$TMPKEY" -q
+USERDATA=$(printf '#cloud-config
+ssh_authorized_keys:
+  - %s
+' "$(cat "$TMPKEY.pub")")
 
 echo "snapshot : $NAME ($SNAP)"
 echo "region   : $REGION   min disk: ${MIN}GB"
@@ -84,10 +101,24 @@ if [ "$YES" != "1" ]; then
   exit 0
 fi
 
+# Refuse to start if the disk is already tight. The extraction streams straight
+# to a file and cannot know its final size in advance, so the guard is a floor
+# on what must remain free rather than a check against the incoming size.
+# MIN_FREE_GB is deliberately generous: filling a working machine's disk is a
+# much worse outcome than a failed extraction you can retry.
+MIN_FREE_GB="${MIN_FREE_GB:-100}"
 mkdir -p "$OUT"
+free_gb () { df -g "$OUT" | awk 'NR==2 {print $4}'; }
+FREE=$(free_gb)
+echo "free on target volume: ${FREE}GB (floor ${MIN_FREE_GB}GB)"
+if [ "$FREE" -lt "$MIN_FREE_GB" ]; then
+  echo "REFUSING: only ${FREE}GB free, floor is ${MIN_FREE_GB}GB. Raise MIN_FREE_GB or free space." >&2
+  exit 1
+fi
 DROPLET="extract-$(echo "$NAME" | tr -cd 'a-zA-Z0-9-' | cut -c1-30)-$$"
 
 cleanup () {
+  rm -f "${TMPKEY:-}" "${TMPKEY:-}.pub"
   if [ -n "${DID:-}" ]; then
     echo "destroying droplet $DID"
     # shellcheck disable=SC2086
@@ -100,14 +131,14 @@ trap cleanup EXIT INT TERM
 # shellcheck disable=SC2086
 DID=$(doctl compute droplet create "$DROPLET" \
         --image "$SNAP" --size "$SIZE" --region "$REGION" \
-        --ssh-keys "$KEY" --wait --format ID --no-header $CTX)
+        --user-data "$USERDATA" --wait --format ID --no-header $CTX)
 # shellcheck disable=SC2086
 IP=$(doctl compute droplet get "$DID" $CTX --format PublicIPv4 --no-header)
 echo "booted $DID at $IP"
 
 # The host key is new and belongs to a machine that exists for minutes, so
 # StrictHostKeyChecking is off here and known_hosts is left untouched.
-SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10"
+SSHOPTS="-i $TMPKEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10"
 for i in $(seq 1 60); do
   # shellcheck disable=SC2086
   ssh $SSHOPTS root@"$IP" true 2>/dev/null && break
@@ -151,6 +182,11 @@ else
 fi
 
 echo "wrote $DEST ($(du -h "$DEST" | cut -f1))"
+AFTER=$(free_gb)
+echo "free on target volume: ${AFTER}GB (was ${FREE}GB, used $((FREE - AFTER))GB)"
+if [ "$AFTER" -lt "$MIN_FREE_GB" ]; then
+  echo "WARNING: now below the ${MIN_FREE_GB}GB floor -- stop before the next one." >&2
+fi
 echo "verifying the archive reads back:"
 if [ "$FULL" = "1" ]; then gzip -t "$DEST" && echo "  gzip stream intact"
 else tar tzf "$DEST" >/dev/null && echo "  tar lists cleanly ($(tar tzf "$DEST" | wc -l | tr -d ' ') entries)"; fi
