@@ -221,13 +221,29 @@ else
   echo "extracting to $DEST"
   # shellcheck disable=SC2086
   ssh $SSHOPTS "$SSHUSER@$IP" \
-    "tar czf - --ignore-failed-read \
+    "${SUDO}tar czf - --ignore-failed-read \
        /home /root /etc /srv /opt /var/www \
        /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse \
-       2>/dev/null" > "$DEST"
+       2>/dev/null" > "$DEST" || TAR_RC=$?
+
+  # tar exits non-zero for warnings as well as errors -- a path absent on this
+  # box, or a file changing while it is read -- and --ignore-failed-read
+  # suppresses the message without changing the status. Under `set -e` that
+  # aborted between writing the archive and reporting it, so subscribe-divide
+  # produced a complete tarball and was recorded as a failure.
+  if [ "${TAR_RC:-0}" != "0" ]; then
+    echo "  tar exited ${TAR_RC}; warnings are normal, validating the archive"
+  fi
 fi
 
-echo "wrote $DEST ($(du -h "$DEST" | cut -f1))"
+# An archive that cannot be listed is worthless however cleanly it was written.
+if ! tar tzf "$DEST" >/dev/null 2>&1; then
+  echo "ARCHIVE UNREADABLE -- discarding $DEST" >&2
+  rm -f "$DEST"
+  exit 1
+fi
+
+echo "wrote $DEST ($(du -h "$DEST" | cut -f1), $(tar tzf "$DEST" 2>/dev/null | wc -l | tr -d ' ') entries)"
 AFTER=$(free_gb)
 echo "free on target volume: ${AFTER}GB (was ${FREE}GB, used $((FREE - AFTER))GB)"
 if [ "$AFTER" -lt "$MIN_FREE_GB" ]; then
