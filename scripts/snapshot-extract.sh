@@ -95,31 +95,9 @@ if [ "$FREE" -lt "$MIN_FREE_GB" ]; then
   echo "REFUSING: only ${FREE}GB free, floor is ${MIN_FREE_GB}GB. Raise MIN_FREE_GB or free space." >&2
   exit 1
 fi
-# Generated here, not earlier: a dry run exits above, and anything created
-# before that gate leaks because the cleanup trap is not armed yet. The first
-# version generated the keypair alongside the other metadata lookups and left
-# a private key in TMPDIR on every dry run.
-# A throwaway keypair, generated per run and destroyed with the droplet.
-#
-# The obvious approach is `--ssh-keys <id>` with a key already on the account,
-# and the first version did that -- taking `ssh-key list | head -1`. Two things
-# were wrong with it. It needs an ssh_key:read scope on the API token, and it
-# picks whichever key DigitalOcean happens to list first, whose private half may
-# not be on this machine at all. Here it resolved to "xps", which does match
-# ~/.ssh/id_rsa, but that was luck: the same list holds "iPhone" and "ipad".
-#
-# Injecting a fresh public key via cloud-init instead means the droplet trusts
-# exactly one key, that key exists for the life of this run, and no scope beyond
-# droplet create/read/delete and image:read is required. Nothing is added to the
-# account, so there is nothing to clean up there either.
-TMPKEY=$(mktemp -u "${TMPDIR:-/tmp}/snapx-key-XXXXXX")
-ssh-keygen -t ed25519 -N '' -C "snapshot-extract throwaway" -f "$TMPKEY" -q
-USERDATA=$(printf '#cloud-config\nssh_authorized_keys:\n  - %s\n' "$(cat "$TMPKEY.pub")")
-
 DROPLET="extract-$(echo "$NAME" | tr -cd 'a-zA-Z0-9-' | cut -c1-30)-$$"
 
 cleanup () {
-  rm -f "${TMPKEY:-}" "${TMPKEY:-}.pub"
   if [ -n "${DID:-}" ]; then
     echo "destroying droplet $DID"
     # shellcheck disable=SC2086
@@ -132,19 +110,66 @@ trap cleanup EXIT INT TERM
 # shellcheck disable=SC2086
 DID=$(doctl compute droplet create "$DROPLET" \
         --image "$SNAP" --size "$SIZE" --region "$REGION" \
-        --user-data "$USERDATA" --wait --format ID --no-header $CTX)
+        --wait --format ID --no-header $CTX)
 # shellcheck disable=SC2086
 IP=$(doctl compute droplet get "$DID" $CTX --format PublicIPv4 --no-header)
 echo "booted $DID at $IP"
 
 # The host key is new and belongs to a machine that exists for minutes, so
 # StrictHostKeyChecking is off here and known_hosts is left untouched.
-SSHOPTS="-i $TMPKEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10"
-for i in $(seq 1 60); do
-  # shellcheck disable=SC2086
-  ssh $SSHOPTS root@"$IP" true 2>/dev/null && break
+SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 -o BatchMode=yes"
+
+# Which user to log in as is discovered, not assumed. The first version
+# connected as root with a key injected through cloud-init user-data, and every
+# extraction failed: port 22 came up in twenty seconds, the key was never
+# applied, and sixty attempts later the tar wrote a zero-byte file. cloud-init
+# does not re-run its ssh_authorized_keys module on a droplet booted from a
+# snapshot of an already-configured machine.
+#
+# None of that was necessary. The snapshot carries the original
+# ~/.ssh/authorized_keys, so the key that opened the live droplet still opens a
+# droplet booted from its snapshot -- as the ordinary user, not root. On these
+# boxes that is `billy`; root refuses with Permission denied (publickey).
+CANDIDATES="${SSH_USERS:-billy root ubuntu admin deploy debian}"
+SSHUSER=""
+
+# Wait for the port first, then try users. Doing it the other way round means an
+# unreachable box costs 30 rounds x 6 users x a 10s timeout -- half an hour of
+# billed droplet per failure. This caps a hopeless box at about two minutes.
+for i in $(seq 1 30); do
+  nc -z -G 5 "$IP" 22 2>/dev/null && break
   sleep 5
 done
+if ! nc -z -G 5 "$IP" 22 2>/dev/null; then
+  echo "port 22 never opened" >&2; exit 1
+fi
+
+for round in 1 2 3; do
+  for u in $CANDIDATES; do
+    # shellcheck disable=SC2086
+    if ssh $SSHOPTS "$u@$IP" true 2>/dev/null; then SSHUSER="$u"; break 2; fi
+  done
+  sleep 10
+done
+if [ -z "$SSHUSER" ]; then
+  echo "could not log in as any of: $CANDIDATES" >&2
+  echo "If the banner shows OpenSSH 5.x, sshd cannot complete key exchange and no" >&2
+  echo "client version helps -- use the DigitalOcean web console instead." >&2
+  echo "set SSH_USERS to override, e.g. SSH_USERS=\"someuser\"" >&2
+  exit 1
+fi
+echo "logged in as $SSHUSER"
+
+# Root-owned paths need elevation, and a non-root login may or may not have it.
+# Established once rather than per-command so the failure is reported here
+# instead of as a silently short archive.
+# shellcheck disable=SC2086
+if [ "$SSHUSER" = root ]; then SUDO=""
+elif ssh $SSHOPTS "$SSHUSER@$IP" 'sudo -n true' 2>/dev/null; then SUDO="sudo "
+else
+  SUDO=""
+  echo "WARNING: no passwordless sudo as $SSHUSER -- root-owned files will be missing from the archive" >&2
+fi
 
 if [ "$MEASURE" = "1" ]; then
   # What would actually come down, without transferring it. `du -sb` on the
@@ -152,13 +177,13 @@ if [ "$MEASURE" = "1" ]; then
   # the second is what matters, since the archive is gzipped and a Discourse
   # box is mostly already-compressed images while a home directory is not.
   # shellcheck disable=SC2086
-  ssh $SSHOPTS root@"$IP" '
+  ssh $SSHOPTS "$SSHUSER@$IP" '
     echo "  --- disk overall ---"
     df -h / | sed -n 2p
     echo "  --- candidate paths (uncompressed) ---"
     du -shc /home /root /etc /srv /opt /var/www             /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse             2>/dev/null | sort -rh
     echo "  --- what the tar.gz would weigh ---"
-    tar czf - --ignore-failed-read       /home /root /etc /srv /opt /var/www       /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse 2>/dev/null       | wc -c | awk "{printf "  compressed: %.1f MiB\n", \$1/1048576}"
+    tar czf - --ignore-failed-read       /home /root /etc /srv /opt /var/www       /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse 2>/dev/null       | wc -c | while read -r b; do echo "  compressed: $((b / 1048576)) MiB"; done
   ' || echo "  (measurement failed)"
   exit 0
 fi
@@ -167,15 +192,15 @@ if [ "$FULL" = "1" ]; then
   DEST="$OUT/${NAME// /_}.img.gz"
   echo "streaming raw disk to $DEST -- this is the whole disk, not just data"
   # shellcheck disable=SC2086
-  ssh $SSHOPTS root@"$IP" "dd if=/dev/vda bs=4M status=none | gzip -1" > "$DEST"
+  ssh $SSHOPTS "$SSHUSER@$IP" "${SUDO}dd if=/dev/vda bs=4M status=none | gzip -1" > "$DEST"
 else
   DEST="$OUT/${NAME// /_}.tar.gz"
   echo "what is large on this disk:"
   # shellcheck disable=SC2086
-  ssh $SSHOPTS root@"$IP" "du -sh /home /root /etc /srv /opt /var/www /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse 2>/dev/null | sort -rh" || true
+  ssh $SSHOPTS "$SSHUSER@$IP" "${SUDO}du -sh /home /root /etc /srv /opt /var/www /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse 2>/dev/null | sort -rh" || true
   echo "extracting to $DEST"
   # shellcheck disable=SC2086
-  ssh $SSHOPTS root@"$IP" \
+  ssh $SSHOPTS "$SSHUSER@$IP" \
     "tar czf - --ignore-failed-read \
        /home /root /etc /srv /opt /var/www \
        /var/lib/postgresql /var/lib/mysql /var/lib/rethinkdb /var/discourse \
