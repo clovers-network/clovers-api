@@ -67,26 +67,6 @@ SIZE=$(doctl compute size list $CTX --format Slug,Disk,PriceHourly --no-header \
 [ -z "$SIZE" ] && { echo "no droplet size has a disk >= ${MIN}GB" >&2; exit 1; }
 HOURLY=$(doctl compute size list $CTX --format Slug,PriceHourly --no-header | awk -v s="$SIZE" '$1==s{print $2}')
 
-# A throwaway keypair, generated per run and destroyed with the droplet.
-#
-# The obvious approach is `--ssh-keys <id>` with a key already on the account,
-# and the first version did that -- taking `ssh-key list | head -1`. Two things
-# were wrong with it. It needs an ssh_key:read scope on the API token, and it
-# picks whichever key DigitalOcean happens to list first, whose private half may
-# not be on this machine at all. Here it resolved to "xps", which does match
-# ~/.ssh/id_rsa, but that was luck: the same list holds "iPhone" and "ipad".
-#
-# Injecting a fresh public key via cloud-init instead means the droplet trusts
-# exactly one key, that key exists for the life of this run, and no scope beyond
-# droplet create/read/delete and image:read is required. Nothing is added to the
-# account, so there is nothing to clean up there either.
-TMPKEY=$(mktemp -u "${TMPDIR:-/tmp}/snapx-key-XXXXXX")
-ssh-keygen -t ed25519 -N '' -C "snapshot-extract throwaway" -f "$TMPKEY" -q
-USERDATA=$(printf '#cloud-config
-ssh_authorized_keys:
-  - %s
-' "$(cat "$TMPKEY.pub")")
-
 echo "snapshot : $NAME ($SNAP)"
 echo "region   : $REGION   min disk: ${MIN}GB"
 echo "droplet  : $SIZE at \$$HOURLY/hour, destroyed on exit"
@@ -115,6 +95,27 @@ if [ "$FREE" -lt "$MIN_FREE_GB" ]; then
   echo "REFUSING: only ${FREE}GB free, floor is ${MIN_FREE_GB}GB. Raise MIN_FREE_GB or free space." >&2
   exit 1
 fi
+# Generated here, not earlier: a dry run exits above, and anything created
+# before that gate leaks because the cleanup trap is not armed yet. The first
+# version generated the keypair alongside the other metadata lookups and left
+# a private key in TMPDIR on every dry run.
+# A throwaway keypair, generated per run and destroyed with the droplet.
+#
+# The obvious approach is `--ssh-keys <id>` with a key already on the account,
+# and the first version did that -- taking `ssh-key list | head -1`. Two things
+# were wrong with it. It needs an ssh_key:read scope on the API token, and it
+# picks whichever key DigitalOcean happens to list first, whose private half may
+# not be on this machine at all. Here it resolved to "xps", which does match
+# ~/.ssh/id_rsa, but that was luck: the same list holds "iPhone" and "ipad".
+#
+# Injecting a fresh public key via cloud-init instead means the droplet trusts
+# exactly one key, that key exists for the life of this run, and no scope beyond
+# droplet create/read/delete and image:read is required. Nothing is added to the
+# account, so there is nothing to clean up there either.
+TMPKEY=$(mktemp -u "${TMPDIR:-/tmp}/snapx-key-XXXXXX")
+ssh-keygen -t ed25519 -N '' -C "snapshot-extract throwaway" -f "$TMPKEY" -q
+USERDATA=$(printf '#cloud-config\nssh_authorized_keys:\n  - %s\n' "$(cat "$TMPKEY.pub")")
+
 DROPLET="extract-$(echo "$NAME" | tr -cd 'a-zA-Z0-9-' | cut -c1-30)-$$"
 
 cleanup () {
